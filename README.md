@@ -17,7 +17,7 @@ Files from the 3.5" disk version.
 Analysis of the files from the AAoW disk.
 
 ## [Ancient Art of War Graphics](/WAR_Graphics)
-Graphics decoded from the AAoW CGA files: the map tiles (M) and the full-screen battle pictures (P files).
+Graphics decoded from the AAoW disk: the map tiles and full-screen pictures from both the [CGA](/WAR_Graphics/CGA) version and the 16-colour EGA/[VGA](/WAR_Graphics/VGA) version, plus the script that extracts them.
 
 ## Useful Links
 - [Official developer site](https://www.evryware.com/index.html)

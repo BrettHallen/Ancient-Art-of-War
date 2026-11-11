@@ -1,0 +1,215 @@
+#!/usr/bin/env python3
+"""Extract The Ancient Art of War graphics from the original 3.5" disk files.
+
+Run from anywhere:  python3 extract_graphics.py
+Needs Pillow (pip install pillow). Reads ../WAR_Original_Files_3.5 and
+writes PNGs into the CGA/ and VGA/ folders next to this script.
+
+CGA (WAR.EXE):
+  M          72 map tiles, 2 bits per pixel
+  P0-PD, PL  full-screen pictures, word run-length code, interlaced fields
+VGA / EGA / Tandy (WARET.EXE):
+  WARET.DAT  archive of 16-colour pictures (each with its own palette),
+             the 16-colour map tiles, and copies of the text files
+"""
+import os
+import struct
+from PIL import Image, ImageDraw
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+SRC = os.path.join(HERE, '..', 'WAR_Original_Files_3.5')
+CGA_DIR = os.path.join(HERE, 'CGA')
+VGA_DIR = os.path.join(HERE, 'VGA')
+
+# CGA palette 1, high intensity: black, cyan, magenta, white
+CGA_PALETTE = [(0, 0, 0), (85, 255, 255), (255, 85, 255), (255, 255, 255)]
+
+CGA_PICTURES = {
+    'P0': 'fort_inside', 'P1': 'fort_gate', 'P2': 'fort_gate_other_side',
+    'P3': 'village', 'P4': 'hills', 'P5': 'hills_palm', 'P6': 'river',
+    'P7': 'forest', 'P8': 'forest_2', 'P9': 'mountains', 'PA': 'bridge',
+    'PB': 'plains', 'PC': 'plains_2', 'PD': 'plains_beach',
+    'PL': 'horsemen_unused',
+}
+
+VGA_PICTURES = {
+    1: 'title', 2: 'title_barbarian', 3: 'scroll_1', 4: 'scroll_2',
+    5: 'opponents', 6: 'scenes_1', 7: 'scenes_2', 8: 'options_shoppe',
+    9: 'battle_report_1', 10: 'battle_report_2', 11: 'PL_horsemen_unused',
+    60: 'P0_fort_inside', 61: 'P1_fort_gate', 62: 'P2_fort_gate_other_side',
+    63: 'P3_village', 64: 'P4_hills', 65: 'P5_hills_palm', 66: 'P6_river',
+    67: 'P7_forest', 68: 'P8_forest_2', 69: 'P9_mountains', 70: 'PA_bridge',
+    71: 'PB_plains', 72: 'PC_plains_2', 73: 'PD_plains_beach',
+}
+VGA_TILES_RECORD = 30
+
+
+def read(name):
+    with open(os.path.join(SRC, name), 'rb') as f:
+        return f.read()
+
+
+# ---------------------------------------------------------------- drawing
+def draw_2bpp(data, width_bytes, rows, row_offset):
+    im = Image.new('RGB', (width_bytes * 4, rows))
+    px = im.load()
+    for y in range(rows):
+        base = row_offset(y)
+        for xb in range(width_bytes):
+            v = data[base + xb]
+            for p in range(4):
+                px[xb * 4 + p, y] = CGA_PALETTE[(v >> (6 - 2 * p)) & 3]
+    return im
+
+
+def draw_4bpp(data, width, height, bytes_per_row, palette):
+    im = Image.new('RGB', (width, height))
+    px = im.load()
+    for y in range(height):
+        for x in range(width):
+            b = data[y * bytes_per_row + x // 2]
+            px[x, y] = palette[(b >> 4) if x % 2 == 0 else (b & 15)]
+    return im
+
+
+def tile_sheet(tiles, path, per_row=12, scale=3):
+    w, h = tiles[0].size
+    rows = (len(tiles) + per_row - 1) // per_row
+    sheet = Image.new('RGB', (per_row * (w + 2), rows * (h + 2)), (60, 60, 60))
+    for k, t in enumerate(tiles):
+        sheet.paste(t, ((k % per_row) * (w + 2), (k // per_row) * (h + 2)))
+    sheet.resize((sheet.width * scale, sheet.height * scale), Image.NEAREST).save(path)
+
+
+def contact_sheet(items, path, per_row=3):
+    rows = (len(items) + per_row - 1) // per_row
+    sheet = Image.new('RGB', (per_row * 330, rows * 218), (40, 40, 40))
+    draw = ImageDraw.Draw(sheet)
+    for k, (label, im) in enumerate(items):
+        x, y = (k % per_row) * 330, (k // per_row) * 218
+        sheet.paste(im, (x + 5, y + 14))
+        draw.text((x + 5, y + 2), label, fill=(255, 255, 0))
+    sheet.save(path)
+
+
+def save_tiles(tiles, folder, prefix):
+    os.makedirs(folder, exist_ok=True)
+    for k, t in enumerate(tiles):
+        t.save(os.path.join(folder, f'{prefix}_{k:02d}.png'))
+
+
+# ---------------------------------------------------------------- CGA
+def cga_tiles():
+    """M: records of [word width-in-words, word height/2, pixels]."""
+    d = read('M')
+    tiles, i = [], 0
+    while i < len(d):
+        w, h = struct.unpack('<HH', d[i:i + 4])
+        i += 4
+        bpr, rows = w * 2, h * 2
+        tiles.append(draw_2bpp(d[i:i + bpr * rows], bpr, rows, lambda y, b=bpr: y * b))
+        i += bpr * rows
+    return tiles
+
+
+def cga_picture(name):
+    """Two fields; each = word N, then N x [count byte, word] -> 8000 bytes."""
+    d = read(name)
+    out, pos = bytearray(), 0
+    for _ in range(2):
+        n = d[pos] | d[pos + 1] << 8
+        pos += 2
+        for _ in range(n):
+            out += bytes(d[pos + 1:pos + 3]) * d[pos]
+            pos += 3
+    # even lines in the first 8000 bytes, odd lines in the second
+    return draw_2bpp(out, 80, 200, lambda y: (y % 2) * 8000 + (y // 2) * 80)
+
+
+# ---------------------------------------------------------------- VGA
+def waret_records():
+    d = read('WARET.DAT')
+    table = struct.unpack('<I', d[:4])[0]
+    count = d[table + 3] | d[table + 4] << 8
+    entries = [struct.unpack('<HI', d[table + 5 + k * 6:table + 11 + k * 6]) for k in range(count)]
+    records = {}
+    for rec_id, off in entries:
+        length, checksum = d[off] | d[off + 1] << 8, d[off + 2]
+        payload = d[off + 3:off + 3 + length]
+        assert sum(payload) & 255 == checksum, f'checksum error in record {rec_id}'
+        records[rec_id] = payload
+    return records
+
+
+def unpack(src, size):
+    """WARET.EXE decoder: signed n; n >= 0 copy n+1 bytes, n < 0 repeat next byte -n times."""
+    out, i = bytearray(), 0
+    while len(out) < size:
+        n = src[i]
+        i += 1
+        if n < 128:
+            out += src[i:i + n + 1]
+            i += n + 1
+        else:
+            out += bytes([src[i]]) * (256 - n)
+            i += 1
+    return bytes(out[:size])
+
+
+def vga_palette_and_data(payload):
+    """48-byte RGB palette, word unpacked size, run-length data."""
+    palette = [tuple(payload[j * 3:j * 3 + 3]) for j in range(16)]
+    size = payload[48] | payload[49] << 8
+    return palette, unpack(payload[50:], size)
+
+
+def vga_picture(payload):
+    palette, raw = vga_palette_and_data(payload)
+    w, h, bpr = struct.unpack('<HHH', raw[:6])
+    return draw_4bpp(raw[6:], w, h, bpr, palette)
+
+
+def vga_tiles(payload):
+    palette, raw = vga_palette_and_data(payload)
+    tiles, i = [], 0
+    while i < len(raw):
+        w, h = struct.unpack('<HH', raw[i:i + 4])
+        i += 4
+        bpr, rows = w * 2, h * 2
+        tiles.append(draw_4bpp(raw[i:i + bpr * rows], bpr * 2, rows, bpr, palette))
+        i += bpr * rows
+    return tiles
+
+
+# ---------------------------------------------------------------- main
+def main():
+    os.makedirs(CGA_DIR, exist_ok=True)
+    os.makedirs(VGA_DIR, exist_ok=True)
+
+    tiles = cga_tiles()
+    save_tiles(tiles, os.path.join(CGA_DIR, 'tiles'), 'M')
+    tile_sheet(tiles, os.path.join(CGA_DIR, 'WAR_M_map_tiles.png'))
+    items = []
+    for name, label in CGA_PICTURES.items():
+        im = cga_picture(name)
+        im.save(os.path.join(CGA_DIR, f'{name}_{label}.png'))
+        items.append((name, im))
+    contact_sheet(items, os.path.join(CGA_DIR, 'WAR_CGA_pictures_decoded.png'))
+    print(f'CGA: {len(tiles)} tiles, {len(items)} pictures')
+
+    records = waret_records()
+    tiles = vga_tiles(records[VGA_TILES_RECORD])
+    save_tiles(tiles, os.path.join(VGA_DIR, 'tiles'), 'tile')
+    tile_sheet(tiles, os.path.join(VGA_DIR, 'WAR_VGA_map_tiles.png'))
+    items = []
+    for rec_id, label in VGA_PICTURES.items():
+        im = vga_picture(records[rec_id])
+        im.save(os.path.join(VGA_DIR, f'rec{rec_id:02d}_{label}.png'))
+        items.append((f'rec {rec_id}: {label}', im))
+    contact_sheet(items[:11], os.path.join(VGA_DIR, 'WAR_VGA_screens.png'))
+    contact_sheet(items[11:], os.path.join(VGA_DIR, 'WAR_VGA_battle_backgrounds.png'))
+    print(f'VGA: {len(tiles)} tiles, {len(items)} pictures')
+
+
+if __name__ == '__main__':
+    main()
