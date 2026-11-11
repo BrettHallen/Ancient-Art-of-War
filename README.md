@@ -10,7 +10,7 @@ I never played The Ancient Art of War in the Skies (1992).<br>
 ## Documentation
 Scans of the original documentation:
 - [The Ancient Art of War](/WAR_Documentation)
-- The Ancient Art of War at Sea (coming)
+- [The Ancient Art of War at Sea (in progress)](/WAS_Documentation)
 
 ## [Ancient Art of War 3.5" Files](/WAR_Original_Files_3.5)
 Files from the 3.5" disk version.
