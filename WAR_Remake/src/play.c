@@ -298,7 +298,19 @@ static int terrain_of(const Play *p, int i)
 
 /* ------------------------------------------------------------------ squads */
 
-static void clear_path(Play *p, int i)  /* rt:0C44 */
+/* the enemy commander (below) */
+static void ai_cell_costs(Play *p);
+static void ai_cell_values(Play *p);
+static void ai_choose_attack_flag(Play *p);
+static void ai_tick(Play *p);
+static void ai_start(Play *p);
+static void ai_all_out(Play *p);
+static int  count_flags(Play *p);
+static void enemy_split_in_fort(Play *p, int i);
+
+/* rt:0C44 clear_squad_path: clear the squad's path, its route (enemy), and
+ * stop it */
+static void clear_path(Play *p, int i)
 {
     PSquad *q = &p->sq[i];
     if (q->has_path) {
@@ -309,6 +321,18 @@ static void clear_path(Play *p, int i)  /* rt:0C44 */
         } while (p->path[k] != 0 && k != q->path_pos);
         q->marked = false;
         q->has_path = false;
+    }
+    if (q->on_route) {
+        int k = q->route_pos;
+        for (;;) {
+            if (k >= 0 && k < MAP_W * MAP_H) p->route[k] = 0;
+            if (++k > 199 || p->route[k] == 0) break;
+        }
+        q->on_route = 0;
+    }
+    if (q->used) {
+        q->delay = 0;
+        q->moving = 0;
     }
 }
 
@@ -390,6 +414,9 @@ static void squads_update(Play *p)
             q->used = false;
             q->moving = 0;
             if (p->sel == i && p->mode == PM_SQUAD) { p->over_squad = false; cmd_normal(p); }
+        } else if (q->men > 0 && !q->used) {   /* a new squad (Detach, or an enemy squad splitting) */
+            q->used = true;
+            q->moving = 0;
         }
     }
 }
@@ -422,6 +449,7 @@ static bool check_victory(Play *p, int a, int b)
         else             { theirs++; their_men += q->men; }
     }
     if (theirs / 2 < OPP(p, 0xA4E8)) OPP(p, 0xA4E8)--;
+    if (mine < 3 || theirs / 4 > mine || theirs < 3) ai_all_out(p);   /* the end is near: all out */
     if (mine == 0)   { game_over(p, false); return true; }
     if (theirs == 0) { game_over(p, true); return true; }
     if (their_men > 0 && my_men / their_men >= OPP(p, 0xA4EA) && my_men > 20) {
@@ -567,6 +595,8 @@ static void battles(Play *p)
         if (e->men > 0) continue;
         int f = q->foe;                         /* the other squad is beaten */
         e->spies = 0;
+        if (!e->friendly && rnd(p) > OPP(p, 0xA4E2) && cell_of(e) == p->target_cell)
+            p->target_cell = -1;                /* ovl6:4FFC: the enemy gives up that target */
         q->condition = SDL_max(q->condition >> 1, 1);
         alert_battle(p, f, O5(p, 0x12A), DS(p, q->friendly ? 0x1DA : 0x1DE));   /* NOTICE - BATTLE WON/LOST */
         q->fighting = e->fighting = false;
@@ -706,6 +736,594 @@ static int supply_distance(const Play *p, int i)
     return range > 0 ? best / range : best;
 }
 
+/* ------------------------------------------------------------------ the enemy commander
+ *
+ * Overlay 6 gives the enemy's orders one squad at a time: each tick the next
+ * enemy squad standing still (ai_tick) either stays where it is (a fort, a
+ * village, a bridge, a hill or a flag worth holding), or is sent somewhere:
+ * to food, to guard its own flag, or to the target the commander has chosen
+ * (one of your flags, or a cell worth taking). A route of map cells is
+ * planned (ai_route) and the squad marches it a cell at a time, half of it
+ * before planning again, turning aside for a flag or for one of your squads
+ * it is strong enough to attack. The commander's values from O2 (DS:A4DC)
+ * set how bold, careful, hungry or random each general is. */
+
+#define OPPV(p, addr) ((int)(p)->opp[((addr) - 0xA4DC) / 2])
+
+static const int8_t CELL_STEP[9] = { 0, 1, 11, 10, 9, -1, -11, -10, -9 };   /* O5 words 0-8: E, SE, S, SW, W, NW, N, NE */
+static const int8_t TURN[8] = { 0, 1, -1, 2, -2, 3, -3, 4 };                /* O5+12h: order of directions to try */
+
+static bool tile_forest(int t) { return (t >= 55 && t <= 57) || (t >= 61 && t <= 63) || (t >= 67 && t <= 69); }   /* rt:10A8 */
+
+static int flag_cell(const Play *p, int f)   /* rt:1383 */
+{
+    if (f < 0 || f >= MAX_FLAGS) return -1;
+    return ((p->flag[f].y + 5) / 10) * 10 + ((p->flag[f].x + 1) >> 3);
+}
+
+static int tile_of_cell(const Play *p, int c) { return (c >= 0 && c < MAP_W * MAP_H) ? tile_at_cell(p, c) : 0; }
+
+/* ovl6:3413: what each cell costs a marching enemy, and what forts, villages
+ * and bridges are worth (less where there are many) */
+static void ai_cell_costs(Play *p)
+{
+    int water = rule(p, RULE_WATER), mountain = OPPV(p, 0xA4FA);
+    if (water > 10) water <<= 1;
+    if (mountain > 14) mountain <<= 1;
+    p->value_flag = 130;
+    p->value_fort = (rule(p, RULE_FORTS_SUPPLY_FOOD) ? 80 : 30) + rule(p, RULE_FORTS_TRAIN_MEN);
+    p->value_village = rule(p, RULE_VILLAGES_SUPPLY_FOOD) ? (rule(p, RULE_FORTS_SUPPLY_FOOD) ? 50 : 90) : 5;
+    p->value_bridge = 25;
+    for (int c = 0; c < MAP_W * MAP_H; c++) {
+        int t = tile_at_cell(p, c);
+        if (tile_water(t))         p->cell_cost[c] = (int16_t)water;
+        else if (tile_mountain(t)) p->cell_cost[c] = (int16_t)mountain;
+        else if (tile_forest(t))   p->cell_cost[c] = (int16_t)OPPV(p, 0xA4FC);
+        else if (tile_fort(t))     { p->cell_cost[c] = 3; p->value_fort -= 20; }
+        else                       p->cell_cost[c] = 1;
+        if (tile_village(t)) p->value_village -= 10;
+        if (tile_bridge(t)) p->value_bridge -= 5;
+    }
+    p->value_fort = SDL_max(p->value_fort, 10);
+    p->value_village = SDL_max(p->value_village, 5);
+    p->value_bridge = SDL_max(p->value_bridge, 5);
+}
+
+/* ovl6:8B7E: the worth of each cell; your flags are worth most */
+static void ai_cell_values(Play *p)
+{
+    for (int c = 0; c < MAP_W * MAP_H; c++) {
+        int t = tile_at_cell(p, c);
+        p->cell_value[c] = (int16_t)(tile_fort(t) ? p->value_fort : tile_village(t) ? p->value_village :
+                                     tile_bridge(t) ? p->value_bridge : tile_hill(t) ? 2 : 0);
+    }
+    for (int f = 0; f < MAX_FLAGS; f++) {
+        if (!p->flag[f].present || !p->flag[f].white) continue;
+        int c = flag_cell(p, f);
+        if (c >= 0 && c < MAP_W * MAP_H) p->cell_value[c] = (int16_t)(p->cell_value[c] + p->value_flag);
+    }
+}
+
+/* ovl6:760E: steps between two cells, moving diagonally */
+static int cell_distance(int a, int b)
+{
+    return SDL_max(SDL_abs(a % 10 - b % 10), SDL_abs(a / 10 - b / 10));
+}
+
+/* ovl6:7E2F: which of your flags to go for: one you hold weakly, near the last one */
+static void ai_choose_attack_flag(Play *p)
+{
+    int ref = p->attack_flag != -1 ? flag_cell(p, p->attack_flag) : rnd(p) + 36;
+    p->attack_flag = -1;
+    int best = -860;
+    for (int f = 0; f < MAX_FLAGS; f++) {
+        if (!p->flag[f].present || !p->flag[f].white) continue;
+        int c = flag_cell(p, f);
+        int v = (c >= 0 && c < MAP_W * MAP_H ? p->supply[c] : 0) - OPPV(p, 0xA4E4);
+        if (v > 0) v = 0;
+        v -= cell_distance(c, ref) * 8;
+        if (rnd(p) < OPPV(p, 0xA4F0)) v -= rnd(p);
+        if (v > best) { p->attack_flag = f; best = v; }
+    }
+}
+
+/* ovl6:7DDE: squads of one side standing in a cell */
+static int ai_count_stopped(const Play *p, int cell, bool friendly)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        const PSquad *q = &p->sq[i];
+        if (q->used && q->moving == 0 && q->friendly == friendly && cell_of(q) == cell) n++;
+    }
+    return n;
+}
+
+/* ovl6:7D6E: enemy squads in a cell or on their way to it */
+static int ai_count_heading(const Play *p, int cell)
+{
+    int n = 0;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        const PSquad *q = &p->sq[i];
+        if (q->used && !q->friendly && ((q->planned && q->dest == cell) || cell_of(q) == cell)) n++;
+    }
+    return n;
+}
+
+/* ovl6:80C1: is the straight line of cells between two cells blocked by water
+ * (or by mountains, for a general whose men are slow there)? */
+static bool ai_blocked(const Play *p, int from, int to)
+{
+    for (int n = 0; from != to && n < 40; n++) {
+        int dr = to / 10 - from / 10, dc = to % 10 - from % 10;
+        if (dr < 0) from -= 10;
+        if (dr > 0) from += 10;
+        if (dc < 0) from--;
+        if (dc > 0) from++;
+        int t = tile_of_cell(p, from);
+        if (tile_water(t) || (tile_mountain(t) && OPPV(p, 0xA4FA) > 7)) return true;
+    }
+    return false;
+}
+
+/* ovl6:7F0D: the nearest squad of one side, by cells; mode 2 only those the
+ * enemy squad is strong enough to attack and can reach. Sets ai_dist. */
+static int ai_nearest_squad(Play *p, bool friendly, int cell, int mode)
+{
+    int best = 999;
+    p->ai_dist = 999;
+    for (int j = 0; j < MAX_SQUADS; j++) {
+        const PSquad *q = &p->sq[j];
+        if (!q->used || q->friendly != friendly || q->fighting) continue;
+        int c = cell_of(q);
+        if (mode == 1 && (tile_village(tile_of_cell(p, c)) || tile_fort(tile_of_cell(p, c)) || c == p->home_cell)) continue;
+        if (mode == 2 && (strength(p, p->ai_sq, j) < OPPV(p, 0xA4F4) || ai_blocked(p, cell, c))) continue;
+        int d = cell_distance(cell, c);
+        if (d < p->ai_dist) { p->ai_dist = d; best = j; }
+    }
+    p->ai_dist++;
+    return best;
+}
+
+/* ovl6:7FFC: the nearest flag of one side within reach. Sets ai_dist. */
+static int ai_nearest_flag(Play *p, bool white, int reach)
+{
+    const PSquad *q = &p->sq[p->ai_sq];
+    int best = -1, here = cell_of(q);
+    for (int f = 0; f < MAX_FLAGS; f++) {
+        const PFlag *fl = &p->flag[f];
+        if (!fl->present || fl->white != white) continue;
+        if (ai_blocked(p, here, flag_cell(p, f))) continue;
+        int d = step_distance(fl->x, fl->y, q->x, q->y);
+        if (d >= reach || d == 0) continue;
+        best = f;
+        reach = d;
+    }
+    p->ai_dist = reach;
+    return best;
+}
+
+/* ovl6:6B03: the cell to go to for food: a village or fort that feeds,
+ * near and held by the enemy (999 if none) */
+static int ai_food_cell(const Play *p, int i)
+{
+    const PSquad *q = &p->sq[i];
+    int best_d = 999, best = 999;
+    for (int c = 0; c < MAP_W * MAP_H; c++) {
+        int t = tile_at_cell(p, c);
+        if (!((tile_village(t) && rule(p, RULE_VILLAGES_SUPPLY_FOOD)) || (tile_fort(t) && rule(p, RULE_FORTS_SUPPLY_FOOD)))) continue;
+        int d = step_distance(q->x, q->y, cell_x(c), cell_y(c)) - sar(p->supply[c], 1);
+        if (d < best_d) { best_d = d; best = c; }
+    }
+    return best;
+}
+
+/* rt:13BC: steps toward (tx, ty) into the path memory after slot, at most
+ * max of them; across only four steps in five. Returns the last slot. */
+static int ai_path_steps(Play *p, int tx, int ty, int slot, int max)
+{
+    const PSquad *q = &p->sq[p->ai_sq];
+    int x = q->x + 1, y = q->y, n = 0;
+    for (int guard = 0; guard < 4 * PATH_SIZE; guard++) {
+        if ((x == tx && y == ty) || max == 0) break;
+        int d = 0;
+        if (++n >= 5) n = 0;
+        else {
+            if (x < tx) { d++; x++; }
+            if (x > tx) { d--; x--; }
+        }
+        if (y < ty) { d += 80; y++; }
+        if (y > ty) { d -= 80; y--; }
+        if (d == 0) continue;
+        slot = next_slot(slot);
+        if (p->path[slot] != 0) { slot = prev_slot(slot); break; }
+        p->path[slot] = (int8_t)d;
+        max--;
+    }
+    return slot;
+}
+
+/* ovl6:8176: a path of at most max steps toward (x, y); the squad sets off */
+static bool ai_make_path(Play *p, int x, int y, int max)
+{
+    int i = p->ai_sq;
+    PSquad *q = &p->sq[i];
+    int slot = free_run(p);
+    if (slot == -1) return false;
+    q->path_pos = slot;
+    int end = ai_path_steps(p, x, y, slot, max);
+    if (end == q->path_pos) return true;
+    q->path_pos = next_slot(q->path_pos);
+    int k = next_slot(end);
+    if (p->path[k] != 0) k = prev_slot(k);
+    p->path[k] = PATH_END;
+    q->countdown = 1;
+    q->has_path = true;
+    q->moving = q->speed;
+    update_delays(p, false);
+    return true;
+}
+
+/* rt:14A0: start of the longest free run in the route memory */
+static int route_free_run(const Play *p)
+{
+    int start = 0, pos = 0, best = 0, best_len = 0;
+    for (;;) {
+        int len = 0;
+        while (pos < MAP_W * MAP_H && p->route[pos] == 0) { len++; pos++; }
+        if (len > best_len) { best_len = len; best = start; }
+        while (pos < MAP_W * MAP_H && p->route[pos] != 0) { pos++; if (pos >= 199) break; }
+        start = pos;
+        if (pos >= 199) break;
+    }
+    return best;
+}
+
+/* ovl6:825E: plan a route of cells from the squad to ai_dest, cheapest
+ * first (water, mountains and forest by the general's values, and cells you
+ * hold strongly cost more). Half of it (at most 21 cells) goes into the
+ * route memory. */
+#define OPEN_MAX 400
+static bool ai_route(Play *p)
+{
+    PSquad *q = &p->sq[p->ai_sq];
+    int start = cell_of(q), dest = p->ai_dest;
+    const int N = MAP_W * MAP_H;
+    if (start < 0 || start >= N || dest < 0 || dest >= N) return false;
+    int16_t cost[MAP_W * MAP_H], dir[MAP_W * MAP_H], dist[MAP_W * MAP_H];
+    int16_t list[OPEN_MAX + 1];
+    SDL_memcpy(cost, p->cell_cost, sizeof cost);   /* 8D1C */
+    SDL_memset(dir, 0, sizeof dir);                /* 886C */
+    SDL_memset(dist, 0, sizeof dist);              /* 89FC */
+    for (int c = 0; c < N; c++) {
+        int v = OPPV(p, 0xA500) - p->supply[c];
+        if (v > 0) cost[c] = (int16_t)(cost[c] + (v >> 1) + 3);
+    }
+    list[0] = (int16_t)start;                      /* 8EAC, count A6DA */
+    int n = 1;
+    dir[start] = 9;
+    dist[start] = 0;
+    bool found = false;
+    int dcol = dest % 10;
+    while (!found) {
+        if (--n < 0) break;
+        int pick = 0, low = 999;                   /* the nearest open cell (not looking at the last) */
+        for (int k = 0; k < n; k++)
+            if (dist[list[k]] < low) { low = dist[list[k]]; pick = k; }
+        int cur = list[pick];
+        for (int k = pick; k < n; k++) list[k] = list[k + 1];
+        int col = cur % 10, d0;
+        if (dest < cur) d0 = dcol == col ? 7 : dcol < col ? (cur - 10 >= dest ? 6 : 5) : 8;
+        else            d0 = dcol == col ? 3 : dcol > col ? (cur + 10 > dest ? 1 : 2) : 4;
+        int d = d0;
+        for (int t = 1; t <= 8; t++) {             /* toward the goal first, then turning further away */
+            bool edge_skip = (col == 0 && d >= 4 && d <= 6) || (col == 9 && (d == 8 || d == 1 || d == 2));
+            int nb = cur + CELL_STEP[d];
+            if (!edge_skip && nb >= 0 && nb < N) {
+                int nd = dist[cur] + cost[nb];
+                if (dir[nb] == 0 || (dir[nb] < 9 && dist[nb] > nd)) {
+                    dir[nb] = (int16_t)d;
+                    if (n < OPEN_MAX) list[n++] = (int16_t)nb;
+                    dist[nb] = (int16_t)nd;
+                }
+                if (nb == dest) { found = true; break; }
+            }
+            if (t < 8) {
+                d = TURN[t] + d0;
+                if (d > 8) d -= 8;
+                if (d < 1) d += 8;
+            }
+        }
+    }
+    if (!found) return false;
+    n = 0;                                         /* back from the goal */
+    for (int c = dest;;) {
+        list[0] = (int16_t)c;
+        if (c == start) break;
+        c -= CELL_STEP[dir[c] >= 1 && dir[c] <= 8 ? dir[c] : 0];
+        if (++n > 99) return false;
+        for (int k = n; k > 0; k--) list[k] = list[k - 1];
+    }
+    int at = route_free_run(p);
+    q->route_pos = at;
+    int prev = list[0], steps = 0;
+    for (int k = 1; k <= n; k++) {
+        int delta = list[k] - prev;
+        prev = list[k];
+        int code = 8;
+        while (code > 0 && CELL_STEP[code] != delta) code--;
+        if (at >= 198) { at = 198; break; }
+        if (p->route[at] != 0) { at = SDL_max(at - 1, 0); break; }
+        if (steps > 20) break;
+        p->route[at++] = (int8_t)code;
+        steps++;
+    }
+    p->route[at] = PATH_END;
+    q->on_route = 1;
+    if (steps > 1) {                               /* march half of it, then plan again */
+        int e = q->route_pos + (steps >> 1);
+        p->route[e++] = PATH_END;
+        while (e <= at) p->route[e++] = 0;
+    }
+    return true;
+}
+
+/* ovl6:570B: move men into a nearby squad of the same side with room */
+static void ai_join(Play *p)
+{
+    int i = p->ai_sq;
+    PSquad *q = &p->sq[i];
+    int j = join_partner(p, i) - 1;
+    if (j < 0) return;
+    PSquad *t = &p->sq[j];
+    for (int guard = 0; guard < 64 && t->men < 14 && q->men != 0; guard++) {
+        if (q->barbarians)   { q->barbarians--; t->barbarians++; }
+        else if (q->knights) { q->knights--; t->knights++; }
+        else if (q->archers) { q->archers--; t->archers++; }
+        else if (q->spies)   { q->spies--; t->spies++; }
+        count_men(p);
+    }
+    if (q->men == 0) squads_update(p);
+}
+
+/* rt:161B: a new squad k, standing with squad i */
+static void new_squad_from(Play *p, int i, int k)
+{
+    PSquad *s = &p->sq[i], *n = &p->sq[k];
+    n->spies = n->archers = n->barbarians = n->knights = 0;
+    n->on_route = 0;
+    n->has_path = false;
+    n->planned = false;
+    n->speed = 2;
+    n->x = s->x;
+    n->y = s->y;
+    if (s->friendly) n->x++;
+    if (n->x > 70) n->x -= 2;
+    n->condition = s->condition;
+    n->food = s->food;
+    n->formation = s->formation;
+    n->friendly = s->friendly;
+    n->fighting = false;
+    n->clock = 0;
+}
+
+/* ovl6:5613: a full enemy squad standing in a fort splits off a man into the
+ * second free squad slot, unless the fort already holds 3 squads */
+static void enemy_split_in_fort(Play *p, int i)
+{
+    PSquad *q = &p->sq[i];
+    if (ai_count_stopped(p, cell_of(q), false) > 2) return;
+    int k;
+    bool seen = false;
+    for (k = MAX_SQUADS - 1; k > -1; k--) {
+        if (p->sq[k].used || k == p->free_slot) continue;
+        if (seen) break;
+        seen = true;
+    }
+    if (k == -1) return;
+    new_squad_from(p, i, k);
+    PSquad *n = &p->sq[k];
+    if (q->barbarians)   { q->barbarians--; n->barbarians = 1; }
+    else if (q->knights) { q->knights--; n->knights = 1; }
+    else if (q->archers) { q->archers--; n->archers = 1; }
+    else                 { q->spies--; n->spies = 1; }
+    squads_update(p);
+}
+
+static void ai_plan(Play *p);
+
+/* ovl6:7778: a squad standing still: hold its ground, or go somewhere */
+static void ai_decide(Play *p)
+{
+    int i = p->ai_sq;
+    PSquad *q = &p->sq[i];
+    int here = cell_of(q);
+    if (OPPV(p, 0xA4E2) < 150 && ((here >= 0 && here < MAP_W * MAP_H && p->cell_value[here] != 0) || here == p->home_cell)) {
+        int ours = ai_count_stopped(p, here, false);
+        bool plan = false;
+        if (tile_fort(tile_of_cell(p, here))) {        /* keep a fort */
+            ai_nearest_squad(p, true, here, 0);
+            if (q->men < 14 || ours == 1) return;
+            if (p->ai_dist < 4 && q->food > 10) return;
+        }
+        if (q->food < OPPV(p, 0xA4EC) && supply_distance(p, i) > 9) plan = true;   /* hungry and far from food */
+        if (!plan) {
+            bool check_hold = true;
+            if (rnd(p) <= OPPV(p, 0xA4E6) && rnd(p) >= 100) check_hold = false;
+            if (check_hold && !p->ai_hold) return;
+            if (here == p->home_cell && OPPV(p, 0xA4E8) >= ours) return;
+            if (q->condition < OPPV(p, 0xA4EE)) return;   /* rest first */
+        }
+    }
+    if (here != p->target_cell) ai_plan(p);
+}
+
+/* ovl6:7886: where to send a squad: food, its own flag, or the target */
+static void ai_plan(Play *p)
+{
+    int i = p->ai_sq;
+    PSquad *q = &p->sq[i];
+    int food = ai_food_cell(p, i), here = cell_of(q);
+    if (q->food < OPPV(p, 0xA4EC) && food < 999) {
+        p->ai_dest = q->dest = food;
+    } else if (ai_count_heading(p, p->home_cell) < OPPV(p, 0xA4E8)) {   /* guard the flag, fast */
+        q->speed = 1;
+        p->ai_dest = q->dest = p->home_cell;
+    } else {
+        if (ai_count_stopped(p, p->target_cell, false) >= OPPV(p, 0xA4DC) && rnd(p) < 60) {
+            p->target_cell = -1;                       /* enough squads there: a new target */
+            if (here >= 0 && here < MAP_W * MAP_H && p->cell_value[here]) p->ai_hold = true;
+        }
+        if (p->target_cell == -1) {
+            if (p->attack_flag == -1) ai_choose_attack_flag(p);
+            int flag_c = flag_cell(p, p->attack_flag);
+            if (rnd(p) < OPPV(p, 0xA4E2)) {
+                p->target_cell = flag_c;               /* straight for your flag */
+            } else {
+                int best = -860;
+                for (int c = 0; c < MAP_W * MAP_H; c++) {
+                    if (p->cell_value[c] == 0 || c == here) continue;
+                    int s = p->supply[c], t = tile_at_cell(p, c);
+                    int v = (s < 0 && OPPV(p, 0xA500) < s && !tile_fort(t)) ? 100 : 0;   /* weakly held by you */
+                    if (tile_fort(t) && s == 0) v = 150;                                 /* an empty fort */
+                    v += p->cell_value[c];
+                    if (rnd(p) < OPPV(p, 0xA4F0)) v -= rnd(p);
+                    if (v > best) { best = v; p->target_cell = c; }
+                }
+            }
+            if (p->target_cell == -1) p->target_cell = flag_c;
+        } else if (rnd(p) < 25) {
+            p->ai_hold = false;
+        }
+        p->ai_dest = q->dest = p->target_cell;
+    }
+    if (ai_route(p)) q->planned = true;
+}
+
+/* ovl6:7A94: a squad on a route stops at the end of a cell: grab a flag
+ * nearby, attack a squad nearby, or march the next cell of the route */
+static void ai_follow_route(Play *p)
+{
+    int i = p->ai_sq;
+    PSquad *q = &p->sq[i];
+    int tx, ty, here = 0, dest = 0, code;
+    int f = ai_nearest_flag(p, true, 30);
+    if (f != -1) {
+        int c = flag_cell(p, f);
+        int at = ai_count_stopped(p, c, true);
+        if (at <= 2 && rnd(p) < OPPV(p, 0xA4F6) && !(tile_fort(tile_of_cell(p, c)) && !q->archers && at != 0))
+            goto grab_flag;
+    }
+    here = cell_of(q);
+    int j = ai_nearest_squad(p, true, here, 2);
+    if (OPPV(p, 0xA4F2) >= p->ai_dist && (q->archers || !tile_fort(tile_of_cell(p, cell_of(&p->sq[j]))))) {
+        p->ai_dist <<= 2;                              /* attack */
+        tx = p->sq[j].x;
+        ty = p->sq[j].y;
+        goto go;
+    }
+    p->ai_dist = 5;
+    code = p->route[q->route_pos];
+again:
+    p->route[q->route_pos] = 0;
+    if (code != PATH_END && code != 0) {               /* the next cell of the route */
+        int c = here + CELL_STEP[code >= 1 && code <= 8 ? code : 0];
+        p->ai_dist = 30;
+        if (!ai_make_path(p, cell_x(c), cell_y(c), 30)) p->route[q->route_pos] = (int8_t)code;
+        else q->route_pos++;
+        return;
+    }
+    dest = q->dest;
+    if (here != dest) {                                /* plan the rest */
+        p->ai_dest = dest;
+        if (ai_route(p)) {
+            code = p->route[q->route_pos];
+            if (code != PATH_END && code != 0) goto again;
+        }
+    }
+    q->moving = 0;                                     /* arrived */
+    q->on_route = 0;
+    q->planned = false;
+    if (here == p->target_cell) p->target_cell = -1;
+    ai_join(p);
+    ai_join(p);
+    f = ai_nearest_flag(p, false, 4);                  /* stand on our flag if it is close */
+    if (f == -1 || here != dest || p->ai_dist <= 1) return;
+grab_flag:
+    tx = p->flag[f].x;
+    ty = p->flag[f].y;
+    p->ai_dist = 35;
+go:
+    clear_path(p, i);
+    p->route[q->route_pos] = PATH_END;
+    {
+        int spd = OPPV(p, 0xA4FE);
+        if (!ai_make_path(p, tx, ty, p->ai_dist)) spd = 0;
+        q->speed = spd;
+        q->on_route = spd;
+    }
+}
+
+/* ovl6:7698: each tick, the next enemy squad standing still gets its orders */
+static void ai_tick(Play *p)
+{
+    int start = p->ai_next;
+    if (++p->ai_next > MAX_SQUADS - 1) p->ai_next = 0;
+    while (p->ai_next != start) {
+        const PSquad *q = &p->sq[p->ai_next];
+        if (q->used && !q->friendly && q->moving == 0) break;
+        if (++p->ai_next > MAX_SQUADS - 1) p->ai_next = 0;
+    }
+    PSquad *q = &p->sq[p->ai_next];
+    if (!q->used || q->moving || q->fighting || q->friendly) return;
+    p->ai_sq = p->ai_next;
+    if (q->on_route) {
+        if (p->mode != PM_TRACE) ai_follow_route(p);
+    } else if (!q->planned) {
+        ai_decide(p);
+    }
+}
+
+/* ovl6:3ADE count_flags: 1 if you have no flags, 2 if the enemy has none.
+ * The enemy guards one of its flags, one in a fort if it can. */
+static int count_flags(Play *p)
+{
+    int white = 0, black = 0;
+    for (int f = 0; f < MAX_FLAGS; f++) {
+        if (!p->flag[f].present) continue;
+        if (p->flag[f].white) { white++; continue; }
+        black++;
+        bool take = tile_fort(tile_of_cell(p, p->home_cell)) ? p->home_flag == -1
+                  : (tile_fort(tile_of_cell(p, flag_cell(p, f))) || p->home_flag == -1);
+        if (take) { p->home_flag = f; p->home_cell = flag_cell(p, f); }
+    }
+    return white == 0 ? 1 : black == 0 ? 2 : 0;
+}
+
+/* the enemy gets ready at the start of a game (campaign_play, ovl6:3144) */
+static void ai_start(Play *p)
+{
+    p->target_cell = -1;               /* ovl1:33E1 */
+    p->attack_flag = -1;
+    ai_cell_values(p);
+    ai_choose_attack_flag(p);
+    p->home_flag = -1;
+    count_flags(p);
+    for (int k = 0; k < 5; k++) ai_tick(p);
+}
+
+/* check_victory (ovl6:36C7, 37F2): a general losing badly attacks all out */
+static void ai_all_out(Play *p)
+{
+    OPP(p, 0xA4E2) = 200;
+    OPP(p, 0xA4E8) = 0;
+    OPP(p, 0xA4F4) = -100;
+}
+
+void play_enemy_beaten(Play *p, int en)
+{
+    if (rnd(p) > OPPV(p, 0xA4E2) && cell_of(&p->sq[en]) == p->target_cell) p->target_cell = -1;
+}
+
 /* ovl6:52F8: every 16 ticks, food from the supply lines and condition from
  * marching, resting and hunger. */
 static void food_and_condition(Play *p)
@@ -761,7 +1379,7 @@ static void forts_train(Play *p)
                 }
                 break;
             }
-            /* a full enemy squad makes room by splitting (ovl6:5613): later, with the enemy's moves */
+            if (!q->friendly && q->moving == 0) enemy_split_in_fort(p, i);   /* a full enemy squad splits */
         }
     }
     count_men(p);
@@ -781,6 +1399,7 @@ static void alert_flag(Play *p, int f, bool taken)     /* ovl6:5BE7, ovl6:5C56 *
  * Returns 1 if you have no flags left, 2 if the enemy has none. */
 static int flags_check(Play *p)
 {
+    bool rechoose = false;
     for (int i = 0; i < MAX_SQUADS; i++) {
         const PSquad *q = &p->sq[i];
         if (!q->used || q->fighting) continue;
@@ -789,19 +1408,22 @@ static int flags_check(Play *p)
             if (!fl->present || fl->white == q->friendly) continue;
             int dx = q->x - fl->x, dy = q->y - fl->y;
             if (dx < -1 || dx > 1 || dy < -1 || dy > 2) continue;
-            if (fl->white) { p->flags_taken++; alert_flag(p, f, true); }
-            else           { p->flags_captured++; alert_flag(p, f, false); }
+            if (fl->white) {
+                p->flags_taken++;
+                alert_flag(p, f, true);
+                if (f == p->attack_flag || p->attack_flag == -1) rechoose = true;   /* the enemy needs a new target */
+            } else {
+                p->flags_captured++;
+                alert_flag(p, f, false);
+                if (f == p->home_flag) p->home_flag = -1;
+            }
             fl->white = q->friendly;
+            ai_cell_values(p);
             break;
         }
     }
-    int white = 0, black = 0;
-    for (int f = 0; f < MAX_FLAGS; f++) {
-        if (!p->flag[f].present) continue;
-        if (p->flag[f].white) white++;
-        else black++;
-    }
-    return white == 0 ? 1 : black == 0 ? 2 : 0;
+    if (rechoose) ai_choose_attack_flag(p);
+    return count_flags(p);
 }
 
 /* ovl1:3505: a side with no flag gets one somewhere in the middle of the map. */
@@ -1100,6 +1722,8 @@ void play_after_battle(Play *p, int a, int b)
     p->mode = PM_NORMAL;
     p->over_squad = false;
     cmd_normal(p);
+    ai_cell_costs(p);                   /* campaign_play starts again (ovl6:3144) */
+    supply_map(p);
     if (check_victory(p, a, b)) return;
     check_over(p, 0);
 }
@@ -1186,10 +1810,12 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
     }
 
     squads_update(p);
-    supply_map(p);                      /* campaign_play: ovl6:3147 */
+    ai_cell_costs(p);                   /* campaign_play: ovl6:3144 */
+    supply_map(p);
     update_delays(p, false);
     cmd_normal(p);
-    check_victory(p, -1, -1);
+    if (check_victory(p, -1, -1)) { check_over(p, 0); return; }
+    ai_start(p);                        /* a new game: the enemy's first orders */
     check_over(p, 0);
 }
 
@@ -1225,6 +1851,7 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
                 p->outcome = PLAY_WON;
             } else if (key == PK_N) {
                 print(p, DS(p, 0x1D3)); /* No */
+                ai_all_out(p);          /* ovl6:37F2: refused, the enemy attacks all out */
                 p->prompt_offer = false;
                 p->mode = PM_NORMAL;
                 cmd_normal(p);
@@ -1292,6 +1919,7 @@ void play_frame(Play *p, int held)
         int r = flags_check(p);
         if (r) { game_over(p, r == 2); return; }
         encounters(p);
+        if (p->mode != PM_TRACE) ai_tick(p);    /* the enemy's orders */
         move_squads(p);
         if (p->mode == PM_PROMPT) return;       /* lost a squad and the game is over */
         if (p->ticks > 15) {                    /* every 16 ticks */

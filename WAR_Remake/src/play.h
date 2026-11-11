@@ -63,6 +63,11 @@ typedef struct {
     int  kill;               /* A1E4: chance of killing a man each iteration */
     bool seen;               /* A11C: in sight of the other side */
     bool small;              /* A090 = 2: spies only, drawn as the small figure */
+    /* the enemy commander's plans for this squad */
+    int  on_route;           /* A1BC: following a route of map cells (nonzero) */
+    int  route_pos;          /* A16C: its next step in the route memory */
+    bool planned;            /* A0B8: has a destination */
+    int  dest;               /* A02C: the destination cell */
 } PSquad;
 
 typedef struct {
@@ -120,6 +125,21 @@ typedef struct {
     bool     enter_icon;         /* "You Won ... [Enter] to continue." */
     PlayResult outcome;          /* result once Enter is pressed */
     PlayResult result;           /* not PLAY_RUNNING once play is over */
+
+    /* the enemy commander (step 5) */
+    int16_t  cell_cost[MAP_W * MAP_H];    /* 8B8C: cost of crossing each cell */
+    int16_t  cell_value[MAP_W * MAP_H];   /* 9294: worth of each cell (forts, villages, bridges, hills, your flags) */
+    int8_t   route[MAP_W * MAP_H];        /* 9B6A: route memory, cell steps 1-8 ending with 99 */
+    int      ai_next;            /* A8CD: the squad looked at last */
+    int      ai_sq;              /* A50A: the squad being given orders */
+    int      home_flag;          /* A510: the enemy flag it guards */
+    int      home_cell;          /* A512: its cell */
+    int      target_cell;        /* A514: the cell it is going for (-1 none) */
+    int      attack_flag;        /* A516: your flag it is going for (-1 none) */
+    bool     ai_hold;            /* AAEF: squads on valuable cells stay put */
+    int      ai_dest;            /* A8CF: cell to plan a route to */
+    int      ai_dist;            /* A8C7: distance found by the last search */
+    int      value_fort, value_village, value_bridge, value_flag;   /* A8D1, A8D3, A8D5, A8D7 */
 } Play;
 
 void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed);
@@ -138,5 +158,6 @@ int  play_edge(const Play *p, int i, int j);     /* battle_edge (rt:08EF) */
 int  play_tile_under(const Play *p, int i);      /* map tile under squad i */
 void play_clear_path(Play *p, int i);
 void play_after_battle(Play *p, int a, int b);   /* back on the map after Zoom */
+void play_enemy_beaten(Play *p, int en);         /* ovl7:6EB8: the enemy may give up its target */
 
 #endif

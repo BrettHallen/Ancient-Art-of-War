@@ -360,6 +360,7 @@ static void choose_target(Battle *b, int i)
             if (b->side[i] == FRIEND) b->p->captured_theirs += loser->spies;
             else b->p->captured_mine += loser->spies;
             loser->spies = 0;
+            if (b->side[i] == FRIEND) play_enemy_beaten(b->p, b->en);   /* it may give up its target */
             for (int k = 0; k < MAX_ARROWS; k++) b->ax[k] = 0;
             tclear(b, 23);
             tclear(b, 24);

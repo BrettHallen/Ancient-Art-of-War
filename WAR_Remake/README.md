@@ -24,7 +24,9 @@ Press **Enter** on a campaign map to play it. These parts work as they do in the
 
 - **the battle screen**: press **Z** for Zoom while two squads are about to fight, and the battle is fought man to man, as in overlay 7 of WAR.EXE. The background comes from the ground the two squads stand on (forts, villages, hills, water, bridges, forest, mountains and open country: 14 pictures). Both sides line up in their formations; the enemy's formation depends on its commander. The soldiers are moved by the original animation scripts from O6 and O7: knights and barbarians close in and fight, archers aim in one of 20 directions and their arrows fly, lose power and can hit friends. Knights' armour turns some arrows and barbarians dodge some. Press **A** to attack (or wait for the enemy to), then give orders to your **A**rchers, **B**arbarians, **K**nights or the whole **S**quad: **A**ttack, **F**orward, **B**ackoff or **S**top (Backspace goes back). **R** retreats: your squad falls back on the map. A side may also break and run, and a fort is lost when its archers are gone. At the end you see *You lost N men .... They lost N men*, and both squads come back to the map tired
 
-Still to come: the enemy's moves, and Formation, Detach and Join.
+- **the enemy commander**: each of the eight generals moves his squads as in the original, following his values from O2. Squads hold forts, villages, bridges, hills and flags, rest until they are fit, go to eat when hungry, guard their own flag, and march on a target: one of your flags, or the place most worth taking. Routes are planned cell by cell around water, mountains and ground you hold strongly, half a route at a time. On the way a squad turns aside for a flag or for one of your squads it is strong enough to beat. Squads join up when they arrive, and full squads in a fort split off new ones. A general who is losing badly, or whose surrender you refuse, attacks with everything
+
+Still to come: Formation, Detach and Join for your squads, the menus, options and saved games.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):
@@ -106,7 +108,7 @@ This writes every screen in both colour sets as BMP files (320x200), without ope
 | `src/assets.c` | Loads and decodes the original files: the font and the squad and flag sprites from WAR.EXE, the CGA tiles (M) and pictures (P files), and the VGA pictures and tiles from WARET.DAT |
 | `src/gfx.c` | The 320x200 game screen: palette, pictures, tiles and text in the original font |
 | `src/campaign.c` | Loads the 11 campaigns (T0-TA), their titles (TITLES), squads and flags, and draws a campaign map: 10 x 20 tiles, 9 rows on screen, with the squads and flags on top |
-| `src/play.c` | Campaign play, following overlay 6 of WAR.EXE routine by routine (each function names the routine): cursor, commands, path memory, movement, terrain, supply, food and condition, forts, flags, sighting, messages, Info, Size, View and the end of the game. Runs at 20 iterations a second, about the speed of an IBM PC/XT |
+| `src/play.c` | Campaign play, following overlay 6 of WAR.EXE routine by routine (each function names the routine): cursor, commands, path memory, movement, terrain, supply, food and condition, forts, flags, sighting, messages, Info, Size, View, the end of the game, and the enemy commander (the ai_ functions). Runs at 20 iterations a second, about the speed of an IBM PC/XT |
 | `src/battle.c` | The battle screen, following overlay 7 of WAR.EXE: the background from the terrain, formations, the soldiers' animation scripts, choosing targets, fighting, archers and arrows, retreats, the order menus and the losses. Runs at 8 frames a second |
 | `src/main.c` | Window, scaling (sharp 4:3 or whole-number square pixels), keys, choosing the game folder, the 20 Hz game loop and the 8 Hz battle loop |
 
@@ -117,7 +119,7 @@ The file formats are described in [WAR_Analysis/README.md](../WAR_Analysis/READM
 2. Campaign map: load the T files, draw the terrain with tiles, scroll, place squads and flags (done)
 3. Strategic rules: movement, terrain, food and supply lines, villages and forts, visibility, spies, flags (done; Detach, Join and Formation come with battles)
 4. Battles: the fight screen, formations, archers, knights and barbarians (battles on the map and the battle screen done)
-5. Opponent AI for the 8 generals, ported from the original program
+5. Opponent AI for the 8 generals, ported from the original program (done)
 6. Menus, options and saved games
 7. Campaign editor and formation editor
 8. Sound: PC speaker and Tandy sound

@@ -159,7 +159,11 @@
 ; rt:1258  tile_is_water              Map tile 7, 8, 13-15 or 19-36
 ; rt:1330  squad_map_cell             squad_map_cell(i): ((y+5)/10)*10 + ((x+1)>>3), the 10x20 map cell under squad i
 ; rt:1369  path_next_slot             path_next_slot(i): i+1, wrapping at 1000 (path memory DS:9782)
+; rt:1383  flag_cell                  Map cell of a flag
+; rt:13BC  path_steps_toward          Steps from the squad toward a point into the path memory (across four steps in f
+; rt:14A0  route_free_run             Start of the longest free run in the route memory (DS:9B6A, 200 bytes)
 ; rt:1523  find_join_partner          find_join_partner(i): a squad of the same side within 3 columns and 7 line pairs
+; rt:161B  new_squad_from             A new squad in a free slot, standing with another (Detach, enemy_split_in_fort)
 ; rt:176B  print_number               Print a decimal number (recursive /10)
 ; rt:17A9  blit_buffer_to_cga         Copy the off-screen picture buffer (even lines at +0, odd at +3E80h) to CGA memo
 ; rt:17ED  load_file                  load_file(name, buffer, size): open (retrying via disk_prompt), read, close. Use
@@ -269,6 +273,7 @@
 ; ovl6:52F8  food_and_condition         Every 16 ticks: food from the supply lines, condition from marching, resting and
 ; ovl6:5526  forts_train_men            Every 16 ticks: a fort may add a man to a squad in it (rule: forts train men)
 ; ovl6:5613  enemy_split_in_fort        A full enemy squad resting in a fort splits off a man into a free slot
+; ovl6:570B  ai_join                    Enemy: move men into a nearby squad of the same side with room (find_join_partne
 ; ovl6:57EA  update_move_delays         Ticks per step for each squad: speed x terrain rule (+speed for knights); men lo
 ; ovl6:59A5  msg_squad_lost             "NOTICE - SQUAD LOST IN THE MOUNTAINS" / "DROWNED IN THE ..."
 ; ovl6:59FC  msg_enemy_sighted          "ALERT - ENEMY SIGHTED IN THE ..." (once per map region)
@@ -285,6 +290,7 @@
 ; ovl6:603E  squad_terrain              Ground under a squad: 55h forest, 66h water, 99h mountain, 44h/11h open (from th
 ; ovl6:6171  check_cursor_over_squad    Is the cursor on a squad? Show its commands, or the normal command line
 ; ovl6:6A21  supply_distance            Steps to the nearest friendly village or fort, divided by the supply rule
+; ovl6:6B03  ai_food_cell               Enemy: the village or fort to go to for food (near, and held by the enemy)
 ; ovl6:6BAC  show_command_line          "View  Time (slow)  Clear  Surrender"
 ; ovl6:6C0B  show_time_setting          "faster", "fast", "medium" or "slow" from [A51C]
 ; ovl6:6C63  show_clear_option          "Clear" when there are messages
@@ -300,8 +306,23 @@
 ; ovl6:7588  cell_centre_x              Byte column of the middle of a map cell
 ; ovl6:75A4  cell_top_y                 Line pair of the top of a map cell
 ; ovl6:75BB  step_distance              Steps between two positions moving diagonally
+; ovl6:760E  cell_distance              Steps between two map cells, moving diagonally
+; ovl6:7698  ai_tick                    Enemy: each tick the next enemy squad standing still gets its orders ([A8CD] rou
+; ovl6:7742  ai_orders                  Enemy: follow the route ([A1BC]) or decide ([A0B8] clear)
+; ovl6:7778  ai_decide                  Enemy: hold a fort, village, bridge, hill or flag cell, rest, or plan a move (by
+; ovl6:7886  ai_plan                    Enemy: destination: food, guard its own flag ([A512]), or the target ([A514]: yo
+; ovl6:7A94  ai_follow_route            Enemy: at the end of a cell: grab a flag, attack a squad nearby, march the next 
+; ovl6:7D6E  ai_count_heading           Enemy squads in a cell or heading for it
+; ovl6:7DDE  ai_count_stopped           Squads of one side standing still in a cell
+; ovl6:7E2F  ai_choose_attack_flag      Enemy: which of your flags to go for ([A516]): weakly held, near the last one, a
+; ovl6:7F0D  ai_nearest_squad           Nearest squad of one side by cells (mode 2: ones the enemy squad is strong enoug
+; ovl6:7FFC  ai_nearest_flag            Nearest flag of one side within reach, not across water; [A8C7] = distance
+; ovl6:80C1  ai_blocked                 Is the straight line of cells blocked by water (or mountains if the general's mo
+; ovl6:8176  ai_make_path               Enemy: write a path of at most N steps toward a point into the path memory and s
+; ovl6:825E  ai_route                   Enemy: plan a route of map cells to [A8CF] (cheapest first, costs DS:8B8C + cell
 ; ovl6:873A  supply_map                 Strength of each side over each map cell (DS:8F74, minus = yours), spread twice 
 ; ovl6:89A9  show_view                  View: small map of who holds what, "Enemy has N men", "you have N men"
+; ovl6:8B7E  ai_cell_values             Worth of each map cell for the enemy (DS:9294): forts, villages, bridges, hills,
 ; ovl7:30F0  battle                     thunk 3. Battle screen (loads O6, O7, and the terrain background P0-PD)
 ; ovl7:438A  battle_retreat             One side retreats: its squad moves away on the map; the battle ends 75 frames la
 ; ovl7:46A9  battle_losses              "You lost N  They lost N"
@@ -1826,7 +1847,7 @@ count_men:
   rt:0C43  00E43  c3             ret
 
 ; ---- clear_squad_path   (called from 6 places)
-;      clear_squad_path(i): zero squad i's steps in the path memory (DS:9782), remove its mark
+;      clear_squad_path(i): zero squad i's steps in the path memory (DS:9782), remove its mark, clear its enemy route (DS:9B6A) and stop it
 clear_squad_path:
   rt:0C44  00E44  55             push   bp
   rt:0C45  00E45  8bec           mov    bp, sp
@@ -2674,8 +2695,9 @@ path_next_slot:
   rt:1381  01581  5d             pop    bp
   rt:1382  01582  c3             ret
 
-; ---- rt_1383   (called from 9 places)
-rt_1383:
+; ---- flag_cell   (called from 9 places)
+;      Map cell of a flag
+flag_cell:
   rt:1383  01583  55             push   bp
   rt:1384  01584  8bec           mov    bp, sp
   rt:1386  01586  bb0a00         mov    bx, 0xa
@@ -2704,8 +2726,9 @@ rt_1383:
   rt:13BA  015BA  5d             pop    bp
   rt:13BB  015BB  c3             ret
 
-; ---- rt_13bc   (called from 1 place)
-rt_13bc:
+; ---- path_steps_toward   (called from 1 place)
+;      Steps from the squad toward a point into the path memory (across four steps in five)
+path_steps_toward:
   rt:13BC  015BC  55             push   bp
   rt:13BD  015BD  8bec           mov    bp, sp
   rt:13BF  015BF  83ec08         sub    sp, 8
@@ -2794,8 +2817,9 @@ rt_13bc:
   rt:149E  0169E  5d             pop    bp
   rt:149F  0169F  c3             ret
 
-; ---- rt_14a0   (called from 1 place)
-rt_14a0:
+; ---- route_free_run   (called from 1 place)
+;      Start of the longest free run in the route memory (DS:9B6A, 200 bytes)
+route_free_run:
   rt:14A0  016A0  55             push   bp
   rt:14A1  016A1  8bec           mov    bp, sp
   rt:14A3  016A3  83ec0a         sub    sp, 0xa
@@ -2956,8 +2980,9 @@ find_join_partner:
   rt:1619  01819  5d             pop    bp
   rt:161A  0181A  c3             ret
 
-; ---- rt_161b   (called from 2 places)
-rt_161b:
+; ---- new_squad_from   (called from 2 places)
+;      A new squad in a free slot, standing with another (Detach, enemy_split_in_fort)
+new_squad_from:
   rt:161B  0181B  55             push   bp
   rt:161C  0181C  8bec           mov    bp, sp
   rt:161E  0181E  33c0           xor    ax, ax
@@ -22087,11 +22112,11 @@ campaign_play:
   ovl6:3161  0C9C1  8be5           mov    sp, bp
   ovl6:3163  0C9C3  5d             pop    bp
   ovl6:3164  0C9C4  c3             ret
-  ovl6:3165  0C9C5  e8165a         call   ovl6_8b7e
+  ovl6:3165  0C9C5  e8165a         call   ai_cell_values
   ovl6:3168  0C9C8  8b06cca5       mov    ax, word ptr [0xa5cc]
   ovl6:316C  0C9CC  0bc0           or     ax, ax
   ovl6:316E  0C9CE  7436           je     0x31a6
-  ovl6:3170  0C9D0  e8bc4c         call   ovl6_7e2f
+  ovl6:3170  0C9D0  e8bc4c         call   ai_choose_attack_flag
   ovl6:3173  0C9D3  b8ffff         mov    ax, 0xffff
   ovl6:3176  0C9D6  890610a5       mov    word ptr [0xa510], ax
   ovl6:317A  0C9DA  e86109         call   count_flags
@@ -22100,7 +22125,7 @@ campaign_play:
   ovl6:3182  0C9E2  8946f8         mov    word ptr [bp - 8], ax
   ovl6:3185  0C9E5  817ef80500     cmp    word ptr [bp - 8], 5
   ovl6:318A  0C9EA  7d08           jge    0x3194
-  ovl6:318C  0C9EC  e80945         call   ovl6_7698
+  ovl6:318C  0C9EC  e80945         call   ai_tick
   ovl6:318F  0C9EF  ff46f8         inc    word ptr [bp - 8]
   ovl6:3192  0C9F2  ebf1           jmp    0x3185
   ovl6:3194  0C9F4  e85f07         call   play_end_sound
@@ -22226,7 +22251,7 @@ campaign_play:
   ovl6:32C0  0CB20  7553           jne    0x3315
   ovl6:32C2  0CB22  813e2fa90200   cmp    word ptr [0xa92f], 2         ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl6:32C8  0CB28  7403           je     0x32cd
-  ovl6:32CA  0CB2A  e8cb43         call   ovl6_7698
+  ovl6:32CA  0CB2A  e8cb43         call   ai_tick
   ovl6:32CD  0CB2D  e8222b         call   move_squads
   ovl6:32D0  0CB30  8946f8         mov    word ptr [bp - 8], ax
   ovl6:32D3  0CB33  0bc0           or     ax, ax
@@ -23067,7 +23092,7 @@ check_flags:
   ovl6:3A9F  0D2FF  8904           mov    word ptr [si], ax
   ovl6:3AA1  0D301  b80100         mov    ax, 1
   ovl6:3AA4  0D304  8946f6         mov    word ptr [bp - 0xa], ax
-  ovl6:3AA7  0D307  e8d450         call   ovl6_8b7e
+  ovl6:3AA7  0D307  e8d450         call   ai_cell_values
   ovl6:3AAA  0D30A  eb06           jmp    0x3ab2
   ovl6:3AAC  0D30C  ff46f2         inc    word ptr [bp - 0xe]
   ovl6:3AAF  0D30F  e9dbfe         jmp    0x398d
@@ -23076,7 +23101,7 @@ check_flags:
   ovl6:3AB8  0D318  8b46f8         mov    ax, word ptr [bp - 8]
   ovl6:3ABB  0D31B  0bc0           or     ax, ax
   ovl6:3ABD  0D31D  7403           je     0x3ac2
-  ovl6:3ABF  0D31F  e86d43         call   ovl6_7e2f
+  ovl6:3ABF  0D31F  e86d43         call   ai_choose_attack_flag
   ovl6:3AC2  0D322  8b46f6         mov    ax, word ptr [bp - 0xa]
   ovl6:3AC5  0D325  0bc0           or     ax, ax
   ovl6:3AC7  0D327  740e           je     0x3ad7
@@ -23128,7 +23153,7 @@ count_flags:
   ovl6:3B2F  0D38F  be829d         mov    si, 0x9d82                   ; campaign map (200 cells)
   ovl6:3B32  0D392  fff6           push   si
   ovl6:3B34  0D394  ff76fe         push   word ptr [bp - 2]
-  ovl6:3B37  0D397  e849d8         call   rt_1383
+  ovl6:3B37  0D397  e849d8         call   flag_cell
   ovl6:3B3A  0D39A  5f             pop    di
   ovl6:3B3B  0D39B  5e             pop    si
   ovl6:3B3C  0D39C  03f0           add    si, ax
@@ -23141,7 +23166,7 @@ count_flags:
   ovl6:3B4E  0D3AE  8b46fe         mov    ax, word ptr [bp - 2]
   ovl6:3B51  0D3B1  890610a5       mov    word ptr [0xa510], ax
   ovl6:3B55  0D3B5  ff76fe         push   word ptr [bp - 2]
-  ovl6:3B58  0D3B8  e828d8         call   rt_1383
+  ovl6:3B58  0D3B8  e828d8         call   flag_cell
   ovl6:3B5B  0D3BB  5f             pop    di
   ovl6:3B5C  0D3BC  890612a5       mov    word ptr [0xa512], ax
   ovl6:3B60  0D3C0  ff46fe         inc    word ptr [bp - 2]
@@ -25829,7 +25854,7 @@ enemy_split_in_fort:
   ovl6:561F  0EE7F  e80ebd         call   squad_map_cell
   ovl6:5622  0EE82  5f             pop    di
   ovl6:5623  0EE83  50             push   ax
-  ovl6:5624  0EE84  e8b727         call   ovl6_7dde
+  ovl6:5624  0EE84  e8b727         call   ai_count_stopped
   ovl6:5627  0EE87  5f             pop    di
   ovl6:5628  0EE88  5f             pop    di
   ovl6:5629  0EE89  83f802         cmp    ax, 2
@@ -25867,7 +25892,7 @@ enemy_split_in_fort:
   ovl6:5679  0EED9  c3             ret
   ovl6:567A  0EEDA  ff76fc         push   word ptr [bp - 4]
   ovl6:567D  0EEDD  ff7604         push   word ptr [bp + 4]
-  ovl6:5680  0EEE0  e898bf         call   rt_161b
+  ovl6:5680  0EEE0  e898bf         call   new_squad_from
   ovl6:5683  0EEE3  5f             pop    di
   ovl6:5684  0EEE4  5f             pop    di
   ovl6:5685  0EEE5  bec89f         mov    si, 0x9fc8                   ; squad barbarians
@@ -25926,8 +25951,9 @@ enemy_split_in_fort:
   ovl6:5709  0EF69  5d             pop    bp
   ovl6:570A  0EF6A  c3             ret
 
-; ---- ovl6_570b   (called from 2 places)
-ovl6_570b:
+; ---- ai_join   (called from 2 places)
+;      Enemy: move men into a nearby squad of the same side with room (find_join_partner)
+ai_join:
   ovl6:570B  0EF6B  55             push   bp
   ovl6:570C  0EF6C  8bec           mov    bp, sp
   ovl6:570E  0EF6E  83ec02         sub    sp, 2
@@ -27347,7 +27373,7 @@ ovl6_62a7:
   ovl6:63E6  0FC46  5f             pop    di
   ovl6:63E7  0FC47  ff3608a5       push   word ptr [0xa508]            ; [A508] free squad slot
   ovl6:63EB  0FC4B  ff3606a5       push   word ptr [0xa506]            ; [A506] selected squad
-  ovl6:63EF  0FC4F  e829b2         call   rt_161b
+  ovl6:63EF  0FC4F  e829b2         call   new_squad_from
   ovl6:63F2  0FC52  5f             pop    di
   ovl6:63F3  0FC53  5f             pop    di
   ovl6:63F4  0FC54  eb0b           jmp    0x6401
@@ -28090,8 +28116,9 @@ supply_distance:
   ovl6:6B01  10361  5d             pop    bp
   ovl6:6B02  10362  c3             ret
 
-; ---- ovl6_6b03   (called from 1 place)
-ovl6_6b03:
+; ---- ai_food_cell   (called from 1 place)
+;      Enemy: the village or fort to go to for food (near, and held by the enemy)
+ai_food_cell:
   ovl6:6B03  10363  55             push   bp
   ovl6:6B04  10364  8bec           mov    bp, sp
   ovl6:6B06  10366  83ec08         sub    sp, 8
@@ -29359,8 +29386,9 @@ step_distance:
   ovl6:760C  10E6C  5d             pop    bp
   ovl6:760D  10E6D  c3             ret
 
-; ---- ovl6_760e   (called from 2 places)
-ovl6_760e:
+; ---- cell_distance   (called from 2 places)
+;      Steps between two map cells, moving diagonally
+cell_distance:
   ovl6:760E  10E6E  55             push   bp
   ovl6:760F  10E6F  8bec           mov    bp, sp
   ovl6:7611  10E71  83ec0a         sub    sp, 0xa
@@ -29423,8 +29451,9 @@ ovl6_760e:
   ovl6:7696  10EF6  5d             pop    bp
   ovl6:7697  10EF7  c3             ret
 
-; ---- ovl6_7698   (called from 2 places)
-ovl6_7698:
+; ---- ai_tick   (called from 2 places)
+;      Enemy: each tick the next enemy squad standing still gets its orders ([A8CD] round robin, [A50A] the squad)
+ai_tick:
   ovl6:7698  10EF8  55             push   bp
   ovl6:7699  10EF9  8bec           mov    bp, sp
   ovl6:769B  10EFB  83ec02         sub    sp, 2
@@ -29487,13 +29516,14 @@ ovl6_7698:
   ovl6:7732  10F92  c3             ret
   ovl6:7733  10F93  8b06cda8       mov    ax, word ptr [0xa8cd]
   ovl6:7737  10F97  89060aa5       mov    word ptr [0xa50a], ax
-  ovl6:773B  10F9B  e80400         call   ovl6_7742
+  ovl6:773B  10F9B  e80400         call   ai_orders
   ovl6:773E  10F9E  8be5           mov    sp, bp
   ovl6:7740  10FA0  5d             pop    bp
   ovl6:7741  10FA1  c3             ret
 
-; ---- ovl6_7742   (called from 1 place)
-ovl6_7742:
+; ---- ai_orders   (called from 1 place)
+;      Enemy: follow the route ([A1BC]) or decide ([A0B8] clear)
+ai_orders:
   ovl6:7742  10FA2  55             push   bp
   ovl6:7743  10FA3  8bec           mov    bp, sp
   ovl6:7745  10FA5  bebca1         mov    si, 0xa1bc
@@ -29505,7 +29535,7 @@ ovl6_7742:
   ovl6:7754  10FB4  740d           je     0x7763
   ovl6:7756  10FB6  813e2fa90200   cmp    word ptr [0xa92f], 2         ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl6:775C  10FBC  7403           je     0x7761
-  ovl6:775E  10FBE  e83303         call   ovl6_7a94
+  ovl6:775E  10FBE  e83303         call   ai_follow_route
   ovl6:7761  10FC1  eb11           jmp    0x7774
   ovl6:7763  10FC3  beb8a0         mov    si, 0xa0b8
   ovl6:7766  10FC6  03360aa5       add    si, word ptr [0xa50a]
@@ -29513,13 +29543,14 @@ ovl6_7742:
   ovl6:776C  10FCC  98             cwde
   ovl6:776D  10FCD  09c0           or     ax, ax
   ovl6:776F  10FCF  7503           jne    0x7774
-  ovl6:7771  10FD1  e80400         call   ovl6_7778
+  ovl6:7771  10FD1  e80400         call   ai_decide
   ovl6:7774  10FD4  8be5           mov    sp, bp
   ovl6:7776  10FD6  5d             pop    bp
   ovl6:7777  10FD7  c3             ret
 
-; ---- ovl6_7778   (called from 1 place)
-ovl6_7778:
+; ---- ai_decide   (called from 1 place)
+;      Enemy: hold a fort, village, bridge, hill or flag cell, rest, or plan a move (by the general's values)
+ai_decide:
   ovl6:7778  10FD8  55             push   bp
   ovl6:7779  10FD9  8bec           mov    bp, sp
   ovl6:777B  10FDB  83ec06         sub    sp, 6
@@ -29546,7 +29577,7 @@ ovl6_7778:
   ovl6:77B2  11012  33c0           xor    ax, ax
   ovl6:77B4  11014  50             push   ax
   ovl6:77B5  11015  ff76fa         push   word ptr [bp - 6]
-  ovl6:77B8  11018  e82306         call   ovl6_7dde
+  ovl6:77B8  11018  e82306         call   ai_count_stopped
   ovl6:77BB  1101B  5f             pop    di
   ovl6:77BC  1101C  5f             pop    di
   ovl6:77BD  1101D  8946fe         mov    word ptr [bp - 2], ax
@@ -29561,7 +29592,7 @@ ovl6_7778:
   ovl6:77D1  11031  ff76fa         push   word ptr [bp - 6]
   ovl6:77D4  11034  b8ffff         mov    ax, 0xffff
   ovl6:77D7  11037  50             push   ax
-  ovl6:77D8  11038  e83207         call   ovl6_7f0d
+  ovl6:77D8  11038  e83207         call   ai_nearest_squad
   ovl6:77DB  1103B  83c406         add    sp, 6
   ovl6:77DE  1103E  bef09f         mov    si, 0x9ff0                   ; squad men
   ovl6:77E1  11041  03360aa5       add    si, word ptr [0xa50a]
@@ -29627,18 +29658,19 @@ ovl6_7778:
   ovl6:7876  110D6  8b46fa         mov    ax, word ptr [bp - 6]
   ovl6:7879  110D9  3b0614a5       cmp    ax, word ptr [0xa514]
   ovl6:787D  110DD  7403           je     0x7882
-  ovl6:787F  110DF  e80400         call   ovl6_7886
+  ovl6:787F  110DF  e80400         call   ai_plan
   ovl6:7882  110E2  8be5           mov    sp, bp
   ovl6:7884  110E4  5d             pop    bp
   ovl6:7885  110E5  c3             ret
 
-; ---- ovl6_7886   (called from 1 place)
-ovl6_7886:
+; ---- ai_plan   (called from 1 place)
+;      Enemy: destination: food, guard its own flag ([A512]), or the target ([A514]: your flag [A516] or the best cell)
+ai_plan:
   ovl6:7886  110E6  55             push   bp
   ovl6:7887  110E7  8bec           mov    bp, sp
   ovl6:7889  110E9  83ec0c         sub    sp, 0xc
   ovl6:788C  110EC  ff360aa5       push   word ptr [0xa50a]
-  ovl6:7890  110F0  e870f2         call   ovl6_6b03
+  ovl6:7890  110F0  e870f2         call   ai_food_cell
   ovl6:7893  110F3  5f             pop    di
   ovl6:7894  110F4  8946f8         mov    word ptr [bp - 8], ax
   ovl6:7897  110F7  ff360aa5       push   word ptr [0xa50a]
@@ -29665,7 +29697,7 @@ ovl6_7886:
   ovl6:78D1  11131  bee8a4         mov    si, 0xa4e8
   ovl6:78D4  11134  ff34           push   word ptr [si]
   ovl6:78D6  11136  ff3612a5       push   word ptr [0xa512]
-  ovl6:78DA  1113A  e89104         call   ovl6_7d6e
+  ovl6:78DA  1113A  e89104         call   ai_count_heading
   ovl6:78DD  1113D  5f             pop    di
   ovl6:78DE  1113E  5a             pop    dx
   ovl6:78DF  1113F  3bc2           cmp    ax, dx
@@ -29689,7 +29721,7 @@ ovl6_7886:
   ovl6:7910  11170  33c0           xor    ax, ax
   ovl6:7912  11172  50             push   ax
   ovl6:7913  11173  ff3614a5       push   word ptr [0xa514]
-  ovl6:7917  11177  e8c404         call   ovl6_7dde
+  ovl6:7917  11177  e8c404         call   ai_count_stopped
   ovl6:791A  1117A  5f             pop    di
   ovl6:791B  1117B  5f             pop    di
   ovl6:791C  1117C  5a             pop    dx
@@ -29714,9 +29746,9 @@ ovl6_7886:
   ovl6:794F  111AF  e90801         jmp    0x7a5a
   ovl6:7952  111B2  813e16a5ffff   cmp    word ptr [0xa516], 0xffff
   ovl6:7958  111B8  7503           jne    0x795d
-  ovl6:795A  111BA  e8d204         call   ovl6_7e2f
+  ovl6:795A  111BA  e8d204         call   ai_choose_attack_flag
   ovl6:795D  111BD  ff3616a5       push   word ptr [0xa516]
-  ovl6:7961  111C1  e81f9a         call   rt_1383
+  ovl6:7961  111C1  e81f9a         call   flag_cell
   ovl6:7964  111C4  5f             pop    di
   ovl6:7965  111C5  8946f6         mov    word ptr [bp - 0xa], ax
   ovl6:7968  111C8  bee2a4         mov    si, 0xa4e2
@@ -29822,7 +29854,7 @@ ovl6_7886:
   ovl6:7A77  112D7  d1e2           shl    dx, 1
   ovl6:7A79  112D9  03f2           add    si, dx
   ovl6:7A7B  112DB  8904           mov    word ptr [si], ax
-  ovl6:7A7D  112DD  e8de07         call   ovl6_825e
+  ovl6:7A7D  112DD  e8de07         call   ai_route
   ovl6:7A80  112E0  0bc0           or     ax, ax
   ovl6:7A82  112E2  740c           je     0x7a90
   ovl6:7A84  112E4  b80100         mov    ax, 1
@@ -29833,8 +29865,9 @@ ovl6_7886:
   ovl6:7A92  112F2  5d             pop    bp
   ovl6:7A93  112F3  c3             ret
 
-; ---- ovl6_7a94   (called from 1 place)
-ovl6_7a94:
+; ---- ai_follow_route   (called from 1 place)
+;      Enemy: at the end of a cell: grab a flag, attack a squad nearby, march the next route cell, or arrive
+ai_follow_route:
   ovl6:7A94  112F4  55             push   bp
   ovl6:7A95  112F5  8bec           mov    bp, sp
   ovl6:7A97  112F7  83ec0e         sub    sp, 0xe
@@ -29842,7 +29875,7 @@ ovl6_7a94:
   ovl6:7A9D  112FD  50             push   ax
   ovl6:7A9E  112FE  b8ffff         mov    ax, 0xffff
   ovl6:7AA1  11301  50             push   ax
-  ovl6:7AA2  11302  e85705         call   ovl6_7ffc
+  ovl6:7AA2  11302  e85705         call   ai_nearest_flag
   ovl6:7AA5  11305  5f             pop    di
   ovl6:7AA6  11306  5f             pop    di
   ovl6:7AA7  11307  8946f6         mov    word ptr [bp - 0xa], ax
@@ -29852,10 +29885,10 @@ ovl6_7a94:
   ovl6:7AB2  11312  b8ffff         mov    ax, 0xffff
   ovl6:7AB5  11315  50             push   ax
   ovl6:7AB6  11316  ff76f6         push   word ptr [bp - 0xa]
-  ovl6:7AB9  11319  e8c798         call   rt_1383
+  ovl6:7AB9  11319  e8c798         call   flag_cell
   ovl6:7ABC  1131C  5f             pop    di
   ovl6:7ABD  1131D  50             push   ax
-  ovl6:7ABE  1131E  e81d03         call   ovl6_7dde
+  ovl6:7ABE  1131E  e81d03         call   ai_count_stopped
   ovl6:7AC1  11321  5f             pop    di
   ovl6:7AC2  11322  5f             pop    di
   ovl6:7AC3  11323  8946f8         mov    word ptr [bp - 8], ax
@@ -29872,7 +29905,7 @@ ovl6_7a94:
   ovl6:7AE0  11340  be829d         mov    si, 0x9d82                   ; campaign map (200 cells)
   ovl6:7AE3  11343  fff6           push   si
   ovl6:7AE5  11345  ff76f6         push   word ptr [bp - 0xa]
-  ovl6:7AE8  11348  e89898         call   rt_1383
+  ovl6:7AE8  11348  e89898         call   flag_cell
   ovl6:7AEB  1134B  5f             pop    di
   ovl6:7AEC  1134C  5e             pop    si
   ovl6:7AED  1134D  03f0           add    si, ax
@@ -29921,7 +29954,7 @@ ovl6_7a94:
   ovl6:7B5B  113BB  ff36c7a8       push   word ptr [0xa8c7]
   ovl6:7B5F  113BF  ff76fe         push   word ptr [bp - 2]
   ovl6:7B62  113C2  ff76fc         push   word ptr [bp - 4]
-  ovl6:7B65  113C5  e80e06         call   ovl6_8176
+  ovl6:7B65  113C5  e80e06         call   ai_make_path
   ovl6:7B68  113C8  83c406         add    sp, 6
   ovl6:7B6B  113CB  0bc0           or     ax, ax
   ovl6:7B6D  113CD  7505           jne    0x7b74
@@ -29950,7 +29983,7 @@ ovl6_7a94:
   ovl6:7BA4  11404  ff76fa         push   word ptr [bp - 6]
   ovl6:7BA7  11407  b8ffff         mov    ax, 0xffff
   ovl6:7BAA  1140A  50             push   ax
-  ovl6:7BAB  1140B  e85f03         call   ovl6_7f0d
+  ovl6:7BAB  1140B  e85f03         call   ai_nearest_squad
   ovl6:7BAE  1140E  83c406         add    sp, 6
   ovl6:7BB1  11411  8946f6         mov    word ptr [bp - 0xa], ax
   ovl6:7BB4  11414  bef2a4         mov    si, 0xa4f2
@@ -30026,7 +30059,7 @@ ovl6_7a94:
   ovl6:7C69  114C9  7436           je     0x7ca1
   ovl6:7C6B  114CB  8b46f8         mov    ax, word ptr [bp - 8]
   ovl6:7C6E  114CE  8906cfa8       mov    word ptr [0xa8cf], ax
-  ovl6:7C72  114D2  e8e905         call   ovl6_825e
+  ovl6:7C72  114D2  e8e905         call   ai_route
   ovl6:7C75  114D5  0bc0           or     ax, ax
   ovl6:7C77  114D7  7502           jne    0x7c7b
   ovl6:7C79  114D9  eb26           jmp    0x7ca1
@@ -30064,13 +30097,13 @@ ovl6_7a94:
   ovl6:7CCD  1152D  7507           jne    0x7cd6
   ovl6:7CCF  1152F  b8ffff         mov    ax, 0xffff
   ovl6:7CD2  11532  890614a5       mov    word ptr [0xa514], ax
-  ovl6:7CD6  11536  e832da         call   ovl6_570b
-  ovl6:7CD9  11539  e82fda         call   ovl6_570b
+  ovl6:7CD6  11536  e832da         call   ai_join
+  ovl6:7CD9  11539  e82fda         call   ai_join
   ovl6:7CDC  1153C  b80400         mov    ax, 4
   ovl6:7CDF  1153F  50             push   ax
   ovl6:7CE0  11540  33c0           xor    ax, ax
   ovl6:7CE2  11542  50             push   ax
-  ovl6:7CE3  11543  e81603         call   ovl6_7ffc
+  ovl6:7CE3  11543  e81603         call   ai_nearest_flag
   ovl6:7CE6  11546  5f             pop    di
   ovl6:7CE7  11547  5f             pop    di
   ovl6:7CE8  11548  8946f6         mov    word ptr [bp - 0xa], ax
@@ -30108,7 +30141,7 @@ ovl6_7a94:
   ovl6:7D37  11597  e84ef8         call   cell_centre_x
   ovl6:7D3A  1159A  5f             pop    di
   ovl6:7D3B  1159B  50             push   ax
-  ovl6:7D3C  1159C  e83704         call   ovl6_8176
+  ovl6:7D3C  1159C  e83704         call   ai_make_path
   ovl6:7D3F  1159F  83c406         add    sp, 6
   ovl6:7D42  115A2  0bc0           or     ax, ax
   ovl6:7D44  115A4  7517           jne    0x7d5d
@@ -30130,8 +30163,9 @@ ovl6_7a94:
   ovl6:7D6C  115CC  5d             pop    bp
   ovl6:7D6D  115CD  c3             ret
 
-; ---- ovl6_7d6e   (called from 1 place)
-ovl6_7d6e:
+; ---- ai_count_heading   (called from 1 place)
+;      Enemy squads in a cell or heading for it
+ai_count_heading:
   ovl6:7D6E  115CE  55             push   bp
   ovl6:7D6F  115CF  8bec           mov    bp, sp
   ovl6:7D71  115D1  83ec04         sub    sp, 4
@@ -30180,8 +30214,9 @@ ovl6_7d6e:
   ovl6:7DDC  1163C  5d             pop    bp
   ovl6:7DDD  1163D  c3             ret
 
-; ---- ovl6_7dde   (called from 4 places)
-ovl6_7dde:
+; ---- ai_count_stopped   (called from 4 places)
+;      Squads of one side standing still in a cell
+ai_count_stopped:
   ovl6:7DDE  1163E  55             push   bp
   ovl6:7DDF  1163F  8bec           mov    bp, sp
   ovl6:7DE1  11641  83ec04         sub    sp, 4
@@ -30217,15 +30252,16 @@ ovl6_7dde:
   ovl6:7E2D  1168D  5d             pop    bp
   ovl6:7E2E  1168E  c3             ret
 
-; ---- ovl6_7e2f   (called from 3 places)
-ovl6_7e2f:
+; ---- ai_choose_attack_flag   (called from 3 places)
+;      Enemy: which of your flags to go for ([A516]): weakly held, near the last one, a little random
+ai_choose_attack_flag:
   ovl6:7E2F  1168F  55             push   bp
   ovl6:7E30  11690  8bec           mov    bp, sp
   ovl6:7E32  11692  83ec0a         sub    sp, 0xa
   ovl6:7E35  11695  813e16a5ffff   cmp    word ptr [0xa516], 0xffff
   ovl6:7E3B  1169B  740d           je     0x7e4a
   ovl6:7E3D  1169D  ff3616a5       push   word ptr [0xa516]
-  ovl6:7E41  116A1  e83f95         call   rt_1383
+  ovl6:7E41  116A1  e83f95         call   flag_cell
   ovl6:7E44  116A4  5f             pop    di
   ovl6:7E45  116A5  8946f8         mov    word ptr [bp - 8], ax
   ovl6:7E48  116A8  eb09           jmp    0x7e53
@@ -30257,7 +30293,7 @@ ovl6_7e2f:
   ovl6:7E8F  116EF  7402           je     0x7e93
   ovl6:7E91  116F1  eb70           jmp    0x7f03
   ovl6:7E93  116F3  ff76f6         push   word ptr [bp - 0xa]
-  ovl6:7E96  116F6  e8ea94         call   rt_1383
+  ovl6:7E96  116F6  e8ea94         call   flag_cell
   ovl6:7E99  116F9  5f             pop    di
   ovl6:7E9A  116FA  8946fc         mov    word ptr [bp - 4], ax
   ovl6:7E9D  116FD  be748f         mov    si, 0x8f74                   ; supply map (200 cells)
@@ -30274,7 +30310,7 @@ ovl6_7e2f:
   ovl6:7EBA  1171A  8946fa         mov    word ptr [bp - 6], ax
   ovl6:7EBD  1171D  ff76f8         push   word ptr [bp - 8]
   ovl6:7EC0  11720  ff76fc         push   word ptr [bp - 4]
-  ovl6:7EC3  11723  e848f7         call   ovl6_760e
+  ovl6:7EC3  11723  e848f7         call   cell_distance
   ovl6:7EC6  11726  5f             pop    di
   ovl6:7EC7  11727  5f             pop    di
   ovl6:7EC8  11728  d1e0           shl    ax, 1
@@ -30306,8 +30342,9 @@ ovl6_7e2f:
   ovl6:7F0B  1176B  5d             pop    bp
   ovl6:7F0C  1176C  c3             ret
 
-; ---- ovl6_7f0d   (called from 2 places)
-ovl6_7f0d:
+; ---- ai_nearest_squad   (called from 2 places)
+;      Nearest squad of one side by cells (mode 2: ones the enemy squad is strong enough for and can reach); [A8C7] = distance + 1
+ai_nearest_squad:
   ovl6:7F0D  1176D  55             push   bp
   ovl6:7F0E  1176E  8bec           mov    bp, sp
   ovl6:7F10  11770  83ec0c         sub    sp, 0xc
@@ -30378,7 +30415,7 @@ ovl6_7f0d:
   ovl6:7FB7  11817  7f0f           jg     0x7fc8
   ovl6:7FB9  11819  ff76fe         push   word ptr [bp - 2]
   ovl6:7FBC  1181C  ff7606         push   word ptr [bp + 6]
-  ovl6:7FBF  1181F  e8ff00         call   ovl6_80c1
+  ovl6:7FBF  1181F  e8ff00         call   ai_blocked
   ovl6:7FC2  11822  5f             pop    di
   ovl6:7FC3  11823  5f             pop    di
   ovl6:7FC4  11824  0bc0           or     ax, ax
@@ -30386,7 +30423,7 @@ ovl6_7f0d:
   ovl6:7FC8  11828  eb21           jmp    0x7feb
   ovl6:7FCA  1182A  ff76fe         push   word ptr [bp - 2]
   ovl6:7FCD  1182D  ff7606         push   word ptr [bp + 6]
-  ovl6:7FD0  11830  e83bf6         call   ovl6_760e
+  ovl6:7FD0  11830  e83bf6         call   cell_distance
   ovl6:7FD3  11833  5f             pop    di
   ovl6:7FD4  11834  5f             pop    di
   ovl6:7FD5  11835  8946f8         mov    word ptr [bp - 8], ax
@@ -30404,8 +30441,9 @@ ovl6_7f0d:
   ovl6:7FFA  1185A  5d             pop    bp
   ovl6:7FFB  1185B  c3             ret
 
-; ---- ovl6_7ffc   (called from 2 places)
-ovl6_7ffc:
+; ---- ai_nearest_flag   (called from 2 places)
+;      Nearest flag of one side within reach, not across water; [A8C7] = distance
+ai_nearest_flag:
   ovl6:7FFC  1185C  55             push   bp
   ovl6:7FFD  1185D  8bec           mov    bp, sp
   ovl6:7FFF  1185F  83ec08         sub    sp, 8
@@ -30436,11 +30474,11 @@ ovl6_7ffc:
   ovl6:8042  118A2  7402           je     0x8046
   ovl6:8044  118A4  eb67           jmp    0x80ad
   ovl6:8046  118A6  ff76f8         push   word ptr [bp - 8]
-  ovl6:8049  118A9  e83793         call   rt_1383
+  ovl6:8049  118A9  e83793         call   flag_cell
   ovl6:804C  118AC  5f             pop    di
   ovl6:804D  118AD  50             push   ax
   ovl6:804E  118AE  ff76fe         push   word ptr [bp - 2]
-  ovl6:8051  118B1  e86d00         call   ovl6_80c1
+  ovl6:8051  118B1  e86d00         call   ai_blocked
   ovl6:8054  118B4  5f             pop    di
   ovl6:8055  118B5  5f             pop    di
   ovl6:8056  118B6  0bc0           or     ax, ax
@@ -30486,8 +30524,9 @@ ovl6_7ffc:
   ovl6:80BF  1191F  5d             pop    bp
   ovl6:80C0  11920  c3             ret
 
-; ---- ovl6_80c1   (called from 2 places)
-ovl6_80c1:
+; ---- ai_blocked   (called from 2 places)
+;      Is the straight line of cells blocked by water (or mountains if the general's mountain factor is over 7)?
+ai_blocked:
   ovl6:80C1  11921  55             push   bp
   ovl6:80C2  11922  8bec           mov    bp, sp
   ovl6:80C4  11924  83ec04         sub    sp, 4
@@ -30571,8 +30610,9 @@ ovl6_80c1:
   ovl6:8174  119D4  5d             pop    bp
   ovl6:8175  119D5  c3             ret
 
-; ---- ovl6_8176   (called from 2 places)
-ovl6_8176:
+; ---- ai_make_path   (called from 2 places)
+;      Enemy: write a path of at most N steps toward a point into the path memory and set off
+ai_make_path:
   ovl6:8176  119D6  55             push   bp
   ovl6:8177  119D7  8bec           mov    bp, sp
   ovl6:8179  119D9  83ec02         sub    sp, 2
@@ -30594,7 +30634,7 @@ ovl6_8176:
   ovl6:81A2  11A02  ff76fe         push   word ptr [bp - 2]
   ovl6:81A5  11A05  ff7606         push   word ptr [bp + 6]
   ovl6:81A8  11A08  ff7604         push   word ptr [bp + 4]
-  ovl6:81AB  11A0B  e80e92         call   rt_13bc
+  ovl6:81AB  11A0B  e80e92         call   path_steps_toward
   ovl6:81AE  11A0E  83c408         add    sp, 8
   ovl6:81B1  11A11  8946fe         mov    word ptr [bp - 2], ax
   ovl6:81B4  11A14  be44a1         mov    si, 0xa144                   ; squad path position
@@ -30667,8 +30707,9 @@ ovl6_8176:
   ovl6:825C  11ABC  5d             pop    bp
   ovl6:825D  11ABD  c3             ret
 
-; ---- ovl6_825e   (called from 2 places)
-ovl6_825e:
+; ---- ai_route   (called from 2 places)
+;      Enemy: plan a route of map cells to [A8CF] (cheapest first, costs DS:8B8C + cells you hold), keep half in the route memory DS:9B6A
+ai_route:
   ovl6:825E  11ABE  55             push   bp
   ovl6:825F  11ABF  8bec           mov    bp, sp
   ovl6:8261  11AC1  83ec1a         sub    sp, 0x1a
@@ -31031,7 +31072,7 @@ ovl6_825e:
   ovl6:8615  11E75  ff4ee8         dec    word ptr [bp - 0x18]
   ovl6:8618  11E78  ebdb           jmp    0x85f5
   ovl6:861A  11E7A  eb84           jmp    0x85a0
-  ovl6:861C  11E7C  e8818e         call   rt_14a0
+  ovl6:861C  11E7C  e8818e         call   route_free_run
   ovl6:861F  11E7F  be6ca1         mov    si, 0xa16c
   ovl6:8622  11E82  8b160aa5       mov    dx, word ptr [0xa50a]
   ovl6:8626  11E86  d1e2           shl    dx, 1
@@ -31581,8 +31622,9 @@ show_view:
   ovl6:8B7C  123DC  5d             pop    bp
   ovl6:8B7D  123DD  c3             ret
 
-; ---- ovl6_8b7e   (called from 2 places)
-ovl6_8b7e:
+; ---- ai_cell_values   (called from 2 places)
+;      Worth of each map cell for the enemy (DS:9294): forts, villages, bridges, hills, and your flags (+130)
+ai_cell_values:
   ovl6:8B7E  123DE  55             push   bp
   ovl6:8B7F  123DF  8bec           mov    bp, sp
   ovl6:8B81  123E1  83ec06         sub    sp, 6
@@ -31651,7 +31693,7 @@ ovl6_8b7e:
   ovl6:8C27  12487  7502           jne    0x8c2b
   ovl6:8C29  12489  eb1e           jmp    0x8c49
   ovl6:8C2B  1248B  ff76fa         push   word ptr [bp - 6]
-  ovl6:8C2E  1248E  e85287         call   rt_1383
+  ovl6:8C2E  1248E  e85287         call   flag_cell
   ovl6:8C31  12491  5f             pop    di
   ovl6:8C32  12492  8946fc         mov    word ptr [bp - 4], ax
   ovl6:8C35  12495  8b06d7a8       mov    ax, word ptr [0xa8d7]
