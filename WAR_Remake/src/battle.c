@@ -1,5 +1,10 @@
-/*
- * The Ancient Art of War - remake
+﻿/*
+ * The Ancient Art of War (1984) - remake
+ * Nov 2026 using Claude Opus 5.5
+ * "Guided" by Brett Hallen
+ * Original game by Dave Murry & Barry Murry
+ * Published by Brøderbund Software Inc.
+ *
  * battle.c: step 4, the battle screen (Zoom; WAR.EXE overlay 7).
  *
  * Each function names the WAR.EXE routine it follows. Positions are in the
@@ -7,6 +12,7 @@
  * addr = y * 80 + x.
  */
 #include "battle.h"
+#include "sound.h"
 
 #include <SDL3/SDL.h>
 
@@ -102,6 +108,14 @@ static void tnum(Battle *b, int n) { char t[12]; SDL_snprintf(t, sizeof t, "%d",
 static const char *O6S(const Battle *b, int off) { return (const char *)b->mem + off; }
 static const char *DSS(const Battle *b, unsigned off) { return assets_ds_string(b->p->ga, off); }
 
+/* ovl7_6ae9: a bugle call from O7 (pairs of timer divisor and length).
+ * WAR.EXE plays it before going on, so the battle waits while it sounds. */
+static void bugle(Battle *b, unsigned off)
+{
+    snd_bugle(b->mem + O7(off), 0);
+    b->hold = (int)SDL_ceil(sound_busy() * BATTLE_HZ);
+}
+
 static void show_groups(Battle *b)     /* ovl7:5148: Archer Barbarian Knight Squad   Retreat */
 {
     tclear(b, 24);
@@ -116,6 +130,7 @@ static void show_groups(Battle *b)     /* ovl7:5148: Archer Barbarian Knight Squ
 
 static void show_orders(Battle *b)     /* ovl7:5204: Attack Forward Backoff Stop */
 {
+    snd_beep();                                /* ovl7:5207 */
     tclear(b, 24);
     if (b->bg != 3) tprint(b, O6S(b, 0x1C41));
     tprint(b, O6S(b, 0x1C72));
@@ -285,6 +300,7 @@ static void kill(Battle *b, int j)
     }
     b->stat[j] = DEAD;
     b->shot[j] = -1;
+    snd_kill();                                /* ovl7:6511 */
 }
 
 /* ovl7:438A: one side retreats; it moves away on the map */
@@ -296,6 +312,10 @@ static void retreat(Battle *b)
     if (b->bg == 4) for (int t = 0; t < 3; t++) wr(b, S(S_AB15, t), 2);
     tclear(b, 23);
     tclear(b, 24);
+    /* the bugle (ovl7:44BF, 45F1): you sound the retreat, or the enemy does;
+     * not when your men break and run */
+    if (b->retreat == 1 && me->men) bugle(b, 0x7A8);
+    if (b->retreat == 2 && en->men) bugle(b, 0x7BE);
     b->start = 0;
     b->endtimer = 75;
     b->key = 0;
@@ -469,6 +489,7 @@ static void loose_arrow(Battle *b, int i)   /* ovl7:7A52 */
     b->ax[s] = b->x[i];
     b->apow[s] = (b->side[i] == FRIEND ? b->skill_me : b->skill_en) * 2 + 40;
     b->shot[i] = -1;
+    snd_arrow();                               /* ovl7:7ADD */
 }
 
 /* ovl7:5CBF: keep a soldier on the field, take his next script step, draw him */
@@ -523,14 +544,16 @@ static void sort_pass(Battle *b)
     }
 }
 
-static void begin_attack(Battle *b)    /* the attack starts: ovl7:52BE, 6554 */
+static void begin_attack(Battle *b, bool you)   /* the attack starts: ovl7:52BE, 6554 */
 {
+    snd_beep();                                /* ovl7:52F7, 6564 */
     show_groups(b);
     b->start = 7;
     b->asking = false;
     if (!b->p->demo)                           /* ovl7:52CE: in the demo your men keep attacking */
         for (int t = 0; t < 3; t++) b->order[t] = 0;
     if (b->bg == 3) b->order[ARCHER] = 1;      /* archers on the wall shoot at once */
+    bugle(b, you ? 0x792 : 0x778);             /* ovl7:659E, 5302: the charge */
 }
 
 /* ovl7:5258: each soldier's next script, then his step */
@@ -541,7 +564,7 @@ static void battle_soldiers(Battle *b)
     if (b->start) {
         if (b->start < 11) b->start--;
         else if (opp == 0 || ((opp == 2 || opp == 5) && R(b) < 2) || (R(b) == 5 && opp != 3))
-            begin_attack(b);                /* the enemy attacks first */
+            begin_attack(b, false);         /* the enemy attacks first */
     }
     for (int i = 0; i < MAX_MEN; i++) {
         if (b->addr[i] == -1) continue;
@@ -786,7 +809,7 @@ static void battle_input(Battle *b)   /* ovl7:652F */
     if (!k) return;
     if (b->p->demo) return;            /* ovl7:6541: a key ends the demo (main.c) */
     if (b->asking) {
-        if (k == PK_A) begin_attack(b);
+        if (k == PK_A) begin_attack(b, true);
     } else if (b->menu == 1) {
         bool chosen = false;
         if (k == PK_B && b->alive_type[BARBARIAN]) {
@@ -801,11 +824,11 @@ static void battle_input(Battle *b)   /* ovl7:652F */
         if (k == PK_S && b->bg != 3) {
             b->group = 5; tclear(b, 23); tprint(b, O6S(b, 0x1C6B)); b->group_col = 7; chosen = true;
         }
-        if (chosen) show_orders(b);
+        if (chosen) { snd_beep(); show_orders(b); }   /* ovl7:66CB */
     } else if (b->menu == 2) {
         tgoto(b, b->group_col, 23);
         int order = -1, word = 0;
-        if (k == PK_BACKSPACE) { tclear(b, 23); show_groups(b); return; }
+        if (k == PK_BACKSPACE) { snd_beep(); snd_alert(); tclear(b, 23); show_groups(b); return; }   /* ovl7:66F5, 5153 */
         if (k == PK_A && b->bg != 3) { order = 1; word = 0x1C41; }
         if (k == PK_F) { order = 2; word = 0x1C72; }
         if (k == PK_B) { order = 3; word = 0x1C7B; }
@@ -817,6 +840,7 @@ static void battle_input(Battle *b)   /* ovl7:652F */
                 if (order == 2 || order == 3) b->order_time[t] = 15;
             }
             tprint(b, O6S(b, word));
+            snd_alert();                       /* ovl7:6756, 67BF, 682F, 687C */
             show_groups(b);
         }
     }
@@ -825,6 +849,7 @@ static void battle_input(Battle *b)   /* ovl7:652F */
 void battle_frame(Battle *b)   /* the battle loop (battle 406F) */
 {
     if (b->done) return;
+    if (b->hold > 0) { b->hold--; return; }   /* a bugle call is sounding (a key waits) */
     b->ndraw = 0;
     battle_soldiers(b);
     alive_types(b);
@@ -834,6 +859,7 @@ void battle_frame(Battle *b)   /* the battle loop (battle 406F) */
     if (b->endtimer == 0) {
         battle_input(b);
         if (b->key == PK_R && !b->retreat) {   /* Retreat */
+            snd_beep();                         /* ovl7:40ED */
             b->retreat = 1;
             retreat(b);
         }

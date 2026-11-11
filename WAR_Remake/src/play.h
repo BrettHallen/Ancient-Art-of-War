@@ -1,5 +1,10 @@
-/*
- * The Ancient Art of War - remake
+﻿/*
+ * The Ancient Art of War (1984) - remake
+ * Nov 2026 using Claude Opus 5.5
+ * "Guided" by Brett Hallen
+ * Original game by Dave Murry & Barry Murry
+ * Published by Brøderbund Software Inc.
+ *
  * play.h: step 3, the strategic game (campaign play, WAR.EXE overlay 6).
  *
  * Units follow WAR.EXE so the logic can be compared with the disassembly:

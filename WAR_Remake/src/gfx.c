@@ -1,5 +1,10 @@
-/*
- * The Ancient Art of War - remake
+﻿/*
+ * The Ancient Art of War (1984) - remake
+ * Nov 2026 using Claude Opus 5.5
+ * "Guided" by Brett Hallen
+ * Original game by Dave Murry & Barry Murry
+ * Published by Brøderbund Software Inc.
+ *
  * gfx.c: the 320x200 indexed-colour game screen.
  */
 #include "gfx.h"

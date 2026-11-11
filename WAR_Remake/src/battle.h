@@ -1,5 +1,10 @@
-/*
- * The Ancient Art of War - remake
+﻿/*
+ * The Ancient Art of War (1984) - remake
+ * Nov 2026 using Claude Opus 5.5
+ * "Guided" by Brett Hallen
+ * Original game by Dave Murry & Barry Murry
+ * Published by Brøderbund Software Inc.
+ *
  * battle.h: step 4, the battle screen (Zoom; WAR.EXE overlay 7).
  *
  * The soldiers are animated by the original's own scripts in O6 and O7: each
@@ -39,6 +44,7 @@ typedef struct {
     int retreat;              /* A8CF: 1 you retreat, 2 the enemy, 3 you are routed */
     int menu;                 /* A8D1: 1 choose men, 2 choose order */
     bool asking;              /* A8CB: "Attack ... Retreat" */
+    int  hold;                /* frames to wait while a bugle call sounds */
     int group, group_col;     /* AB95, AB97 */
     int order[3], order_time[3];   /* AB77, AB7D: knights, barbarians, archers */
     bool alive_type[3];       /* A8C1, A8C3, A8C5: your men of each type left */

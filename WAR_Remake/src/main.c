@@ -1,5 +1,10 @@
-/*
- * The Ancient Art of War - remake
+﻿/*
+ * The Ancient Art of War (1984) - remake
+ * Nov 2026 using Claude Opus 5.5
+ * "Guided" by Brett Hallen
+ * Original game by Dave Murry & Barry Murry
+ * Published by Brøderbund Software Inc.
+ *
  * main.c: the title pages and menus (step 6), campaign play (step 3), battles
  * (step 4), and the asset viewer (step 1).
  *
@@ -38,6 +43,8 @@
 #include "play.h"
 #include "battle.h"
 #include "menu.h"
+#include "sound.h"
+#include "icon.h"
 
 #define APP_ORG  "AncientArtOfWar"
 #define APP_NAME "Remake"
@@ -306,6 +313,19 @@ static bool saved_game_dir(char *out, size_t n)
     return assets_dir_ok(out);
 }
 
+/* The window's icon (the Dock icon on macOS): the opening title page of the
+ * player's own game files, as in the app bundle's icon (tools/make_icon.c). */
+static void set_window_icon(App *app)
+{
+    enum { N = 256 };
+    uint8_t *px = SDL_malloc(N * N * 4);
+    if (px && app->win && icon_render(&app->ga, N, px)) {
+        SDL_Surface *s = SDL_CreateSurfaceFrom(N, N, SDL_PIXELFORMAT_RGBA32, px, N * 4);
+        if (s) { SDL_SetWindowIcon(app->win, s); SDL_DestroySurface(s); }
+    }
+    SDL_free(px);
+}
+
 static bool load_from(App *app, const char *dir, bool remember)
 {
     char err[256] = "";
@@ -325,6 +345,7 @@ static bool load_from(App *app, const char *dir, bool remember)
     SDL_Log("Loaded %d campaigns", n);
     if (remember) save_game_dir(dir);
     SDL_Log("Loaded game files from %s (VGA graphics: %s)", dir, app->ga.set[MODE_VGA].loaded ? "yes" : "no");
+    set_window_icon(app);
     return true;
 }
 
@@ -623,6 +644,7 @@ int main(int argc, char **argv)
     app.tex = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
     SDL_SetTextureScaleMode(app.tex, SDL_SCALEMODE_NEAREST);
     app.ev_folder = SDL_RegisterEvents(1);
+    sound_init();                       /* without an audio device the game runs silent */
 
     if (found) load_from(&app, dir, dir_arg == NULL ? false : true);
     if (!app.have_assets) ask_for_folder(&app);
@@ -739,6 +761,7 @@ int main(int argc, char **argv)
         }
     }
 
+    sound_quit();
     menu_destroy(app.menu);
     if (app.have_assets) assets_free(&app.ga);
     SDL_DestroyTexture(app.up);

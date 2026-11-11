@@ -1,5 +1,10 @@
-/*
- * The Ancient Art of War - remake
+﻿/*
+ * The Ancient Art of War (1984) - remake
+ * Nov 2026 using Claude Opus 5.5
+ * "Guided" by Brett Hallen
+ * Original game by Dave Murry & Barry Murry
+ * Published by Brøderbund Software Inc.
+ *
  * play.c: step 3, the strategic game (campaign play, WAR.EXE overlay 6).
  *
  * Each function names the WAR.EXE routine it follows (see
@@ -7,6 +12,7 @@
  * moves and Formation/Detach/Join/Zoom come in later steps.
  */
 #include "play.h"
+#include "sound.h"
 
 #include <SDL3/SDL.h>
 
@@ -192,6 +198,7 @@ static int where_code(int x, int y)    /* ovl6:5D00 */
 
 static void print_where(Play *p, int x, int y)   /* ovl6:5D42: " IN THE NORTH" */
 {
+    snd_alert();                                 /* ovl6:5D48 */
     print(p, O5(p, 0x29D));
     bool ns = false;
     if (y < 60)       { print(p, DS(p, 0x1E9)); ns = true; if (p->demo) p->demo_key = PK_KP_MINUS; }   /* the demo */
@@ -426,6 +433,7 @@ static void squads_update(Play *p)
 /* ovl6:380F: the game is over; every squad is shown and Enter ends it. */
 static void game_over(Play *p, bool won)
 {
+    snd_end_of_turn();                      /* ovl6:3812 */
     p->reveal = true;
     p->mode = PM_PROMPT;
     p->ended = true;
@@ -456,6 +464,7 @@ static bool check_victory(Play *p, int a, int b)
     if (theirs == 0) { game_over(p, true); p->result_code = 2; return true; }
     if (their_men > 0 && my_men / their_men >= OPP(p, 0xA4EA) && my_men > 20) {
         OPP(p, 0xA4EA) = 500;               /* only offered once */
+        snd_alert();                        /* ovl6:373D */
         p->mode = PM_PROMPT;
         p->prompt_offer = true;
         for (int r = 3; r <= 6; r++) clear_row(p, r);
@@ -1483,7 +1492,7 @@ static void check_over(Play *p, int key)
         if (p->cx != q->x + 1 || p->cy < q->y - 1 || p->cy > q->y + 3) continue;
         found = true;
         p->sel = i;
-        if (!p->over_squad) cmd_squad(p);
+        if (!p->over_squad) { snd_buzz(); cmd_squad(p); }   /* ovl6:6266 */
         if (q->fighting) break;
     }
     if (!found && p->over_squad) cmd_normal(p);
@@ -1492,6 +1501,7 @@ static void check_over(Play *p, int key)
 
 static void trace_start(Play *p)       /* ovl6:477D, ovl6:6E1A */
 {
+    snd_beep();                         /* ovl6:3E05 */
     PSquad *q = &p->sq[p->sel];
     if (q->has_path) stop_squad(p, p->sel);
     int start = free_run(p);
@@ -1511,6 +1521,7 @@ static void trace_start(Play *p)       /* ovl6:477D, ovl6:6E1A */
 
 static void trace_cancel(Play *p)
 {
+    snd_beep();                         /* ovl6:3E2D */
     stop_squad(p, p->sel);
     /* WAR.EXE leaves the cancelled steps in the path memory; free them */
     for (int k = p->trace_start; k != p->path_next; ) {
@@ -1522,6 +1533,7 @@ static void trace_cancel(Play *p)
 
 static void trace_confirm(Play *p)     /* ovl6:48AA */
 {
+    snd_beep();                         /* ovl6:48B0 */
     PSquad *q = &p->sq[p->sel];
     if (q->path_pos == p->path_next) {  /* no steps: same as Cancel */
         stop_squad(p, p->sel);
@@ -1618,6 +1630,7 @@ static void cursor_input(Play *p, int key)
 
 static void show_size(Play *p)         /* ovl6:6EA0 */
 {
+    snd_beep();                         /* ovl6:6EA3 */
     const PSquad *q = &p->sq[p->sel];
     text_reset(p);
     if (q->knights)    { print(p, O5(p, 0x2DF)); print_num(p, q->knights); spaces(p, 1); }
@@ -1684,6 +1697,7 @@ static void info_food(Play *p)         /* ovl6:750F: row 21 */
 
 static void show_info(Play *p)         /* ovl6:6FAB */
 {
+    snd_beep();                         /* ovl6:6FBF */
     text_reset(p);
     text_rows_add(p, 5);
     info_orders(p);
@@ -1697,6 +1711,7 @@ static void show_info(Play *p)         /* ovl6:6FAB */
 
 static void info_speed(Play *p)        /* ovl6:7072: S steps slow, march, fast, stop */
 {
+    snd_beep();                         /* ovl6:706F */
     PSquad *q = &p->sq[p->sel];
     if (!(q->has_path && q->moving == 0) && --q->speed < 0) q->speed = 3;
     if (q->condition < 15 && q->speed == 1) q->speed = 0;   /* too tired to march fast */
@@ -1849,6 +1864,7 @@ static void start_game(Play *p, const Campaign *c, const GameAssets *ga, uint32_
     if (check_victory(p, -1, -1)) { check_over(p, 0); return; }
     ai_start(p);                        /* a new game: the enemy's first orders */
     if (demo) p->demo_key = PK_KP_MINUS;   /* ovl6:3197: the demo scrolls up the map first */
+    snd_new_game();                     /* ovl6:317D, 3194, 31FE */
     check_over(p, 0);
 }
 
@@ -1882,8 +1898,8 @@ static void group_show(Play *p)        /* ovl6:64E2: the table, the arrow and th
 {
     PSquad *a = &p->sq[p->sel], *b = &p->sq[p->partner];
     count_men(p);
-    if (a->men >= 14 && p->g_join) p->g_join = false;       /* ovl6:69BF: it can't take more */
-    if (b->men >= 14 && !p->g_join) p->g_join = true;
+    if (a->men >= 14 && p->g_join) { p->g_join = false; snd_group_full(); }   /* ovl6:6502: it can't take more */
+    if (b->men >= 14 && !p->g_join) { p->g_join = true; snd_group_full(); }
     tpos(p, p->g_top - 1, 17);
     print(p, DS(p, p->g_join ? 0x1FF : 0x203));             /* <-- or --> */
     int row = p->g_top;
@@ -1917,6 +1933,7 @@ static void group_show(Play *p)        /* ovl6:64E2: the table, the arrow and th
 /* ovl6:62A7: Detach (men go to a new squad) or Join (men come from a squad nearby) */
 static void group_start(Play *p, bool join)
 {
+    snd_beep();                         /* ovl6:62AD */
     PSquad *a = &p->sq[p->sel], *b = &p->sq[p->partner];
     count_men(p);
     p->g_top = 22;
@@ -1957,13 +1974,17 @@ static void group_key(Play *p, int key)
         if (!*from) return;
         (*from)--;
         (*to)++;
+        snd_beep();                                         /* ovl6:680A, 686C, 68CE, 6930 */
     } else if (key == PK_J) {
         if (b->men == 0 || p->g_join) return;
         p->g_join = true;
+        snd_beep();                                         /* ovl6:6958 */
     } else if (key == PK_D) {
         if (a->men == 0 || !p->g_join) return;
         p->g_join = false;
+        snd_beep();                                         /* ovl6:697F */
     } else if (key == PK_E) {                               /* End */
+        snd_beep();                                         /* ovl6:698A */
         text_reset(p);
         squads_update(p);
         p->over_squad = false;
@@ -2011,6 +2032,7 @@ static void formation_text(Play *p)    /* rt:0EB9: Formation: N */
 /* ovl6:462B: Formation: + and - choose one of the 9 formations */
 static void formation_start(Play *p)
 {
+    snd_beep();                         /* ovl6:3D2C */
     PSquad *q = &p->sq[p->sel];
     if (q->formation == 0) q->formation = 1;
     p->mode = PM_FORMATION;
@@ -2027,11 +2049,14 @@ static void formation_key(Play *p, int key)
     PSquad *q = &p->sq[p->sel];
     if (key == PK_EQUALS || key == PK_KP_PLUS) {
         if (++q->formation > 9) q->formation = 1;
+        snd_beep();                                         /* ovl6:46E9 */
         formation_text(p);
     } else if (key == PK_MINUS || key == PK_KP_MINUS) {
         if (--q->formation < 1) q->formation = 9;
+        snd_beep();                                         /* ovl6:4722 */
         formation_text(p);
     } else if (key == PK_E || (key >= PK_HOME && key <= PK_PGDN)) {   /* E, or a cursor key */
+        if (key == PK_E) snd_beep();                        /* ovl6:46B5 */
         p->over_squad = false;
         cmd_squad(p);
     }
@@ -2074,6 +2099,7 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
                 cmd_normal(p);
             }
         } else if (p->prompt_offer) {   /* ovl6:37B6 */
+            if (key == PK_Y || key == PK_N) snd_beep();   /* ovl6:37C5, 37E3 */
             if (key == PK_Y) {
                 print(p, DS(p, 0x1CF)); /* Yes */
                 p->ended = true;
@@ -2090,17 +2116,17 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         return;
     }
     if (p->mode == PM_VIEW) {
-        if (key) cmd_normal(p);
+        if (key) { snd_beep(); cmd_normal(p); }   /* ovl6:8B77 */
         return;
     }
     if (p->mode == PM_GROUP) { group_key(p, key); return; }
     if (p->mode == PM_FORMATION) { formation_key(p, key); return; }
     if (p->mode == PM_SIZE) {
-        if (key) cmd_squad(p);
+        if (key) { snd_beep(); cmd_squad(p); }    /* ovl6:6F93 */
         return;
     }
     if (p->mode == PM_INFO) {
-        if (key == PK_E) cmd_squad(p);
+        if (key == PK_E) { snd_beep(); cmd_squad(p); }   /* ovl6:7038 */
         else if (key == PK_S && p->sq[p->sel].friendly) info_speed(p);
         return;
     }
@@ -2116,6 +2142,7 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
             return;
         }
         if (key == PK_S) {              /* Surrender */
+            snd_beep();                 /* ovl6:3BE2 */
             clear_row(p, 23);
             clear_row(p, 24);
             print(p, O5(p, 0x22));
@@ -2126,11 +2153,14 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         if (key == PK_T) {              /* Time: slow, medium, fast, faster */
             p->time_div >>= 2;
             if (p->time_div < 1) p->time_div = 64;
+            snd_beep();                 /* ovl6:3C1E */
             show_time(p);
         } else if (key == PK_C) {       /* Clear the messages */
+            if (p->msg_rows) snd_beep();   /* ovl6:3C37 */
             text_reset(p);
             show_clear(p);
         } else if (key == PK_V) {       /* View */
+            snd_beep();                 /* ovl6:3C4B */
             show_view(p);
             return;
         }

@@ -35,7 +35,9 @@ The map, the rules and the enemy work as they do in the original program (overla
 
 - **the enemy commander**: each of the eight generals moves his squads as in the original, following his values from O2. Squads hold forts, villages, bridges, hills and flags, rest until they are fit, go to eat when hungry, guard their own flag, and march on a target: one of your flags, or the place most worth taking. Routes are planned cell by cell around water, mountains and ground you hold strongly, half a route at a time. On the way a squad turns aside for a flag or for one of your squads it is strong enough to beat. Squads join up when they arrive, and full squads in a fort split off new ones. A general who is losing badly, or whose surrender you refuse, attacks with everything
 
-Still to come: the campaign editor and the formation editor (step 7), and the sound (step 8). The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`.
+- **sound**: the PC speaker as WAR.EXE plays it: the opening tune at *presented by*, the victory and defeat tunes on the battle report, the bugle calls when a battle begins and when a side retreats (the battle waits for them, as in the original), the low tones at the start and end of a game (a new game opens with a "da-dum", a pause and two more: in the original the pause is the time the enemy commander spends planning its first five moves, about 0.8 s on an IBM PC/XT, which the remake keeps as silence), a beep for each message on the map and each order in battle, the buzz as the cursor comes onto a squad, the click of arrows and falling men, and the crackle of the unrolling scroll. The *Options Shoppe* sounds setting works as on a Tandy 1000 or PCjr: *all sounds are off*, *do not play music*, *internal speaker* (the PC speaker), or *external speaker*, which plays the tunes and bugle calls in three voices on the Tandy/PCjr sound chip
+
+Still to come: the campaign editor and the formation editor (step 7). The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):
@@ -51,6 +53,8 @@ cmake --build build
 ```
 
 This makes `build/AncientArtOfWar.app`.
+
+The app's icon is the opening title page, drawn during the build from your own game files, so no original artwork is kept in the repository. CMake finds them in `../WAR_Original_Files_3.5`; if they are somewhere else, add `-DWAR_GAME_DIR=/path/to/your/game` to the first `cmake` command. Without them the app builds with no icon in Finder, and the game still shows the icon in the Dock once it has loaded your files. If Finder keeps showing an old icon, run `touch build/AncientArtOfWar.app`.
 
 ## Running
 ```sh
@@ -140,6 +144,8 @@ This writes every screen in both colour sets as BMP files (320x200), without ope
 | `src/campaign.c` | Loads the 11 campaigns (T0-TA), their titles (TITLES), squads and flags, and draws a campaign map: 10 x 20 tiles, 9 rows on screen, with the squads and flags on top |
 | `src/play.c` | Campaign play, following overlay 6 of WAR.EXE routine by routine (each function names the routine): cursor, commands, path memory, movement, terrain, supply, food and condition, forts, flags, sighting, messages, Info, Size, View, the end of the game, and the enemy commander (the ai_ functions). Runs at 20 iterations a second, about the speed of an IBM PC/XT |
 | `src/battle.c` | The battle screen, following overlay 7 of WAR.EXE: the background from the terrain, formations, the soldiers' animation scripts, choosing targets, fighting, archers and arrows, retreats, the order menus and the losses. Runs at 8 frames a second |
+| `src/icon.c`, `tools/make_icon.c` | The app icon from the player's own copy of the game: the opening title page in its 4:3 shape on a rounded square; `make_icon` writes the macOS `.iconset` at build time and `iconutil` turns it into `AppIcon.icns` |
+| `src/sound.c` | The PC speaker (timer 2 square wave) and the Tandy/PCjr SN76496 (three tone voices), played through SDL audio. The sounds and tunes are WAR.EXE's own: its timer divisors and lengths, the tunes from O2 and the bugle calls from O7, at the speed of an IBM PC/XT: about 50 microseconds per unit of its delay routine (DOSBox plays them about 2.6 times faster) |
 | `src/menu.c` | The title pages, scrolls, opponents, quote, campaign menu, Options Shoppe, battle report and saving, following overlay 1 of WAR.EXE. It draws into its own canvas as the original draws into video memory (pictures, XOR boxes, the AND-drawn pointer), so a scroll unrolls over what was on the screen |
 | `src/main.c` | Window, scaling (sharp 4:3 or whole-number square pixels), keys, choosing the game folder, the menus (20 Hz), the 20 Hz game loop and the 8 Hz battle loop |
 
@@ -153,4 +159,4 @@ The file formats are described in [WAR_Analysis/README.md](../WAR_Analysis/READM
 5. Opponent AI for the 8 generals, ported from the original program (done)
 6. Menus, options, saved games, the battle report and the demo (done)
 7. Campaign editor and formation editor
-8. Sound: PC speaker and Tandy sound
+8. Sound: PC speaker and Tandy sound (done)

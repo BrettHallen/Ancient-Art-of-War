@@ -1,5 +1,10 @@
-/*
- * The Ancient Art of War - remake
+﻿/*
+ * The Ancient Art of War (1984) - remake
+ * Nov 2026 using Claude Opus 5.5
+ * "Guided" by Brett Hallen
+ * Original game by Dave Murry & Barry Murry
+ * Published by Brøderbund Software Inc.
+ *
  * menu.c: step 6, the title pages, scrolls, menus, Options Shoppe, saved
  * games and the battle report, following overlay 1 of WAR.EXE.
  *
@@ -13,6 +18,7 @@
  * Each function names the WAR.EXE routine it follows.
  */
 #include "menu.h"
+#include "sound.h"
 
 #include <SDL3/SDL.h>
 
@@ -383,17 +389,20 @@ static void scroll_open(Menu *m)
 static bool scroll_anim(Menu *m)
 {
     for (int k = 0; k < 4 && m->anim; k++) {
+        /* the speaker hums at 40 Hz and is switched on or off at random each
+         * step (ovl1:75E9, 7677), which makes the scroll crackle */
+        snd_scroll_step(rnd(m) < (m->anim == 1 ? 95 : 80), 1.0 / (4 * MENU_HZ));
         if (m->anim == 1) {
             scroll_copy(m, m->anim_y, m->anim_y, 2);
             int h = SDL_min((182 - m->anim_y) >> 1, 14) * 2;
             scroll_copy(m, 370, m->anim_y + 2, h);
             m->anim_y += 2;
-            if (m->anim_y >= 180) { m->anim = 0; scroll_show(m); }
+            if (m->anim_y >= 180) { m->anim = 0; snd_scroll_end(); scroll_show(m); }
         } else {
             int h = SDL_min((182 - m->anim_y) >> 1, 14) * 2;
             scroll_copy(m, 370, m->anim_y + 2, h);
             m->anim_y -= 2;
-            if (m->anim_y <= 32) { m->anim = 0; scroll_copy(m, 0, 0, 36); return true; }
+            if (m->anim_y <= 32) { m->anim = 0; snd_scroll_end(); scroll_copy(m, 0, 0, 36); return true; }
         }
     }
     return false;
@@ -527,6 +536,7 @@ static void page_presented(Menu *m)
 {
     show_picture(m, PIC_TITLE, false);
     print_at(m, 13, 12, DSS(m, 0x4C));
+    snd_tune(m->ga->o2, 0x447, 0x48B, 0x110D, 0x1157, 0x119F, 0x11E7);   /* ovl1:31FE: the opening tune */
 }
 
 /* the TITLES scroll (ovl1_62FA) */
@@ -685,8 +695,9 @@ static void shoppe_line(Menu *m, int k)
     case 3:
         if (o->sounds == 0)      SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13A8), O2S(m, 0x13B8));
         else if (o->sounds == 1) SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x13C0));
-        else if (o->sounds == 2) SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13A8), O2S(m, 0x13BC));
-        else                     SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x10D9));
+        /* as on a Tandy or PCjr ([0541] set): the speaker, or the sound chip */
+        else if (o->sounds == 2) SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x10EB));   /* internal speaker */
+        else                     SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x10D9));   /* external speaker */
         break;
     case 4: SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x1363)); break;
     default:
@@ -743,8 +754,16 @@ static void page_report(Menu *m)
         int c = m->report_code;
         print_at(m, 6, 2, O2S(m, c == 10 ? 0x107B : c == 11 ? 0x1093 : 0x10A8));
     }
+    if (won) snd_tune(m->ga->o2, 0x122F, 0x12C7, 0x122F, 0x1263, 0x1295, 0x12C7);   /* ovl1:55B2 */
+    else     snd_tune(m->ga->o2, 0x12F9, 0x133D, 0x12F9, 0x1311, 0x1327, 0x133D);   /* ovl1:567A */
+    m->step = 0;                       /* "Press any key" once the tune is over (menu_frame) */
+}
+
+static void report_prompt(Menu *m)
+{
     clear_row(m, 24);
     print_at(m, 6, 24, O2S(m, 0x10BE));                           /* Press any key to continue. */
+    m->step = 1;
 }
 
 /* a black page with text (save_game) */
@@ -923,6 +942,7 @@ Menu *menu_create(GameAssets *ga, Campaign *camps, const char *data_dir)
     SDL_strlcpy(m->data_dir, data_dir ? data_dir : "", sizeof m->data_dir);
     m->rnd = (uint32_t)SDL_GetTicksNS();
     options_load(m);
+    sound_setting(m->opt.sounds);      /* A6E1 */
     return m;
 }
 
@@ -987,12 +1007,14 @@ void menu_key(Menu *m, int k)
     if (!k) return;
     switch (m->state) {
     case MS_PRESENTED:
+        sound_stop();                      /* the remake: a key skips the tune too */
         go(m, MS_TITLE);
         break;
     case MS_TITLE:
-        if (key_down(k)) { m->title_item = (m->title_item + 1) % 3; title_box(m); }
-        else if (key_up(k)) { m->title_item = (m->title_item + 2) % 3; title_box(m); }
+        if (key_down(k)) { snd_beep(); m->title_item = (m->title_item + 1) % 3; title_box(m); }   /* ovl1:43A9 */
+        else if (key_up(k)) { snd_beep(); m->title_item = (m->title_item + 2) % 3; title_box(m); }
         else if (k == PK_ENTER) {
+            snd_beep();                                        /* ovl1:43EA */
             if (m->title_item == 0) { m->sel = 0; m->data_list = false; go(m, MS_TITLES); m->step = 1; }
             else if (m->title_item == 1) { m->menu_item = 0; go(m, MS_CAMPAIGN_MENU); }
             else m->action = MENU_QUIT;
@@ -1000,8 +1022,10 @@ void menu_key(Menu *m, int k)
         break;
     case MS_ASK_SAVED:
         if (k == PK_S) {                                       /* Saved game */
+            snd_beep();                                        /* ovl1:7C27 */
             m->action = MENU_RESUME_GAME;
         } else if (k == PK_N) {                                /* New campaigns */
+            snd_beep();
             go(m, MS_TITLES);
         }
         break;
@@ -1009,16 +1033,19 @@ void menu_key(Menu *m, int k)
         if (m->anim) break;
         if (k == PK_ESC) { scroll_close(m, MS_TITLE); break; }
         if (key_up(k) && m->sel > 0) {
+            snd_beep();                                        /* ovl1:64E1 */
             m->sel--;
             m->row -= 2;
             while (TEXT_TOP + m->row * ROW_STEP - m->view < 88 && m->view > 0) m->view -= ROW_STEP;
             scroll_show(m);
         } else if (key_down(k) && m->sel < m->count) {
+            snd_beep();                                        /* ovl1:6515 */
             m->sel++;
             m->row += 2;
             while (TEXT_TOP + m->row * ROW_STEP - m->view > 142) m->view += ROW_STEP;
             scroll_show(m);
         } else if (k == PK_ENTER) {
+            snd_beep();                                        /* ovl1:63E9 */
             if (!m->data_list && m->sel == 11) {              /* ( data disk ) */
                 if (data_titles_load(m)) {
                     m->data_list = true;
@@ -1027,6 +1054,7 @@ void menu_key(Menu *m, int k)
                         page_titles(m, false);
                         clear_row(m, 23); clear_row(m, 24);
                         print_at(m, 0, 24, O3S(m, 0xE23));
+                        snd_beep_high();                      /* ovl1:7C0D */
                         m->state = MS_ASK_SAVED;
                     } else page_titles(m, false);
                 }
@@ -1042,23 +1070,26 @@ void menu_key(Menu *m, int k)
     case MS_STORY:
         if (m->anim) break;
         if (k == PK_ESC) { m->state = MS_TITLES; m->step = 1; m->drawn = false; break; }
-        if (k == PK_ENTER) { scroll_close(m, MS_RULES); break; }
+        if (k == PK_ENTER) { snd_beep(); scroll_close(m, MS_RULES); break; }   /* ovl1:6280 */
         if (key_up(k) && m->view > 0) { m->view -= 4; scroll_show(m); }
         if (key_down(k) && m->view < 216) { m->view += 4; scroll_show(m); }
         break;
     case MS_RULES:
         if (m->anim) break;
         if (k == PK_ESC) { go(m, MS_STORY); m->step = 1; break; }
-        if (k == PK_ENTER) { scroll_close(m, MS_OPPONENT); m->opp_phase = 0; break; }
+        if (k == PK_ENTER) { snd_beep(); scroll_close(m, MS_OPPONENT); m->opp_phase = 0; break; }   /* ovl1:683D */
         if (key_up(k) && m->rule > 0) {
+            snd_beep();                                        /* ovl1:6888 */
             m->rule--; m->row -= 2;
             while (TEXT_TOP + m->row * ROW_STEP - m->view < 88 && m->view > 0) m->view -= ROW_STEP;
             scroll_show(m);
         } else if (key_down(k) && m->rule < 8) {
+            snd_beep();                                        /* ovl1:68B8 */
             m->rule++; m->row += 2;
             while (TEXT_TOP + m->row * ROW_STEP - m->view > 142) m->view += ROW_STEP;
             scroll_show(m);
         } else if (k == PK_SPACE) {
+            snd_beep();                                        /* ovl1:68D4 */
             rule_change(m, m->rule);
             rules_text(m);
             scroll_text(m);
@@ -1070,6 +1101,7 @@ void menu_key(Menu *m, int k)
         if (m->frame_on) opponent_frame(m);
         if (k == PK_ESC) { go(m, MS_RULES); m->step = 1; break; }
         if (k == PK_ENTER) {
+            snd_beep();                                        /* ovl1:4CD4 */
             m->game.opponent = m->opp;                        /* memcpy(A931[OPPONENT], A4DC, 38) */
             m->seed = (uint32_t)SDL_GetTicksNS();
             go(m, MS_QUOTE);
@@ -1079,6 +1111,7 @@ void menu_key(Menu *m, int k)
         }
         if (m->opp_phase == 0) {
             if (key_down(k)) {
+                snd_beep();                                    /* ovl1:4B11 */
                 m->opp = (m->opp + 1) & 7;
                 m->opp_phase = 1;
                 help_change_select(m, O3S(m, 0x991), 40, 23, O3S(m, 0xBF6));
@@ -1087,6 +1120,7 @@ void menu_key(Menu *m, int k)
                 xor_box(m, 0, 0, 18, 6);
             }
         } else if (key_down(k) || key_up(k)) {
+            snd_beep();                                        /* ovl1:4B59 */
             m->opp = key_down(k) ? (m->opp + 1) & 7 : (m->opp + 7) & 7;
             clear_row(m, 0); clear_row(m, 1);
             m->sweep = 0; m->step = 0;
@@ -1101,12 +1135,15 @@ void menu_key(Menu *m, int k)
         menu_title(m);
         break;
     case MS_REPORT:
+        if (m->step < 1) break;                                /* the tune is still playing */
+        snd_beep();                                            /* ovl1:56FC */
         menu_title(m);
         break;
     case MS_CAMPAIGN_MENU:
         if (m->sweep >= 0) break;
         if (m->frame_on) menu_frame_box(m);
         if (key_down(k) || key_up(k)) {
+            snd_beep();                                        /* ovl1:6088 */
             m->menu_item = key_down(k) ? (m->menu_item + 1) % 6 : (m->menu_item + 5) % 6;
             clear_row(m, 0); clear_row(m, 1);
             m->sweep = 0; m->step = 0;
@@ -1127,27 +1164,31 @@ void menu_key(Menu *m, int k)
         break;
     case MS_SHOPPE:
         if (k == PK_ENTER) {
+            snd_beep();                                        /* options_shoppe ovl1:58D6-5A31 */
             if (m->opt_changed) options_save(m);
             menu_title(m);
             break;
         }
         if (key_up(k) && m->shoppe_item > 0) {
+            snd_beep();
             m->shoppe_item--;
             if (m->shoppe_item == 4) m->shoppe_item--;        /* "center the screen" does nothing here */
             page_shoppe(m);
             pointer(m, 3, SHOPPE_Y[m->shoppe_item]);
         } else if (key_down(k) && m->shoppe_item < 5) {
+            snd_beep();
             m->shoppe_item++;
             if (m->shoppe_item == 4) m->shoppe_item++;
             page_shoppe(m);
             pointer(m, 3, SHOPPE_Y[m->shoppe_item]);
         } else if (k == PK_SPACE) {
             MenuOptions *o = &m->opt;
+            snd_beep();
             switch (m->shoppe_item) {
             case 0: o->display = o->display >= 2 ? 0 : o->display + 1; break;
             case 1: o->fight_delay = o->fight_delay >= 800 ? 200 : o->fight_delay << 1; break;
             case 2: break;                                     /* one drive: always A: */
-            case 3: o->sounds = o->sounds >= 2 ? 0 : o->sounds + 1; break;
+            case 3: o->sounds = o->sounds >= 3 ? 0 : o->sounds + 1; sound_setting(o->sounds); break;
             case 5: o->joystick = !o->joystick; break;
             default: break;
             }
@@ -1175,8 +1216,8 @@ void menu_frame(Menu *m)
     if (!m->drawn) return;                 /* menu_draw makes the page first */
     m->frame++;
     switch (m->state) {
-    case MS_PRESENTED:
-        if (m->frame > 4 * MENU_HZ) go(m, MS_TITLE);
+    case MS_PRESENTED:                     /* ovl1_startup: until the tune ends, or 60000 delay units */
+        if (m->frame > (int)(60000 * SOUND_UNIT_US * 1e-6 * MENU_HZ) && sound_busy() <= 0.0) go(m, MS_TITLE);
         break;
     case MS_TITLE:                         /* the box blinks (ovl1_4206): measured in DOSBox, */
         if (m->frame % 28 == 15) { xor_box(m, 17, 54, 25, 5); m->box_inverted = true; }    /* 0.75 s plain, */
@@ -1219,6 +1260,9 @@ void menu_frame(Menu *m)
     }
     case MS_QUOTE:
         if (m->frame > 4 * MENU_HZ) m->action = MENU_START_GAME;
+        break;
+    case MS_REPORT:
+        if (m->step == 0 && sound_busy() <= 0.0) report_prompt(m);
         break;
     case MS_SAVED:
         if (m->step == 0) {
