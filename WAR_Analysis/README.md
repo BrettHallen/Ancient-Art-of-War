@@ -329,6 +329,7 @@ The army block from the T file is loaded to DS:9E60, and the program keeps more 
 | A194 | Has a path |
 | A51E | Address of the destination mark (9999 = none) |
 | A8D9 | Ticks per step on the current ground |
+| A090 | Figure: 1 normal, 2 spies only (drawn small, no Formation, two spy squads never meet) |
 
 ### Paths
 All paths share a 1000-byte circular path memory at DS:9782. Move looks for the longest free run in it and refuses if it is under 10 steps. Each move of the box is stored as a signed byte, dy\*80 + dx (bigger moves from scrolling are split into steps of 80). M writes 99 to end the path, a small white mark at the destination, and starts the squad. The squad takes one step whenever its countdown runs out, clearing each step as it goes. If the box runs into another squad's path, the destination is marked there.
@@ -336,14 +337,77 @@ All paths share a 1000-byte circular path memory at DS:9782. Move looks for the 
 ### Movement and terrain
 Ticks per step = speed (1 fast, 2 march, 3 slow) times a factor for the ground under the squad's feet, plus the speed again if the squad has knights. The factor is the campaign's Forest, Mountain or Water rule, or 1 on open ground; enemy squads use their commander's forest and mountain values (DS:A4FC, A4FA) instead.
 
-The ground comes from the map tile and the CGA pixels (squad_terrain). Tiles 3-6, 9 and 10 are open ground. Otherwise the program looks at the 8 pixels at the squad's feet (line 2y+10, then 2y+8) as four pairs of 2-bit pixels: a pair 1,1 is forest, 1,0 open ground, 1,2 on a water tile (7, 8, 13-15, 19-36) is water, and 2,1 or 0,0 on a mountain tile (37-54, 65, 66, 71, 72) is mountain.
+The ground comes from the map tile and the CGA pixels (squad_terrain). Tiles 3 (fort), 4 (village), 5 and 6 (hills), 9 and 10 (bridges) are open ground. Otherwise the program looks at the 8 pixels at the squad's feet (line 2y+10, then 2y+8) as four pairs of 2-bit pixels: a pair 1,1 is forest, 1,0 open ground, 1,2 on a water tile (7, 8, 13-15, 19-36) is water, and 2,1 or 0,0 on a mountain tile (37-54, 65, 66, 71, 72) is mountain.
 
 Each tick a moving squad in risky ground may lose a man: 2 in 128 in high, risky mountains (rule 16) or deep water (rule 20 or more), and another 4 in 128 in dangerous water (rule 40). The man lost is chosen at random (lose_man). A squad that loses its last man is gone: "NOTICE - SQUAD LOST IN THE MOUNTAINS" or "DROWNED IN THE ...".
 
 In Info, S steps the speed slow, march, fast, then stop (a moving squad halts until S is pressed again). A squad with condition under 15 can't march fast, and under 5 can't march.
 
 ### Sighting and encounters
-For each of your squads and each enemy squad, the distance is 2 x columns + line pairs. A squad in a fort, or in a village (unless the other is in a fort), counts as being in the middle of its tile, and the distance in each direction is then 3 less. Spies halve the distance. Within 3 columns and 5 line pairs the squads meet and a battle starts (a fort keeps out a squad without archers). Otherwise the enemy squad is seen when the distance is under the Enemy-seen rule (20 or 40), and with the rule at 80 every squad is always shown; "ALERT - ENEMY SIGHTED IN THE NORTH..." appears for a squad not seen before (within 20 when the rule is 80), at most once per region of the map.
+For each of your squads and each enemy squad, the distance is 2 x columns + line pairs. A squad in a fort, or on a hill (unless the other is in a fort), counts as being in the middle of its tile, and the distance in each direction is then 3 less. Spies halve the distance. Within 3 columns and 5 line pairs the squads meet (see Battles on the map; a fort keeps out a squad without archers, and two squads of spies only pass each other). Otherwise the enemy squad is seen when the distance is under the Enemy-seen rule (20 or 40), and with the rule at 80 every squad is always shown; "ALERT - ENEMY SIGHTED IN THE NORTH..." appears for a squad not seen before (within 20 when the rule is 80), at most once per region of the map.
+
+### Supply, food and condition
+Every 16 ticks the program works out how strongly each side holds each of the 200 map cells (supply_map, DS:8F74). Each squad counts 4 per man, spies included, as a minus number for your squads and a plus number for the enemy's. A squad counts nothing in water, a quarter in the mountains, double in a fort or on a hill, and half if its condition is under 10. Each cell then takes an eighth of each of its eight neighbours (a quarter of that if the cell is mountains; water cells take nothing), and this spreading is done twice. View (V) draws the result as a small map: white for strongly yours, dotted white for weakly yours, and, only when the enemy is always seen, black and dotted for the enemy.
+
+A squad's supply distance is the number of diagonal steps (in bytes and line pairs) to the nearest village or fort that its side holds (under -1 for yours, over 1 for the enemy), counting villages only if the rule lets them supply food and forts likewise, divided by the supply-line range rule (1, 2 or 4). Then, every 16 ticks (food_and_condition):
+
+| | Your squads | Enemy squads |
+|---|---|---|
+| Food | -1 if the supply distance is over 20, -1 more over 40, +1 under 10; set to 49 in a supplying village or fort | the same, but +2 under 10 |
+| Condition, fast march | - 2 x the shape rule | -1 |
+| Condition, march | - the shape rule | -1 |
+| Condition, slow march | no change | no change |
+| Condition, standing | +1 | +1 |
+| Condition, food under 10 | -3 | -2 |
+| Condition, in a village or fort with food over 10 | +1 | +1 |
+
+Food and condition stay between 1 and 49 (the Info scale puts 100 at 48). A squad on fast march with condition under 15 drops to march, and one on march under 5 drops to slow march. In Info, Condition shows - while the squad marches fast or normally or is hungry, and + while it rests; Food shows - when the supply distance is over 20 and + under 10.
+
+### Forts and flags
+Every 16 ticks, for each fort, the first squad in it with under 14 men has a 90 in 128 chance of being considered, and then a chance of (forts-train-men rule) in 128 of gaining an archer, knight or barbarian (one in three each). A full enemy squad resting in a fort splits off a man into a free slot instead (enemy_split_in_fort).
+
+Each tick, a squad within 1 byte of the other side's flag and from 1 line pair above to 2 below it takes it: "URGENT - FLAG TAKEN IN THE ..." when the enemy takes one of yours, "ENEMY FLAG CAPTURED IN THE ..." when you take one. The side with no flags left loses. When a campaign starts, a side with no flag in the T file gets one at a random place (x 8-71, y 31-158), so Sherwood Forest, which has only the sheriff's flag, gets a white flag somewhere in the middle of the map.
+
+### The end of a game
+The game ends when one side has no flags or no squads (game_over): every enemy squad is shown, the command line says "You Won ... [Enter] to continue" or "You Lost ...", the map can still be scrolled, and Enter goes on to the battle report. Each time a squad is lost the program also compares the two sides: if your men divided by the enemy's men reaches the opponent's surrender ratio (DS:A4EA, from O2) and you have over 20 men, the opponent offers to surrender, once ("Your opponent offers to surrender. Do you accept? (Y or N)" in a box at the top of the screen). Accepting ends the game as a win.
+
+### Opponents' values
+O2 holds the eight opponents' descriptions and, from offset 277h, 19 words for each opponent (38 bytes, in the order of the Opponents table). choose_opponent copies one set to DS:A4DC-A500. Most of them steer the enemy's moves; the ones understood so far:
+
+| Address | Use | Athena | Alexander | Geronimo | Crazy Ivan | Caesar | Genghis Khan | Napoleon | Sun Tzu |
+|---|---|---|---|---|---|---|---|---|---|
+| A4EA | Surrender ratio | 500 | 3 | 4 | 2 | 5 | 4 | 3 | 3 |
+| A4FA | Mountain factor for enemy squads | 16 | 16 | 1 | 20 | 16 | 4 | 8 | 2 |
+| A4FC | Forest factor for enemy squads | 8 | 8 | 1 | 10 | 8 | 2 | 5 | 1 |
+
+Athena never offers to surrender, and Geronimo's warriors cross forest and mountains as fast as open ground.
+
+### Battles on the map
+When one of your squads comes within 3 columns and 5 line pairs of an enemy squad (encounters_and_sighting), the program compares them (squad_strength): 4 x the difference in men plus half the battle edge, where the battle edge (battle_edge, -30 to 30) is the difference in condition, +15 for a squad on a hill, and -30 for a squad in water or made up only of spies. If the result is over 50 the weaker squad is captured without a fight ("ENEMY CAPTURED IN THE ..." / "YOUR SQUAD CAPTURED IN THE ..."), unless it is in a fort. Otherwise both squads stop, "WARNING - ENCOUNTER IN THE ..." appears and a counter starts for each ([A004]).
+
+Every main-loop iteration (map_battles) the counter goes up by 1 (by 3 at the fastest time) until it reaches the fight delay ([A6E3]: 200, 400 or 800 from the Options Shoppe; 400 by default, about 20 seconds). Until then Zoom is on the command line of both squads, and Z goes to the battle screen. When the counter runs out, "A L E R T  - FIGHTING IN THE ..." appears and the squads fight on the map: the program swaps their colours every iteration so they blink, and each iteration each squad kills one of the other's men with a chance of (battle_edge x 2 + 60, doubled for archers in a fort)/128 x 25/128. The man lost is chosen by lose_man (archers beat knights, knights beat barbarians, barbarians beat archers). When a squad has no fighting men left, "NOTICE  - BATTLE WON / LOST IN THE ..." appears, the winner's condition is halved, and squads that had a path carry on along it.
+
+### The battle screen (overlay 7)
+Zoom makes campaign_play return 2, and main runs overlay 7 (battle), then campaign_play again. The remake follows it in WAR_Remake/src/battle.c.
+
+- **Background** (battle_setup), from the map tiles under your squad and the enemy squad: both in a fort P0; enemy in a fort P1; you in a fort P2; either in a village P3; you on a hill P4; the enemy on a hill P5; either in water P6; your tile 11, 12, 16-18, 58-60, 64 or 70 P7; you in forest P8; you in mountains P9; either on a bridge PA; both on hills PB; otherwise PC (75 in 128) or PD. The background number ([A5CA]) also sets, for each of the 80 byte columns, the highest and lowest line soldiers can stand on (a slope on hills, a narrow strip on bridges).
+- **Enemy formation**, by opponent: Alexander and Caesar 3 (sometimes 2), Geronimo 5 or 4, Athena 4 (sometimes 2), Crazy Ivan 5 or 1; the others choose from the squads (2 if the enemy has archers and over 4 other men, 4 if it has no archers but you do, else 3). If you have no archers but the enemy does, usually 1. A squad in a fort uses formation 0, which lines its men along the wall.
+- **Formations**: the F file (420 bytes) is three tables of 10 formations x 14 men: the type (0 knight, 1 barbarian, 2 archer), x (byte column, 44-75; archers 2 further back) and y. Formations 1-5 are fixed, 6-9 can be changed in the formation editor, and 0 is the fort formation. place_formation (rt:09D3) gives each place to a man of that type, or the first type still left (knights, barbarians, archers). The enemy's squad is mirrored (x = 76 - x), so you fight from the right and the enemy from the left.
+- **Skill**: each side gets 45 +- 2 x battle_edge (at most +-40), [AB89] and [AB8B].
+- **Soldiers**: up to 28 at once, in arrays of 28 (DS:9C32 type, 9C6A side, 9CA2 screen address, 9CDA x, 9D12 y, A696 current animation script, 9D4A script state).
+- **Sprites**: O6 holds 37 soldier pictures (knights, barbarians and archers standing, walking, fighting, shooting and dead; WAR_Graphics/CGA/battle_soldiers.png), each a width word (in 8-pixel units), a height word (in line pairs) and 2-bit pixels, drawn like the map sprites with a white or black outline. O7 holds 6 more (arrows and small pictures, from O7+434h).
+- **Animation scripts**: each action (stand, walk, attack, shoot, die, retreat...) has three scripts, for knights, barbarians and archers, in O6 (from 1C8Ah) and O7, listed by pointer tables at DS:AAF1-AB73. A script is a list of steps of three words: a move in the off-screen buffer (dy x 80 + dx, as in the map's path memory), a sprite number (0-46, through the table at DS:A931) and a value, ending with 101 or 102. battle_soldiers picks a soldier's next script each frame from his orders (Attack, Backoff, Forward, Stop, per type), the terrain and the nearest enemy.
+- **Commands** (battle_input, text in O6): "Archer", "Barbarian", "Knight", "Squad", then "Attack", "Backoff", "Forward", "Stop"; "Retreat"; at the end "You lost N  They lost N".
+- **Pace**: with fewer than 15 men on the field the program waits (28 - men) x 50 delay units each frame, so small battles run at the same speed as big ones.
+- **Each frame** (battle loop): battle_soldiers, battle_alive_types, battle_arrows_fly, battle_arrows_hit, then the command keys (battle_input) and R for Retreat. Until someone attacks ([A8CD] = 20) both sides stand; A starts the attack, and the enemy may start it first (Alexander always; Hannibal and Napoleon 2 in 128 a frame; the others but Crazy Ivan 1 in 128). Your orders then start at Stop (archers on a fort wall shoot at once).
+- **Targets** (battle_check_target, battle_choose_target): each soldier keeps his target while it lives and is within 4 columns and 3 line pairs. Otherwise he takes the nearest enemy (distance dx + dy), preferring a man who is attacking him; barbarians count archers, and knights count barbarians, at half the distance across. When no enemy is left the battle ends: [A8C9] = 7 (9 at a fort) frames, and the loser's spies are captured.
+- **Moving** (battle_toward, battle_close_in): soldiers on Attack (and all the enemy's) step up/down and across toward their target, and stand 30 times in 128 (always at a fort). Within 2 columns and 1 line pair they fight; a friend in the way is stepped round. Forward and Backoff last 15 frames.
+- **Blows**: when a fighting script reaches its blow (state 2) the man hits with a chance of (skill + 40)/128, if 90 in 128 he gets a blow in at all; always against archers or a retreating side, and a knight gets 35 in 128 extra against barbarians.
+- **Archers** (battle_archer_aim): an archer shoots when 128 x chance < AB99[archers - 1] (O7+7D0h: 100, 64, 43 ... 9, so a few archers shoot often), at the first enemy for which another roll is under AB99[enemy men left - 1], in one of 20 directions (straight, or at a slope of 1, 2 or 3-9). The arrow leaves when the shooting picture comes (battle_loose_arrow) with power skill x 2 + 40, losing 4 a frame. Direction tables in O7: 1F6h width and 20Bh height of the hit box, 220h dx and 235h dy (bytes), 24Ah the screen address change (words).
+- **Arrows hit** (battle_arrows_hit) a man in the hit box when a roll is under the power and (85 in 128, or always for archers): the enemy's arrows never hit their own men, yours hit yours 28 in 128 (never while retreating); a knight's armour turns 39 in 128 and a barbarian dodges 77 in 128.
+- **Falling** (battle_kill): a man's death script depends on where he stands (off a fort wall at three heights). A side whose fort has no archers left is beaten; a side with skill under 6 may break and run (each loss, chance (12 - skill)/128).
+- **Retreat** (battle_retreat): R (or a rout) sets [A8C9] = 75, and the retreating squad moves away on the map by 1-4 columns and 0-7 line pairs (doubled on hills and at forts), with its path cleared. The other side's skill becomes 85 and, if you retreat, the enemy's condition goes to condition x 2 + 5. Retreating men walk off the side of the field; when all have gone the battle ends after 8 frames (16 at a fort).
+- **The end**: one frame before the end the arrows are cleared and "You lost N man/men .... They lost N man/men" shows. Afterwards both squads' condition is halved, the fight is over (neither squad fights on the map) and the campaign carries on.
 
 ### Random numbers
 random() (rt:20AA) adds successive words of WAR.EXE's own code (offsets 0BB8h-2327h) to the last value and keeps the low 7 bits (0-127). It is seeded from the BIOS tick count. The delay routine also calls it, so the sequence depends on timing.
