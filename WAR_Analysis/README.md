@@ -9,7 +9,7 @@ The disk contains two builds of the game:
 ## Executables
 | File      | Size    | Purpose |
 |-----------|---------|---------|
-| WAR.EXE   | 98,304  | CGA version (320x200, 4 colours). "Copyright 1987 Broderbund". Linked with the Phoenix PLINK86 overlay linker: 8 code overlays are appended inside the EXE and paged in as needed. See [WAR.EXE.asm](WAR.EXE.asm). |
+| WAR.EXE   | 98,304  | CGA version (320x200, 4 colours). "Copyright 1987 Broderbund". Linked with the Phoenix PLINK86 overlay linker: 7 code overlays and the data segment are stored inside the EXE. See [WAR.EXE structure](#warexe-structure) and the disassembly [WAR.EXE.asm](WAR.EXE.asm). |
 | WARET.EXE | 110,382 | EGA / VGA / Tandy 1000 version (16 colours), built with the Microsoft C 1988 runtime. Messages include "EGA or VGA card or Tandy 1000 required" and "Screen centering not possible with EGA". The main program is compressed with Microsoft EXEPACK, and 6 overlay modules are appended to the file (at offsets 0x5E00, 0xC800, 0xEA00, 0xF800, 0x11200 and 0x17000). |
 | WARET.DAT | 236,914 | Resource archive for WARET.EXE: the 16-colour graphics plus copies of the text and campaign files. See [WARET.DAT](#waretdat). |
 
@@ -23,7 +23,7 @@ The disk contains two builds of the game:
 The game options are:
 | Option            | Values                     |
 |-------------------|----------------------------|
-| Display           | B/W, TV/Composite, RGB     |
+| Display           | B&W, TV/Composite, RGB     |
 | Fight delay       | Short, Medium, Long        |
 | Data Disk Drive   | A:                         |
 | Sounds            | On, Off, Do not play music |
@@ -48,7 +48,7 @@ Format: repeated records of
 | 160 bytes | Pixel data, row by row |
 
 ### P files - Full-screen pictures
-P0-PD and PL are 320x200 battle backgrounds:
+All P files are 320x200 pictures. P0-PD are the battle backgrounds and PL is the formation editor background; they use a word run-length code. The others (PE-PO) are menu and title screens and use a byte run-length code.
 
 | File  | Picture |
 |-------|---------|
@@ -66,7 +66,7 @@ P0-PD and PL are 320x200 battle backgrounds:
 | PB    | Plains |
 | PC    | Plains |
 | PD    | Plains (beach) |
-| PL    | Probably an unused leftover / test screen: a wooden stockade fort with two identical plumed riders on white horses, stacked one above the other. A solid black block cuts into the top-left of the palisade, as if that part was never finished. |
+| PL    | Formation editor ("Teach squads new formations") background: a wooden stockade fort with two plumed riders. Loaded by overlay 5 together with O8. The black block top-left is probably where the editor draws its own panel. |
 
 ![Decoded CGA pictures P0-PD and PL](../WAR_Graphics/CGA/WAR_CGA_pictures_decoded.png)
 
@@ -78,7 +78,22 @@ Format: two fields (even lines, then odd lines). Each field is
 
 Each field unpacks to 8,000 bytes (80 bytes x 100 lines), the same layout as CGA screen memory.
 
-PE, PF, PG-PK and PM-PO use a different compression: pairs of [count, byte], unpacking to exactly 16,000 bytes. The pixel layout of these 10 files has **not been decoded yet** (plain CGA interlaced, linear and column layouts all give noise). By count they match WARET.DAT records 1-10 (see [below](#waretdat)): PE and PF are probably the two scrolls, and the other 8 the title screens, opponents, scene sheets, options shoppe and battle reports. The decoded 16-colour versions can be used as a reference to crack them.
+PE-PO (except PL) use a byte run-length code. The file is a list of pairs of [count, byte] (byte repeated count times). The pairs **alternate** between the even-line field and the odd-line field: first pair to the even lines, next pair to the odd lines, and so on, until each field holds 8,000 bytes. This comes from the loader in WAR.EXE (`load_picture_rle8`, overlay 1 offset 8163h).
+
+| File | Picture | 16-colour version (WARET.DAT record) |
+|------|---------|------|
+| PM   | Title screen | 1 |
+| PI   | Title screen with the barbarian | 2 |
+| PE   | Parchment scroll | 3 |
+| PF   | Parchment scroll | 4 |
+| PJ   | The 8 opponent portraits | 5 |
+| PG   | Sheet of small scenes 1 (campaign menu) | 6 |
+| PH   | Sheet of small scenes 2 (editor menu) | 7 |
+| PK   | Ye Olde Options Shoppe | 8 |
+| PN   | Battle report, victory | 9 |
+| PO   | Battle report, defeat | 10 |
+
+![Decoded CGA screens PE-PO](../WAR_Graphics/CGA/WAR_CGA_screens.png)
 
 ## O files - Screen resources
 Each O file holds the sprites and on-screen text for one part of the program.
@@ -200,8 +215,8 @@ The 16-colour map tiles (record 30) use the same palette + compressed layout. Un
 | 5          | The 8 opponent portraits |
 | 6, 7       | Sheets of small scenes (rulebook, "We want You!", etc.) |
 | 8          | Ye Olde Options Shoppe |
-| 9, 10      | Battle report screens (captured, casualties, flags taken) |
-| 11         | PL: the unused horsemen screen, also converted to 16 colours |
+| 9, 10      | Battle report screens (captured, casualties, flags taken): victory, defeat |
+| 11         | PL: formation editor background |
 | 15, 16     | TITLES, DTITLES (compressed) |
 | 20-28      | O0-O8, byte-for-byte identical to the loose files, so both versions share the same sprite data |
 | 29         | F |
@@ -213,6 +228,26 @@ The 16-colour map tiles (record 30) use the same palette + compressed layout. Un
 
 ![16-colour battle backgrounds, records 60-73](../WAR_Graphics/VGA/WAR_VGA_battle_backgrounds.png)
 
-## Other notes
+## WAR.EXE structure
+[WAR.EXE.asm](WAR.EXE.asm) is a complete annotated disassembly of the CGA program. It is generated by the scripts in [disassembler](disassembler) (`python3 disassembler/gen_asm.py`, needs `pip install capstone`). Every line shows the address the code runs at, the file offset and the bytes, and the output has been checked byte-for-byte against WAR.EXE.
+
+The program is linked with Phoenix PLINK86. The resident code is in segment 0000, the startup and overlay loader in segment 028D, and the data segment (strings, tables, the 8x8 font) is stored at the end of the file and loaded at startup. Overlays 1 and 3-7 all load at the same address (0000:30F0), so only one of them is in memory at a time; overlay 2 loads after overlay 1.
+
+| Overlay | File offset | Size  | Purpose |
+|---------|-------------|-------|---------|
+| 1       | 0x032F0     | 21,552 | Main program: startup, title and menu screens, options (CNF), saving (S), data disk, hardware detection, picture loader for PE-PO |
+| 2       | 0x08720     | 1,504  | Manual copy protection (WarW) and welcome message |
+| 3       | 0x08D00     | 6,896  | Campaign editor: placing squads and flags (O1) |
+| 4       | 0x0A7F0     | 2,768  | Campaign editor: map maker (O0) |
+| 5       | 0x0B2C0     | 5,776  | Formation editor (O8, PL) |
+| 6       | 0x0C950     | 23,408 | Campaign play: the strategic map (O5) |
+| 7       | 0x124C0     | 20,000 | Battle screen (O6, O7, P0-PD) |
+| data    | 0x172E0     | 2,880  | Data segment (loaded at startup) |
+
+Other findings from the disassembly:
+- **Two copy-protection checks.** Overlay 1 reads track 10 of the original floppy directly (INT 13h), including a deliberately unreadable sector numbered 241, and compares 16 words. Overlay 2 loads WarW and asks for a word from the manual ("On page N, what is word N in paragraph N").
+- **Sound:** the PC speaker, and the Tandy 1000 / PCjr sound chip (port C0h), even in the CGA version.
+- **Input:** keyboard and joystick (game port 201h).
+- **Video:** CGA mode 4; the program also checks for a Hercules card.
+- Campaign file names come from a table of "T0".."TA" in the data segment; the saved game is the file S on the data disk.
 - Both EXEs contain "DPQZSJHIU 2:94 EBWF NVSSZ", which is "COPYRIGHT 1983 DAVE MURRY" with each letter shifted by one.
-- The header of [WAR.EXE.asm](WAR.EXE.asm) guesses that T files are terrain tiles, O files are opponent files and P files are scenario files. The analysis above shows T files are campaigns, O files are screen resources and P files are pictures.

@@ -8,6 +8,8 @@ writes PNGs into the CGA/ and VGA/ folders next to this script.
 CGA (WAR.EXE):
   M          72 map tiles, 2 bits per pixel
   P0-PD, PL  full-screen pictures, word run-length code, interlaced fields
+  PE-PO      full-screen pictures, byte run-length code, runs alternate
+             between the even-line and odd-line fields
 VGA / EGA / Tandy (WARET.EXE):
   WARET.DAT  archive of 16-colour pictures (each with its own palette),
              the 16-colour map tiles, and copies of the text files
@@ -29,13 +31,20 @@ CGA_PICTURES = {
     'P3': 'village', 'P4': 'hills', 'P5': 'hills_palm', 'P6': 'river',
     'P7': 'forest', 'P8': 'forest_2', 'P9': 'mountains', 'PA': 'bridge',
     'PB': 'plains', 'PC': 'plains_2', 'PD': 'plains_beach',
-    'PL': 'horsemen_unused',
+    'PL': 'formation_editor',
+}
+
+# byte run-length pictures (loaded by load_picture_rle8 in WAR.EXE overlay 1)
+CGA_SCREENS = {
+    'PM': 'title', 'PI': 'title_barbarian', 'PE': 'scroll_1', 'PF': 'scroll_2',
+    'PJ': 'opponents', 'PG': 'scenes_1', 'PH': 'scenes_2', 'PK': 'options_shoppe',
+    'PN': 'battle_report_win', 'PO': 'battle_report_lose',
 }
 
 VGA_PICTURES = {
     1: 'title', 2: 'title_barbarian', 3: 'scroll_1', 4: 'scroll_2',
     5: 'opponents', 6: 'scenes_1', 7: 'scenes_2', 8: 'options_shoppe',
-    9: 'battle_report_1', 10: 'battle_report_2', 11: 'PL_horsemen_unused',
+    9: 'battle_report_win', 10: 'battle_report_lose', 11: 'PL_formation_editor',
     60: 'P0_fort_inside', 61: 'P1_fort_gate', 62: 'P2_fort_gate_other_side',
     63: 'P3_village', 64: 'P4_hills', 65: 'P5_hills_palm', 66: 'P6_river',
     67: 'P7_forest', 68: 'P8_forest_2', 69: 'P9_mountains', 70: 'PA_bridge',
@@ -126,6 +135,20 @@ def cga_picture(name):
     return draw_2bpp(out, 80, 200, lambda y: (y % 2) * 8000 + (y // 2) * 80)
 
 
+def cga_screen(name):
+    """Pairs of [count, byte]; the pairs alternate between the even-line field
+    and the odd-line field until each holds 8000 bytes."""
+    d = read(name)
+    fields, i, k = [bytearray(), bytearray()], 0, 0
+    while (len(fields[0]) < 8000 or len(fields[1]) < 8000) and i + 1 < len(d):
+        if len(fields[k]) < 8000:
+            fields[k] += bytes([d[i + 1]]) * d[i]
+            i += 2
+        k ^= 1
+    out = bytes(fields[0][:8000]) + bytes(fields[1][:8000])
+    return draw_2bpp(out, 80, 200, lambda y: (y % 2) * 8000 + (y // 2) * 80)
+
+
 # ---------------------------------------------------------------- VGA
 def waret_records():
     d = read('WARET.DAT')
@@ -195,7 +218,13 @@ def main():
         im.save(os.path.join(CGA_DIR, f'{name}_{label}.png'))
         items.append((name, im))
     contact_sheet(items, os.path.join(CGA_DIR, 'WAR_CGA_pictures_decoded.png'))
-    print(f'CGA: {len(tiles)} tiles, {len(items)} pictures')
+    screens = []
+    for name, label in CGA_SCREENS.items():
+        im = cga_screen(name)
+        im.save(os.path.join(CGA_DIR, f'{name}_{label}.png'))
+        screens.append((name, im))
+    contact_sheet(screens, os.path.join(CGA_DIR, 'WAR_CGA_screens.png'))
+    print(f'CGA: {len(tiles)} tiles, {len(items) + len(screens)} pictures')
 
     records = waret_records()
     tiles = vga_tiles(records[VGA_TILES_RECORD])
