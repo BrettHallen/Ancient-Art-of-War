@@ -148,7 +148,43 @@ Each file is 1460 bytes.<br>
 In the campaign description, a 0x01 byte follows each capital letter. It looks like a marker for drawing a large capital.
 
 ### Map
-The map is 10 tiles across and 20 tiles down (320x400 pixels), stored row by row from the top. Each byte is a tile number from 1 to 72: tile number N is tile N-1 in `M` (CGA) or in WARET.DAT record 30 (VGA). The CGA and VGA tile sets are in the same order, so the same map works for both. The game shows 9 rows at a time (180 pixels) with the command line below, and scrolls up and down.
+The map is 10 tiles across and 20 tiles down (320x400 pixels), stored row by row from the top. Each byte is a tile number from 1 to 72: tile number N is tile N-1 in `M` (CGA) or in WARET.DAT record 30 (VGA). The CGA and VGA tile sets are in the same order, so the same map works for both. The game shows a little over 9 rows at a time (182 lines) with two text rows below, and scrolls up and down (see [Campaign play](#campaign-play-overlay-6)).
+
+### Army (squads and flags)
+The 400-byte army block holds up to 20 squads and 10 flags, stored field by field (all 20 values of one field, then the next field). WAR.EXE loads it to DS:9E60; the meaning of each field comes from the squad editor (overlay 3).
+
+| Offset | Size     | Field |
+|--------|----------|-------|
+| 0      | 20 words | Side: -1 = friend (your white squads), 0 = foe (black squads) |
+| 40     | 20 words | Speed: 1 = march fast, 2 = march, 3 = march slow |
+| 80     | 20 words | 9999 = no squad in this slot (0 for squads that are present) |
+| 120    | 20 words | X: byte column in the map buffer (multiply by 4 for pixels) |
+| 160    | 20 words | Y: line pair in the map buffer (multiply by 2 for pixels) |
+| 200    | 20 bytes | Formation (1-9) |
+| 220    | 20 bytes | Condition |
+| 240    | 20 bytes | Food |
+| 260    | 10 words | Flag X (-1 = no flag) |
+| 280    | 10 words | Flag Y |
+| 300    | 10 words | Flag owner: -1 = white (friend), 0 = black |
+| 320    | 20 bytes | Archers in the squad |
+| 340    | 20 bytes | Knights |
+| 360    | 20 bytes | Barbarians |
+| 380    | 20 bytes | Spies |
+
+X and Y give the top-left corner of the squad's 8x12 sprite on the 320x400 map. A new squad in the editor starts as a friend, with speed 2, formation 1, condition 35 and food 35.
+
+For example, "The Race for the Flags" has 5 friendly squads (four of 14 archers and one of 14 knights) at the bottom of the map, 14 enemy squads in the middle, and a white and a black flag in the fort at the top. The manual describes it as "you're greatly outnumbered, and a horde of Mongolian warriors are between you and the fort".
+
+### Map sprites
+The squad and flag sprites are in WAR.EXE's data segment: five squad poses at DS:031C, 0338, 0354, 0370 and 038C (28 bytes each) and the flag at DS:03A8. Each is 8x12 pixels: a word width (1), a word height in line pairs (6), then for each line pair a big-endian 2-bit-per-pixel word for the even line and one for the odd line. WAR.EXE (rt:1B17) draws friendly squads and white flags as a white figure with a black outline on the left and right of each figure pixel, and enemy squads and black flags as a black figure with a white outline.
+
+| Sprite | Used when (rt:19D9) |
+|--------|---------------------|
+| 0338   | Standing: no orders (how every squad starts) |
+| 031C   | Marching |
+| 0354   | Fighting |
+| 0370   | Weak: condition 10 or less |
+| 038C   | Small figure (squad state [A090] not 1) |
 
 ### Opponents
 | Value | Opponent            |
@@ -254,3 +290,60 @@ Other findings from the disassembly:
 - **Video:** CGA mode 4; the program also checks for a Hercules card.
 - Campaign file names come from a table of "T0".."TA" in the data segment; the saved game is the file S on the data disk.
 - Both EXEs contain "DPQZSJHIU 2:94 EBWF NVSSZ", which is "COPYRIGHT 1983 DAVE MURRY" with each letter shifted by one.
+
+## Campaign play (overlay 6)
+Overlay 6 runs the strategic map. The remake's [play.c](../WAR_Remake/src/play.c) follows it routine by routine, and [WAR.EXE.asm](WAR.EXE.asm) names the routines. Positions use the units of the CGA map buffer: x is a byte column (4 pixels, 0-79) and y a line pair (2 pixels, 0-199).
+
+### Screen and cursor
+- The map takes the top 198 - 8n lines, where n is the number of text rows below it ([A5C0]), with a white line under it. Normally n is 2: row 23 for messages and row 24 for the command line, so the map shows 182 lines. Each new message adds a row (two at most, then they scroll; the newest is on top) and Info adds five.
+- The view starts at the bottom of the map (top line pair 6Dh) with the cursor at (26h, 91h). The cursor moves one byte or one line pair at a time, repeating every iteration while a cursor key is held. The view follows the cursor, keeping it within 56h line pairs of the top. - and + (also Tab and Ctrl) scroll by 2 line pairs.
+- The cursor is a cross. While a path is traced it is an open box around the squad's 8x12 sprite, moving every other iteration. The squad's position is the top of the box, and the squad walks exactly where the box went.
+- The cursor is on a squad when it is one byte right of the squad and 1 line pair above to 3 below its top.
+
+| Mode ([A92F]) | Command line |
+|------|------|
+| 0 normal | `View  Time (slow)  Clear  Surrender` (Clear only when there are messages) |
+| 1 on a squad | `Move Info Size Formation Detach Join Zoom` (Move, Formation, Detach and Join only for your own squads not fighting; Detach when the squad has 2 or more men and a squad slot is free; Join when another of your squads is within 3 bytes and 7 line pairs and this one has under 14 men; Zoom when it is fighting) |
+| 2 tracing | `Trace path to destination and press [M]` / `Mark Cancel` |
+| 3 Size | `KNIGHT:n BARBARIAN:n ARCHER:n SPY:n` / `End` (any key) |
+| 4 Info | Orders ("Marching in a northwest direction", "STOPPED - when moving: MARCH"), condition and food bars on a 0-100 scale with + or -, `Speed End` |
+| 99 | A question, such as `Surrender -- Are you sure? (Y or N)` |
+
+### Main loop and time
+Each iteration of the main loop copies the map to the screen and reads a key. If no key is down and no path is being traced, a tick counter counts up to the Time setting ([A51C]): T steps it from 64 (slow, the start) to 16 (medium), 4 (fast) and 1 (faster). Copying the 16 KB map each iteration limits an IBM PC/XT to about 20 iterations a second, and faster machines are slowed to match, so slow time is a tick about every 3 seconds.
+
+Each tick: sighting and encounters, the enemy's moves, then every squad's movement. Every 16 ticks: food and supply, and forts training men.
+
+### Squad tables
+The army block from the T file is loaded to DS:9E60, and the program keeps more arrays of 20 after it:
+
+| Address | Contents |
+|---------|----------|
+| 9EB0 | Moving speed: 0 = stopped, 1-3 = moving at that speed, 9999 = no squad |
+| 9FF0 | Men (archers + knights + barbarians; spies are not counted) |
+| A068 | Address in the map buffer (0B68h + y\*80 + x) |
+| A0CC | Ticks until the next step |
+| A0F4 | Fighting (the other squad's number + 1) |
+| A11C | Seen by the other side |
+| A144 | Position of the next step in the path memory |
+| A194 | Has a path |
+| A51E | Address of the destination mark (9999 = none) |
+| A8D9 | Ticks per step on the current ground |
+
+### Paths
+All paths share a 1000-byte circular path memory at DS:9782. Move looks for the longest free run in it and refuses if it is under 10 steps. Each move of the box is stored as a signed byte, dy\*80 + dx (bigger moves from scrolling are split into steps of 80). M writes 99 to end the path, a small white mark at the destination, and starts the squad. The squad takes one step whenever its countdown runs out, clearing each step as it goes. If the box runs into another squad's path, the destination is marked there.
+
+### Movement and terrain
+Ticks per step = speed (1 fast, 2 march, 3 slow) times a factor for the ground under the squad's feet, plus the speed again if the squad has knights. The factor is the campaign's Forest, Mountain or Water rule, or 1 on open ground; enemy squads use their commander's forest and mountain values (DS:A4FC, A4FA) instead.
+
+The ground comes from the map tile and the CGA pixels (squad_terrain). Tiles 3-6, 9 and 10 are open ground. Otherwise the program looks at the 8 pixels at the squad's feet (line 2y+10, then 2y+8) as four pairs of 2-bit pixels: a pair 1,1 is forest, 1,0 open ground, 1,2 on a water tile (7, 8, 13-15, 19-36) is water, and 2,1 or 0,0 on a mountain tile (37-54, 65, 66, 71, 72) is mountain.
+
+Each tick a moving squad in risky ground may lose a man: 2 in 128 in high, risky mountains (rule 16) or deep water (rule 20 or more), and another 4 in 128 in dangerous water (rule 40). The man lost is chosen at random (lose_man). A squad that loses its last man is gone: "NOTICE - SQUAD LOST IN THE MOUNTAINS" or "DROWNED IN THE ...".
+
+In Info, S steps the speed slow, march, fast, then stop (a moving squad halts until S is pressed again). A squad with condition under 15 can't march fast, and under 5 can't march.
+
+### Sighting and encounters
+For each of your squads and each enemy squad, the distance is 2 x columns + line pairs. A squad in a fort, or in a village (unless the other is in a fort), counts as being in the middle of its tile, and the distance in each direction is then 3 less. Spies halve the distance. Within 3 columns and 5 line pairs the squads meet and a battle starts (a fort keeps out a squad without archers). Otherwise the enemy squad is seen when the distance is under the Enemy-seen rule (20 or 40), and with the rule at 80 every squad is always shown; "ALERT - ENEMY SIGHTED IN THE NORTH..." appears for a squad not seen before (within 20 when the rule is 80), at most once per region of the map.
+
+### Random numbers
+random() (rt:20AA) adds successive words of WAR.EXE's own code (offsets 0BB8h-2327h) to the last value and keeps the low 7 bits (0-127). It is seeded from the BIOS tick count. The delay routine also calls it, so the sequence depends on timing.
