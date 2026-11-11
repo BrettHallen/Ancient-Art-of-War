@@ -205,7 +205,7 @@
 ; rt:20EF  speaker_on                 Enable PC speaker (port 61h) if sound is on
 ; rt:20FD  speaker_off                Disable PC speaker (port 61h)
 ; rt:2135  tandy_sound                Write to the Tandy 1000 / PCjr SN76489 sound chip (port C0h)
-; rt:2188  delay                      Busy-wait delay, calibrated by DS:0948
+; rt:2188  delay                      delay(n): n x m calls of random(), m = 1/2, 1, 1 1/2, 2 ... from [0948]; a delay
 ; rt:22C8  set_cga_palette            BIOS INT 10h AH=0Bh BH=1: choose CGA palette 0 or 1
 ; rt:22E2  set_palette_reg            BIOS INT 10h AH=10h (PCjr/Tandy/EGA palette register)
 ; rt:24E7  put_char                   Draw one character with the 8x8 font, handles CR/LF/BS
@@ -233,7 +233,7 @@
 ; ovl1:3FA0  clear_all_text_rows        Clear text rows 24 down to 0 (a black screen)
 ; ovl1:3FC3  ovl1_entry_3fc3            thunk 17
 ; ovl1:4000  select_campaign            thunk 11. Copy the campaign file name (table of T0-TA at DS:08C1, 3 bytes each, 
-; ovl1:4161  show_title_barbarian       Loads PI (title screen with barbarian)
+; ovl1:4161  show_title_barbarian       Loads PI (title screen with barbarian); 189 turns with no key start the demo: on
 ; ovl1:4545  menu_poll_key              Menus: read a key (or the joystick)
 ; ovl1:4808  choose_opponent            thunk 18. Loads PJ (the 8 opponent portraits)
 ; ovl1:4D08  help_change_select         Row 24: [+] or [-] to change, [Enter] ...
@@ -307,7 +307,7 @@
 ; ovl6:3ADE  count_flags                Returns 1 if you have no flags left, 2 if the enemy has none (also picks the ene
 ; ovl6:3B87  campaign_input             Handle one key: commands for the current mode, then cursor movement and scrollin
 ; ovl6:4207  clear_keys                 Forget the last key
-; ovl6:421C  poll_input                 Read the key ([AAED], scan code); cursor keys repeat while held
+; ovl6:421C  poll_input                 Read the key ([AAED], scan code); cursor keys repeat while held; the demo holds 
 ; ovl6:4605  command_pause              Short delay after a command
 ; ovl6:462B  formation_choose           Formation: +/- choose 1-9, the men shown as A, B and K in a box; E ends
 ; ovl6:477D  start_move_order           Move: stop the squad, find room in the path memory (find_free_path_run)
@@ -400,6 +400,8 @@
 
 ;==============================================================================
 ; KNOWN VARIABLES (DS offsets)
+; [052F]  key held (scan code, 0 none)
+; [0531]  key pressed (scan code, latched)
 ; [0535]  random value
 ; [0537]  random table pointer
 ; [0944]  picture decode destination
@@ -426,6 +428,7 @@
 ; [A5C2]  message rows
 ; [A694]  current campaign number
 ; [A6CE]  file read buffer pointer
+; [A6D8]  demo (1 running, 2 zoom to an encounter)
 ; [A6DC]  data drive mode
 ; [A6E1]  sound on flag
 ; [A6F5]  data disk in drive B flag
@@ -512,7 +515,7 @@ main:
   rt:007B  0027B  e99600         jmp    0x114
   rt:007E  0027E  33c0           xor    ax, ax
   rt:0080  00280  890602a5       mov    word ptr [0xa502], ax          ; [A502] path memory write position
-  rt:0084  00284  89062f05       mov    word ptr [0x52f], ax
+  rt:0084  00284  89062f05       mov    word ptr [0x52f], ax           ; [052F] key held (scan code, 0 none)
   rt:0088  00288  b80100         mov    ax, 1
   rt:008B  0028B  0bc0           or     ax, ax
   rt:008D  0028D  7478           je     0x107
@@ -533,7 +536,7 @@ main:
   rt:00B3  002B3  745f           je     0x114
   rt:00B5  002B5  817efd0100     cmp    word ptr [bp - 3], 1
   rt:00BA  002BA  744b           je     0x107
-  rt:00BC  002BC  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  rt:00BC  002BC  8b06d8a6       mov    ax, word ptr [0xa6d8]          ; [A6D8] demo (1 running, 2 zoom to an encounter)
   rt:00C0  002C0  0bc0           or     ax, ax
   rt:00C2  002C2  758a           jne    0x4e
   rt:00C4  002C4  e85700         call   require_war_disk
@@ -927,21 +930,21 @@ disk_prompt:
   rt:042B  0062B  e83721         call   print_string
   rt:042E  0062E  5f             pop    di
   rt:042F  0062F  33c0           xor    ax, ax
-  rt:0431  00631  89062f05       mov    word ptr [0x52f], ax
+  rt:0431  00631  89062f05       mov    word ptr [0x52f], ax           ; [052F] key held (scan code, 0 none)
   rt:0435  00635  b80100         mov    ax, 1
   rt:0438  00638  0bc0           or     ax, ax
   rt:043A  0063A  7428           je     0x464
-  rt:043C  0063C  813e2f051300   cmp    word ptr [0x52f], 0x13
+  rt:043C  0063C  813e2f051300   cmp    word ptr [0x52f], 0x13         ; [052F] key held (scan code, 0 none)
   rt:0442  00642  750a           jne    0x44e
   rt:0444  00644  33c0           xor    ax, ax
-  rt:0446  00646  89062f05       mov    word ptr [0x52f], ax
+  rt:0446  00646  89062f05       mov    word ptr [0x52f], ax           ; [052F] key held (scan code, 0 none)
   rt:044A  0064A  8be5           mov    sp, bp
   rt:044C  0064C  5d             pop    bp
   rt:044D  0064D  c3             ret
-  rt:044E  0064E  813e2f051000   cmp    word ptr [0x52f], 0x10
+  rt:044E  0064E  813e2f051000   cmp    word ptr [0x52f], 0x10         ; [052F] key held (scan code, 0 none)
   rt:0454  00654  750c           jne    0x462
   rt:0456  00656  33c0           xor    ax, ax
-  rt:0458  00658  89062f05       mov    word ptr [0x52f], ax
+  rt:0458  00658  89062f05       mov    word ptr [0x52f], ax           ; [052F] key held (scan code, 0 none)
   rt:045C  0065C  b001           mov    al, 1
   rt:045E  0065E  8be5           mov    sp, bp
   rt:0460  00660  5d             pop    bp
@@ -1101,7 +1104,7 @@ beep_low:
   rt:05A9  007A9  55             push   bp
   rt:05AA  007AA  8bec           mov    bp, sp
   rt:05AC  007AC  33c0           xor    ax, ax
-  rt:05AE  007AE  89063105       mov    word ptr [0x531], ax
+  rt:05AE  007AE  89063105       mov    word ptr [0x531], ax           ; [0531] key pressed (scan code, latched)
   rt:05B2  007B2  e83a1b         call   speaker_on
   rt:05B5  007B5  b8f401         mov    ax, 0x1f4
   rt:05B8  007B8  50             push   ax
@@ -4588,7 +4591,7 @@ rt_2171:
   rt:2187  02387  c3             ret
 
 ; ---- delay   (called from 128 places)
-;      Busy-wait delay, calibrated by DS:0948
+;      delay(n): n x m calls of random(), m = 1/2, 1, 1 1/2, 2 ... from [0948]; a delay of k x [0948] grows on faster PCs
 delay:
   rt:2188  02388  55             push   bp
   rt:2189  02389  8bec           mov    bp, sp
@@ -6133,7 +6136,7 @@ ovl1_startup:
   ovl1:325E  0345E  c3             ret
 
 ; ---- game_init
-;      thunk 1. Set up buffers and variables, load O3, show the title screen with the barbarian (PI)
+;      thunk 1. Set up buffers and variables, load O3, show the title screen with the barbarian (PI); rule enemy seen >= 80: spies become barbarians; [A4E8] at most half the enemy squads
 game_init:
   ovl1:325F  0345F  55             push   bp
   ovl1:3260  03460  8bec           mov    bp, sp
@@ -6146,7 +6149,7 @@ game_init:
   ovl1:3276  03476  89067ea6       mov    word ptr [0xa67e], ax
   ovl1:327A  0347A  890618a5       mov    word ptr [0xa518], ax        ; [A518] sighting message timer
   ovl1:327E  0347E  8946fe         mov    word ptr [bp - 2], ax
-  ovl1:3281  03481  8906d8a6       mov    word ptr [0xa6d8], ax
+  ovl1:3281  03481  8906d8a6       mov    word ptr [0xa6d8], ax        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl1:3285  03485  b002           mov    al, 2
   ovl1:3287  03487  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
   ovl1:328B  0348B  e8d902         call   load_o3
@@ -6279,7 +6282,7 @@ game_init:
   ovl1:33BF  035BF  83c406         add    sp, 6
   ovl1:33C2  035C2  b80100         mov    ax, 1
   ovl1:33C5  035C5  8906cca5       mov    word ptr [0xa5cc], ax
-  ovl1:33C9  035C9  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl1:33C9  035C9  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl1:33CD  035CD  0bc0           or     ax, ax
   ovl1:33CF  035CF  7409           je     0x33da
   ovl1:33D1  035D1  b80100         mov    ax, 1
@@ -6380,7 +6383,7 @@ game_init:
   ovl1:34D5  036D5  e854ea         call   memsetw
   ovl1:34D8  036D8  83c406         add    sp, 6
   ovl1:34DB  036DB  33c0           xor    ax, ax
-  ovl1:34DD  036DD  89062f05       mov    word ptr [0x52f], ax
+  ovl1:34DD  036DD  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:34E1  036E1  bef4a0         mov    si, 0xa0f4
   ovl1:34E4  036E4  8b160ca5       mov    dx, word ptr [0xa50c]
   ovl1:34E8  036E8  d1e2           shl    dx, 1
@@ -6593,7 +6596,7 @@ save_game:
   ovl1:36A7  038A7  b80100         mov    ax, 1
   ovl1:36AA  038AA  0bc0           or     ax, ax
   ovl1:36AC  038AC  743d           je     0x36eb
-  ovl1:36AE  038AE  813e2f052e00   cmp    word ptr [0x52f], 0x2e
+  ovl1:36AE  038AE  813e2f052e00   cmp    word ptr [0x52f], 0x2e       ; [052F] key held (scan code, 0 none)
   ovl1:36B4  038B4  7522           jne    0x36d8
   ovl1:36B6  038B6  b81500         mov    ax, 0x15
   ovl1:36B9  038B9  50             push   ax
@@ -6612,7 +6615,7 @@ save_game:
   ovl1:36D2  038D2  e809e8         call   clear_text_row
   ovl1:36D5  038D5  5f             pop    di
   ovl1:36D6  038D6  eb13           jmp    0x36eb
-  ovl1:36D8  038D8  813e2f051000   cmp    word ptr [0x52f], 0x10
+  ovl1:36D8  038D8  813e2f051000   cmp    word ptr [0x52f], 0x10       ; [052F] key held (scan code, 0 none)
   ovl1:36DE  038DE  7509           jne    0x36e9
   ovl1:36E0  038E0  e86cec         call   rt_234f
   ovl1:36E3  038E3  33c0           xor    ax, ax
@@ -6703,7 +6706,7 @@ save_game:
   ovl1:37AE  039AE  b80100         mov    ax, 1
   ovl1:37B1  039B1  0bc0           or     ax, ax
   ovl1:37B3  039B3  7429           je     0x37de
-  ovl1:37B5  039B5  813e2f052e00   cmp    word ptr [0x52f], 0x2e
+  ovl1:37B5  039B5  813e2f052e00   cmp    word ptr [0x52f], 0x2e       ; [052F] key held (scan code, 0 none)
   ovl1:37BB  039BB  7517           jne    0x37d4
   ovl1:37BD  039BD  b80a00         mov    ax, 0xa
   ovl1:37C0  039C0  50             push   ax
@@ -6716,7 +6719,7 @@ save_game:
   ovl1:37D0  039D0  8be5           mov    sp, bp
   ovl1:37D2  039D2  5d             pop    bp
   ovl1:37D3  039D3  c3             ret
-  ovl1:37D4  039D4  813e2f051000   cmp    word ptr [0x52f], 0x10
+  ovl1:37D4  039D4  813e2f051000   cmp    word ptr [0x52f], 0x10       ; [052F] key held (scan code, 0 none)
   ovl1:37DA  039DA  7402           je     0x37de
   ovl1:37DC  039DC  ebd0           jmp    0x37ae
   ovl1:37DE  039DE  b80100         mov    ax, 1
@@ -6827,7 +6830,7 @@ ensure_war_disk:
   ovl1:38D2  03AD2  e837ea         call   rt_230c
   ovl1:38D5  03AD5  ebe6           jmp    0x38bd
   ovl1:38D7  03AD7  33c0           xor    ax, ax
-  ovl1:38D9  03AD9  89063105       mov    word ptr [0x531], ax
+  ovl1:38D9  03AD9  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl1:38DD  03ADD  8be5           mov    sp, bp
   ovl1:38DF  03ADF  5d             pop    bp
   ovl1:38E0  03AE0  c3             ret
@@ -6876,7 +6879,7 @@ ovl1_38e1:
   ovl1:3943  03B43  50             push   ax
   ovl1:3944  03B44  e81eec         call   print_string
   ovl1:3947  03B47  5f             pop    di
-  ovl1:3948  03B48  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl1:3948  03B48  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl1:394E  03B4E  74f8           je     0x3948
   ovl1:3950  03B50  b80100         mov    ax, 1
   ovl1:3953  03B53  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
@@ -6889,7 +6892,7 @@ ovl1_38e1:
   ovl1:3966  03B66  b80200         mov    ax, 2
   ovl1:3969  03B69  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
   ovl1:396D  03B6D  33c0           xor    ax, ax
-  ovl1:396F  03B6F  89063105       mov    word ptr [0x531], ax
+  ovl1:396F  03B6F  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl1:3973  03B73  8be5           mov    sp, bp
   ovl1:3975  03B75  5d             pop    bp
   ovl1:3976  03B76  c3             ret
@@ -6928,8 +6931,8 @@ show_scroll:
   ovl1:39B3  03BB3  0bc0           or     ax, ax
   ovl1:39B5  03BB5  75f9           jne    0x39b0
   ovl1:39B7  03BB7  33c0           xor    ax, ax
-  ovl1:39B9  03BB9  89063105       mov    word ptr [0x531], ax
-  ovl1:39BD  03BBD  89062f05       mov    word ptr [0x52f], ax
+  ovl1:39B9  03BB9  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl1:39BD  03BBD  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:39C1  03BC1  b8680b         mov    ax, 0xb68
   ovl1:39C4  03BC4  89066888       mov    word ptr [0x8868], ax        ; [8868] off-screen picture buffer pointer
   ovl1:39C8  03BC8  33c0           xor    ax, ax
@@ -7007,9 +7010,9 @@ show_scroll:
   ovl1:3A87  03C87  50             push   ax
   ovl1:3A88  03C88  e8daea         call   print_string
   ovl1:3A8B  03C8B  5f             pop    di
-  ovl1:3A8C  03C8C  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl1:3A8C  03C8C  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl1:3A92  03C92  74f8           je     0x3a8c
-  ovl1:3A94  03C94  813e2f051500   cmp    word ptr [0x52f], 0x15
+  ovl1:3A94  03C94  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl1:3A9A  03C9A  7516           jne    0x3ab2
   ovl1:3A9C  03C9C  8b06d0a6       mov    ax, word ptr [0xa6d0]
   ovl1:3AA0  03CA0  055a0e         add    ax, 0xe5a
@@ -7021,7 +7024,7 @@ show_scroll:
   ovl1:3AAC  03CAC  e81405         call   ovl1_entry_3fc3
   ovl1:3AAF  03CAF  5f             pop    di
   ovl1:3AB0  03CB0  eb1c           jmp    0x3ace
-  ovl1:3AB2  03CB2  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl1:3AB2  03CB2  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl1:3AB8  03CB8  7512           jne    0x3acc
   ovl1:3ABA  03CBA  b89c00         mov    ax, 0x9c
   ovl1:3ABD  03CBD  50             push   ax
@@ -7258,7 +7261,7 @@ show_scroll:
   ovl1:3D0C  03F0C  33c0           xor    ax, ax
   ovl1:3D0E  03F0E  8946fe         mov    word ptr [bp - 2], ax
   ovl1:3D11  03F11  33c0           xor    ax, ax
-  ovl1:3D13  03F13  89063105       mov    word ptr [0x531], ax
+  ovl1:3D13  03F13  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl1:3D17  03F17  8b46fe         mov    ax, word ptr [bp - 2]
   ovl1:3D1A  03F1A  8be5           mov    sp, bp
   ovl1:3D1C  03F1C  5d             pop    bp
@@ -7745,7 +7748,7 @@ ovl1_4125:
   ovl1:4160  04360  c3             ret
 
 ; ---- show_title_barbarian   (called from 1 place)
-;      Loads PI (title screen with barbarian)
+;      Loads PI (title screen with barbarian); 189 turns with no key start the demo: one of T3-TA, opponent 0, all seen
 show_title_barbarian:
   ovl1:4161  04361  55             push   bp
   ovl1:4162  04362  8bec           mov    bp, sp
@@ -7822,7 +7825,7 @@ show_title_barbarian:
   ovl1:41F9  043F9  e869e3         call   print_string
   ovl1:41FC  043FC  5f             pop    di
   ovl1:41FD  043FD  33c0           xor    ax, ax
-  ovl1:41FF  043FF  89063105       mov    word ptr [0x531], ax
+  ovl1:41FF  043FF  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl1:4203  04403  8946fa         mov    word ptr [bp - 6], ax
   ovl1:4206  04406  b80100         mov    ax, 1
   ovl1:4209  04409  0bc0           or     ax, ax
@@ -7906,7 +7909,7 @@ show_title_barbarian:
   ovl1:42C7  044C7  7f03           jg     0x42cc
   ovl1:42C9  044C9  e9ca00         jmp    0x4396
   ovl1:42CC  044CC  b80100         mov    ax, 1
-  ovl1:42CF  044CF  8906d8a6       mov    word ptr [0xa6d8], ax
+  ovl1:42CF  044CF  8906d8a6       mov    word ptr [0xa6d8], ax        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl1:42D3  044D3  b002           mov    al, 2
   ovl1:42D5  044D5  890692a6       mov    word ptr [0xa692], ax
   ovl1:42D9  044D9  b8680b         mov    ax, 0xb68
@@ -7964,8 +7967,8 @@ show_title_barbarian:
   ovl1:435E  0455E  c3             ret
   ovl1:435F  0455F  33c0           xor    ax, ax
   ovl1:4361  04561  89067ca6       mov    word ptr [0xa67c], ax
-  ovl1:4365  04565  89063105       mov    word ptr [0x531], ax
-  ovl1:4369  04569  89062f05       mov    word ptr [0x52f], ax
+  ovl1:4365  04565  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl1:4369  04569  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:436D  0456D  b026           mov    al, 0x26
   ovl1:436F  0456F  50             push   ax
   ovl1:4370  04570  b8dca4         mov    ax, 0xa4dc
@@ -8170,10 +8173,10 @@ menu_poll_key:
   ovl1:454B  0474B  e8dbbf         call   rt_0529
   ovl1:454E  0474E  b86400         mov    ax, 0x64
   ovl1:4551  04751  8906d0a5       mov    word ptr [0xa5d0], ax
-  ovl1:4555  04755  8b063105       mov    ax, word ptr [0x531]
+  ovl1:4555  04755  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl1:4559  04759  8946fe         mov    word ptr [bp - 2], ax
   ovl1:455C  0475C  33c0           xor    ax, ax
-  ovl1:455E  0475E  89063105       mov    word ptr [0x531], ax
+  ovl1:455E  0475E  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl1:4562  04762  817efe0000     cmp    word ptr [bp - 2], 0
   ovl1:4567  04767  7546           jne    0x45af
   ovl1:4569  04769  e84a00         call   ovl1_45b6
@@ -8286,7 +8289,7 @@ ovl1_462c:
   ovl1:466A  0486A  50             push   ax
   ovl1:466B  0486B  e81adb         call   delay
   ovl1:466E  0486E  5f             pop    di
-  ovl1:466F  0486F  813e2f052f00   cmp    word ptr [0x52f], 0x2f
+  ovl1:466F  0486F  813e2f052f00   cmp    word ptr [0x52f], 0x2f       ; [052F] key held (scan code, 0 none)
   ovl1:4675  04875  751c           jne    0x4693
   ovl1:4677  04877  8b064b05       mov    ax, word ptr [0x54b]
   ovl1:467B  0487B  0bc0           or     ax, ax
@@ -8442,7 +8445,7 @@ ovl1_469f:
   ovl1:478E  0498E  50             push   ax
   ovl1:478F  0498F  e8f6d9         call   delay
   ovl1:4792  04992  5f             pop    di
-  ovl1:4793  04993  813e2f052f00   cmp    word ptr [0x52f], 0x2f
+  ovl1:4793  04993  813e2f052f00   cmp    word ptr [0x52f], 0x2f       ; [052F] key held (scan code, 0 none)
   ovl1:4799  04999  751c           jne    0x47b7
   ovl1:479B  0499B  8b064b05       mov    ax, word ptr [0x54b]
   ovl1:479F  0499F  0bc0           or     ax, ax
@@ -9790,7 +9793,7 @@ battle_report:
   ovl1:53AE  055AE  55             push   bp
   ovl1:53AF  055AF  8bec           mov    bp, sp
   ovl1:53B1  055B1  83ec04         sub    sp, 4
-  ovl1:53B4  055B4  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl1:53B4  055B4  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl1:53B8  055B8  0bc0           or     ax, ax
   ovl1:53BA  055BA  7404           je     0x53c0
   ovl1:53BC  055BC  8be5           mov    sp, bp
@@ -10127,7 +10130,7 @@ battle_report:
   ovl1:56EB  058EB  e877ce         call   print_string
   ovl1:56EE  058EE  5f             pop    di
   ovl1:56EF  058EF  33c0           xor    ax, ax
-  ovl1:56F1  058F1  89063105       mov    word ptr [0x531], ax
+  ovl1:56F1  058F1  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl1:56F5  058F5  e84dee         call   menu_poll_key
   ovl1:56F8  058F8  09c0           or     ax, ax
   ovl1:56FA  058FA  74f9           je     0x56f5
@@ -11376,9 +11379,9 @@ ovl1_61fd:
   ovl1:621C  0641C  e846c3         call   print_string
   ovl1:621F  0641F  5f             pop    di
   ovl1:6220  06420  33c0           xor    ax, ax
-  ovl1:6222  06422  89063105       mov    word ptr [0x531], ax
-  ovl1:6226  06426  89062f05       mov    word ptr [0x52f], ax
-  ovl1:622A  0642A  8b062f05       mov    ax, word ptr [0x52f]
+  ovl1:6222  06422  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl1:6226  06426  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
+  ovl1:622A  0642A  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl1:622E  0642E  0bc0           or     ax, ax
   ovl1:6230  06430  7502           jne    0x6234
   ovl1:6232  06432  ebf6           jmp    0x622a
@@ -11393,8 +11396,8 @@ story_view:
   ovl1:6239  06439  8bec           mov    bp, sp
   ovl1:623B  0643B  83ec02         sub    sp, 2
   ovl1:623E  0643E  33c0           xor    ax, ax
-  ovl1:6240  06440  89063105       mov    word ptr [0x531], ax
-  ovl1:6244  06444  89062f05       mov    word ptr [0x52f], ax
+  ovl1:6240  06440  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl1:6244  06444  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:6248  06448  b80100         mov    ax, 1
   ovl1:624B  0644B  0bc0           or     ax, ax
   ovl1:624D  0644D  7503           jne    0x6252
@@ -11406,7 +11409,7 @@ story_view:
   ovl1:625D  0645D  8946fe         mov    word ptr [bp - 2], ax
   ovl1:6260  06460  09c0           or     ax, ax
   ovl1:6262  06462  7515           jne    0x6279
-  ovl1:6264  06464  8b062f05       mov    ax, word ptr [0x52f]
+  ovl1:6264  06464  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl1:6268  06468  8946fe         mov    word ptr [bp - 2], ax
   ovl1:626B  0646B  09c0           or     ax, ax
   ovl1:626D  0646D  750a           jne    0x6279
@@ -11493,8 +11496,8 @@ choose_title:
   ovl1:633B  0653B  33c0           xor    ax, ax
   ovl1:633D  0653D  8946fe         mov    word ptr [bp - 2], ax
   ovl1:6340  06540  890694a6       mov    word ptr [0xa694], ax        ; [A694] current campaign number
-  ovl1:6344  06544  89063105       mov    word ptr [0x531], ax
-  ovl1:6348  06548  89062f05       mov    word ptr [0x52f], ax
+  ovl1:6344  06544  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl1:6348  06548  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:634C  0654C  813e92a60500   cmp    word ptr [0xa692], 5
   ovl1:6352  06552  7408           je     0x635c
   ovl1:6354  06554  813e92a60700   cmp    word ptr [0xa692], 7
@@ -11834,8 +11837,8 @@ rules_view:
   ovl1:668C  0688C  33c0           xor    ax, ax
   ovl1:668E  0688E  8946fc         mov    word ptr [bp - 4], ax
   ovl1:6691  06891  8946fe         mov    word ptr [bp - 2], ax
-  ovl1:6694  06894  89063105       mov    word ptr [0x531], ax
-  ovl1:6698  06898  89062f05       mov    word ptr [0x52f], ax
+  ovl1:6694  06894  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl1:6698  06898  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:669C  0689C  813e92a60b00   cmp    word ptr [0xa692], 0xb
   ovl1:66A2  068A2  754a           jne    0x66ee
   ovl1:66A4  068A4  b81700         mov    ax, 0x17
@@ -12233,7 +12236,7 @@ scroll_editor:
   ovl1:6A94  06C94  b8680b         mov    ax, 0xb68
   ovl1:6A97  06C97  89066888       mov    word ptr [0x8868], ax        ; [8868] off-screen picture buffer pointer
   ovl1:6A9B  06C9B  33c0           xor    ax, ax
-  ovl1:6A9D  06C9D  89062f05       mov    word ptr [0x52f], ax
+  ovl1:6A9D  06C9D  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:6AA1  06CA1  8906c5a8       mov    word ptr [0xa8c5], ax
   ovl1:6AA5  06CA5  8906c3a8       mov    word ptr [0xa8c3], ax
   ovl1:6AA9  06CA9  89066a88       mov    word ptr [0x886a], ax        ; [886A] view top (line pairs)
@@ -12445,8 +12448,8 @@ scroll_editor:
   ovl1:6D14  06F14  e88311         call   ovl1_7e9a
   ovl1:6D17  06F17  e809b6         call   rt_2323
   ovl1:6D1A  06F1A  33c0           xor    ax, ax
-  ovl1:6D1C  06F1C  89063105       mov    word ptr [0x531], ax
-  ovl1:6D20  06F20  89062f05       mov    word ptr [0x52f], ax
+  ovl1:6D1C  06F1C  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl1:6D20  06F20  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:6D24  06F24  8be5           mov    sp, bp
   ovl1:6D26  06F26  5d             pop    bp
   ovl1:6D27  06F27  c3             ret
@@ -13569,7 +13572,7 @@ ovl1_77b8:
   ovl1:77B8  079B8  55             push   bp
   ovl1:77B9  079B9  8bec           mov    bp, sp
   ovl1:77BB  079BB  33c0           xor    ax, ax
-  ovl1:77BD  079BD  89062f05       mov    word ptr [0x52f], ax
+  ovl1:77BD  079BD  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:77C1  079C1  813ef5a60100   cmp    word ptr [0xa6f5], 1         ; [A6F5] data disk in drive B flag
   ovl1:77C7  079C7  7505           jne    0x77ce
   ovl1:77C9  079C9  e80d00         call   ovl1_77d9
@@ -13592,7 +13595,7 @@ ovl1_77d9:
   ovl1:77E7  079E7  50             push   ax
   ovl1:77E8  079E8  e87aad         call   print_string
   ovl1:77EB  079EB  5f             pop    di
-  ovl1:77EC  079EC  8b062f05       mov    ax, word ptr [0x52f]
+  ovl1:77EC  079EC  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl1:77F0  079F0  0bc0           or     ax, ax
   ovl1:77F2  079F2  7502           jne    0x77f6
   ovl1:77F4  079F4  ebf6           jmp    0x77ec
@@ -14056,16 +14059,16 @@ campaign_source:
   ovl1:7C10  07E10  b80100         mov    ax, 1
   ovl1:7C13  07E13  0bc0           or     ax, ax
   ovl1:7C15  07E15  7429           je     0x7c40
-  ovl1:7C17  07E17  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl1:7C17  07E17  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl1:7C1D  07E1D  74f8           je     0x7c17
-  ovl1:7C1F  07E1F  813e2f051f00   cmp    word ptr [0x52f], 0x1f
+  ovl1:7C1F  07E1F  813e2f051f00   cmp    word ptr [0x52f], 0x1f       ; [052F] key held (scan code, 0 none)
   ovl1:7C25  07E25  750a           jne    0x7c31
   ovl1:7C27  07E27  e87f89         call   beep_low
   ovl1:7C2A  07E2A  b80200         mov    ax, 2
   ovl1:7C2D  07E2D  8be5           mov    sp, bp
   ovl1:7C2F  07E2F  5d             pop    bp
   ovl1:7C30  07E30  c3             ret
-  ovl1:7C31  07E31  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl1:7C31  07E31  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl1:7C37  07E37  7505           jne    0x7c3e
   ovl1:7C39  07E39  e86d89         call   beep_low
   ovl1:7C3C  07E3C  eb02           jmp    0x7c40
@@ -14204,7 +14207,7 @@ campaign_source:
   ovl1:7D8A  07F8A  8be5           mov    sp, bp
   ovl1:7D8C  07F8C  5d             pop    bp
   ovl1:7D8D  07F8D  c3             ret
-  ovl1:7D8E  07F8E  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl1:7D8E  07F8E  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl1:7D92  07F92  0bc0           or     ax, ax
   ovl1:7D94  07F94  7413           je     0x7da9
   ovl1:7D96  07F96  33c0           xor    ax, ax
@@ -14230,7 +14233,7 @@ campaign_source:
   ovl1:7DBB  07FBB  c3             ret
   ovl1:7DBC  07FBC  33c0           xor    ax, ax
   ovl1:7DBE  07FBE  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
-  ovl1:7DC2  07FC2  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl1:7DC2  07FC2  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl1:7DC6  07FC6  0bc0           or     ax, ax
   ovl1:7DC8  07FC8  7407           je     0x7dd1
   ovl1:7DCA  07FCA  b80200         mov    ax, 2
@@ -15572,8 +15575,8 @@ ovl2_874e:
   ovl2:88E4  08AE4  ebcf           jmp    0x88b5
   ovl2:88E6  08AE6  e83a9a         call   rt_2323
   ovl2:88E9  08AE9  33c0           xor    ax, ax
-  ovl2:88EB  08AEB  89063105       mov    word ptr [0x531], ax
-  ovl2:88EF  08AEF  89062f05       mov    word ptr [0x52f], ax
+  ovl2:88EB  08AEB  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl2:88EF  08AEF  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl2:88F3  08AF3  8be5           mov    sp, bp
   ovl2:88F5  08AF5  5d             pop    bp
   ovl2:88F6  08AF6  c3             ret
@@ -15854,8 +15857,8 @@ squads_editor:
   ovl3:30FE  08D0E  b85000         mov    ax, 0x50
   ovl3:3101  08D11  89060fa7       mov    word ptr [0xa70f], ax        ; [A70F] rule: enemy seen
   ovl3:3105  08D15  33c0           xor    ax, ax
-  ovl3:3107  08D17  89063105       mov    word ptr [0x531], ax
-  ovl3:310B  08D1B  89062f05       mov    word ptr [0x52f], ax
+  ovl3:3107  08D17  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:310B  08D1B  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl3:310F  08D1F  8906cba8       mov    word ptr [0xa8cb], ax
   ovl3:3113  08D23  8906c9a8       mov    word ptr [0xa8c9], ax
   ovl3:3117  08D27  8906d4a6       mov    word ptr [0xa6d4], ax
@@ -15952,7 +15955,7 @@ squads_editor:
   ovl3:31F3  08E03  50             push   ax
   ovl3:31F4  08E04  e86ef3         call   print_string
   ovl3:31F7  08E07  5f             pop    di
-  ovl3:31F8  08E08  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl3:31F8  08E08  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl3:31FE  08E0E  74f8           je     0x31f8
   ovl3:3200  08E10  e8a6d3         call   beep_low
   ovl3:3203  08E13  b81700         mov    ax, 0x17
@@ -16002,9 +16005,9 @@ squads_editor:
   ovl3:326F  08E7F  50             push   ax
   ovl3:3270  08E80  e815ef         call   delay
   ovl3:3273  08E83  5f             pop    di
-  ovl3:3274  08E84  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl3:3274  08E84  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl3:327A  08E8A  74f8           je     0x3274
-  ovl3:327C  08E8C  813e2f051500   cmp    word ptr [0x52f], 0x15
+  ovl3:327C  08E8C  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl3:3282  08E92  7514           jne    0x3298
   ovl3:3284  08E94  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl3:3288  08E98  059001         add    ax, 0x190
@@ -16014,7 +16017,7 @@ squads_editor:
   ovl3:3290  08EA0  b86400         mov    ax, 0x64
   ovl3:3293  08EA3  8946f7         mov    word ptr [bp - 9], ax
   ovl3:3296  08EA6  eb7a           jmp    0x3312
-  ovl3:3298  08EA8  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl3:3298  08EA8  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl3:329E  08EAE  7514           jne    0x32b4
   ovl3:32A0  08EB0  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl3:32A4  08EB4  050c02         add    ax, 0x20c
@@ -16038,20 +16041,20 @@ squads_editor:
   ovl3:32CD  08EDD  50             push   ax
   ovl3:32CE  08EDE  e8b7ee         call   delay
   ovl3:32D1  08EE1  5f             pop    di
-  ovl3:32D2  08EE2  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl3:32D2  08EE2  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl3:32D8  08EE8  74f8           je     0x32d2
-  ovl3:32DA  08EEA  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl3:32DA  08EEA  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl3:32E0  08EF0  750c           jne    0x32ee
   ovl3:32E2  08EF2  33c0           xor    ax, ax
-  ovl3:32E4  08EF4  89063105       mov    word ptr [0x531], ax
+  ovl3:32E4  08EF4  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl3:32E8  08EF8  e82301         call   ovl3_340e
   ovl3:32EB  08EFB  e933ff         jmp    0x3221
-  ovl3:32EE  08EFE  813e2f051500   cmp    word ptr [0x52f], 0x15
+  ovl3:32EE  08EFE  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl3:32F4  08F04  75c0           jne    0x32b6
   ovl3:32F6  08F06  33c0           xor    ax, ax
   ovl3:32F8  08F08  8946f7         mov    word ptr [bp - 9], ax
-  ovl3:32FB  08F0B  89063105       mov    word ptr [0x531], ax
-  ovl3:32FF  08F0F  89062f05       mov    word ptr [0x52f], ax
+  ovl3:32FB  08F0B  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:32FF  08F0F  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl3:3303  08F13  b017           mov    al, 0x17
   ovl3:3305  08F15  50             push   ax
   ovl3:3306  08F16  e8d5eb         call   clear_text_row
@@ -17236,14 +17239,14 @@ ovl3_3e69:
   ovl3:3E6F  09A7F  e8b7c6         call   rt_0529
   ovl3:3E72  09A82  b80200         mov    ax, 2
   ovl3:3E75  09A85  8906d0a5       mov    word ptr [0xa5d0], ax
-  ovl3:3E79  09A89  813e31054600   cmp    word ptr [0x531], 0x46
+  ovl3:3E79  09A89  813e31054600   cmp    word ptr [0x531], 0x46       ; [0531] key pressed (scan code, latched)
   ovl3:3E7F  09A8F  7e08           jle    0x3e89
-  ovl3:3E81  09A91  8b062f05       mov    ax, word ptr [0x52f]
-  ovl3:3E85  09A95  89063105       mov    word ptr [0x531], ax
-  ovl3:3E89  09A99  8b063105       mov    ax, word ptr [0x531]
+  ovl3:3E81  09A91  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
+  ovl3:3E85  09A95  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:3E89  09A99  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl3:3E8D  09A9D  8946fe         mov    word ptr [bp - 2], ax
-  ovl3:3E90  09AA0  8b062f05       mov    ax, word ptr [0x52f]
-  ovl3:3E94  09AA4  89063105       mov    word ptr [0x531], ax
+  ovl3:3E90  09AA0  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
+  ovl3:3E94  09AA4  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl3:3E98  09AA8  817efe0000     cmp    word ptr [bp - 2], 0
   ovl3:3E9D  09AAD  7546           jne    0x3ee5
   ovl3:3E9F  09AAF  e84a00         call   ovl3_3eec
@@ -17743,7 +17746,7 @@ ovl3_430f:
   ovl3:4393  09FA3  eb03           jmp    0x4398
   ovl3:4395  09FA5  e811c2         call   beep_low
   ovl3:4398  09FA8  e854f5         call   ovl3_38ef
-  ovl3:439B  09FAB  8b062f05       mov    ax, word ptr [0x52f]
+  ovl3:439B  09FAB  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl3:439F  09FAF  0bc0           or     ax, ax
   ovl3:43A1  09FB1  7408           je     0x43ab
   ovl3:43A3  09FB3  b8e803         mov    ax, 0x3e8
@@ -17808,7 +17811,7 @@ ovl3_430f:
   ovl3:4436  0A046  eb03           jmp    0x443b
   ovl3:4438  0A048  e86ec1         call   beep_low
   ovl3:443B  0A04B  e8e5f4         call   ovl3_3923
-  ovl3:443E  0A04E  8b062f05       mov    ax, word ptr [0x52f]
+  ovl3:443E  0A04E  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl3:4442  0A052  0bc0           or     ax, ax
   ovl3:4444  0A054  7408           je     0x444e
   ovl3:4446  0A056  b8e803         mov    ax, 0x3e8
@@ -18291,8 +18294,8 @@ ovl3_463a:
   ovl3:4880  0A490  e805d9         call   delay
   ovl3:4883  0A493  5f             pop    di
   ovl3:4884  0A494  33c0           xor    ax, ax
-  ovl3:4886  0A496  89063105       mov    word ptr [0x531], ax
-  ovl3:488A  0A49A  89062f05       mov    word ptr [0x52f], ax
+  ovl3:4886  0A496  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:488A  0A49A  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl3:488E  0A49E  e8d8f5         call   ovl3_3e69
   ovl3:4891  0A4A1  8846f8         mov    byte ptr [bp - 8], al
   ovl3:4894  0A4A4  98             cwde
@@ -18321,8 +18324,8 @@ ovl3_463a:
   ovl3:48CB  0A4DB  033606a5       add    si, word ptr [0xa506]        ; [A506] selected squad
   ovl3:48CF  0A4DF  fe0c           dec    byte ptr [si]
   ovl3:48D1  0A4E1  33c0           xor    ax, ax
-  ovl3:48D3  0A4E3  89063105       mov    word ptr [0x531], ax
-  ovl3:48D7  0A4E7  89062f05       mov    word ptr [0x52f], ax
+  ovl3:48D3  0A4E3  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:48D7  0A4E7  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl3:48DB  0A4EB  8a46f8         mov    al, byte ptr [bp - 8]
   ovl3:48DE  0A4EE  98             cwde
   ovl3:48DF  0A4EF  83f830         cmp    ax, 0x30
@@ -18346,8 +18349,8 @@ ovl3_463a:
   ovl3:490D  0A51D  033606a5       add    si, word ptr [0xa506]        ; [A506] selected squad
   ovl3:4911  0A521  fe0c           dec    byte ptr [si]
   ovl3:4913  0A523  33c0           xor    ax, ax
-  ovl3:4915  0A525  89063105       mov    word ptr [0x531], ax
-  ovl3:4919  0A529  89062f05       mov    word ptr [0x52f], ax
+  ovl3:4915  0A525  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:4919  0A529  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl3:491D  0A52D  8a46f8         mov    al, byte ptr [bp - 8]
   ovl3:4920  0A530  98             cwde
   ovl3:4921  0A531  83f81e         cmp    ax, 0x1e
@@ -18371,8 +18374,8 @@ ovl3_463a:
   ovl3:494F  0A55F  033606a5       add    si, word ptr [0xa506]        ; [A506] selected squad
   ovl3:4953  0A563  fe0c           dec    byte ptr [si]
   ovl3:4955  0A565  33c0           xor    ax, ax
-  ovl3:4957  0A567  89063105       mov    word ptr [0x531], ax
-  ovl3:495B  0A56B  89062f05       mov    word ptr [0x52f], ax
+  ovl3:4957  0A567  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:495B  0A56B  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl3:495F  0A56F  8a46f8         mov    al, byte ptr [bp - 8]
   ovl3:4962  0A572  98             cwde
   ovl3:4963  0A573  83f81f         cmp    ax, 0x1f
@@ -18396,8 +18399,8 @@ ovl3_463a:
   ovl3:4991  0A5A1  033606a5       add    si, word ptr [0xa506]        ; [A506] selected squad
   ovl3:4995  0A5A5  fe0c           dec    byte ptr [si]
   ovl3:4997  0A5A7  33c0           xor    ax, ax
-  ovl3:4999  0A5A9  89063105       mov    word ptr [0x531], ax
-  ovl3:499D  0A5AD  89062f05       mov    word ptr [0x52f], ax
+  ovl3:4999  0A5A9  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl3:499D  0A5AD  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl3:49A1  0A5B1  8a46f8         mov    al, byte ptr [bp - 8]
   ovl3:49A4  0A5B4  98             cwde
   ovl3:49A5  0A5B5  83f817         cmp    ax, 0x17
@@ -18682,8 +18685,8 @@ map_maker:
   ovl4:310F  0A80F  8906c7a8       mov    word ptr [0xa8c7], ax
   ovl4:3113  0A813  8906c9a8       mov    word ptr [0xa8c9], ax
   ovl4:3117  0A817  8906d2a6       mov    word ptr [0xa6d2], ax
-  ovl4:311B  0A81B  89063105       mov    word ptr [0x531], ax
-  ovl4:311F  0A81F  89062f05       mov    word ptr [0x52f], ax
+  ovl4:311B  0A81B  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl4:311F  0A81F  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl4:3123  0A823  b8680b         mov    ax, 0xb68
   ovl4:3126  0A826  05803e         add    ax, 0x3e80
   ovl4:3129  0A829  8906cea6       mov    word ptr [0xa6ce], ax        ; [A6CE] file read buffer pointer
@@ -18852,7 +18855,7 @@ map_maker:
   ovl4:3294  0A994  b80100         mov    ax, 1
   ovl4:3297  0A997  8906c0a5       mov    word ptr [0xa5c0], ax        ; [A5C0] text rows under the map
   ovl4:329B  0A99B  33c0           xor    ax, ax
-  ovl4:329D  0A99D  89063105       mov    word ptr [0x531], ax
+  ovl4:329D  0A99D  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl4:32A1  0A9A1  e805d3         call   beep_low
   ovl4:32A4  0A9A4  b80100         mov    ax, 1
   ovl4:32A7  0A9A7  8946fb         mov    word ptr [bp - 5], ax
@@ -18967,20 +18970,20 @@ map_maker:
   ovl4:33AE  0AAAE  50             push   ax
   ovl4:33AF  0AAAF  e8d6ed         call   delay
   ovl4:33B2  0AAB2  5f             pop    di
-  ovl4:33B3  0AAB3  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl4:33B3  0AAB3  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl4:33B9  0AAB9  74f8           je     0x33b3
-  ovl4:33BB  0AABB  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl4:33BB  0AABB  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl4:33C1  0AAC1  750c           jne    0x33cf
   ovl4:33C3  0AAC3  33c0           xor    ax, ax
-  ovl4:33C5  0AAC5  89063105       mov    word ptr [0x531], ax
+  ovl4:33C5  0AAC5  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl4:33C9  0AAC9  e80f01         call   ovl4_34db
   ovl4:33CC  0AACC  e947ff         jmp    0x3316
-  ovl4:33CF  0AACF  813e2f051500   cmp    word ptr [0x52f], 0x15
+  ovl4:33CF  0AACF  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl4:33D5  0AAD5  75c0           jne    0x3397
   ovl4:33D7  0AAD7  33c0           xor    ax, ax
   ovl4:33D9  0AAD9  8946f9         mov    word ptr [bp - 7], ax
-  ovl4:33DC  0AADC  89062f05       mov    word ptr [0x52f], ax
-  ovl4:33E0  0AAE0  89063105       mov    word ptr [0x531], ax
+  ovl4:33DC  0AADC  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
+  ovl4:33E0  0AAE0  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl4:33E4  0AAE4  b017           mov    al, 0x17
   ovl4:33E6  0AAE6  50             push   ax
   ovl4:33E7  0AAE7  e8f4ea         call   clear_text_row
@@ -19388,10 +19391,10 @@ ovl4_37f6:
   ovl4:37FC  0AEFC  e82acd         call   rt_0529
   ovl4:37FF  0AEFF  b86400         mov    ax, 0x64
   ovl4:3802  0AF02  8906d0a5       mov    word ptr [0xa5d0], ax
-  ovl4:3806  0AF06  8b063105       mov    ax, word ptr [0x531]
+  ovl4:3806  0AF06  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl4:380A  0AF0A  8946fe         mov    word ptr [bp - 2], ax
   ovl4:380D  0AF0D  33c0           xor    ax, ax
-  ovl4:380F  0AF0F  89063105       mov    word ptr [0x531], ax
+  ovl4:380F  0AF0F  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl4:3813  0AF13  817efe0000     cmp    word ptr [bp - 2], 0
   ovl4:3818  0AF18  7554           jne    0x386e
   ovl4:381A  0AF1A  e85800         call   ovl4_3875
@@ -19981,8 +19984,8 @@ formation_editor:
   ovl5:32D5  0B4A5  33c0           xor    ax, ax
   ovl5:32D7  0B4A7  8906c7a8       mov    word ptr [0xa8c7], ax
   ovl5:32DB  0B4AB  8906d3a8       mov    word ptr [0xa8d3], ax
-  ovl5:32DF  0B4AF  89063105       mov    word ptr [0x531], ax
-  ovl5:32E3  0B4B3  89062f05       mov    word ptr [0x52f], ax
+  ovl5:32DF  0B4AF  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl5:32E3  0B4B3  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl5:32E7  0B4B7  b001           mov    al, 1
   ovl5:32E9  0B4B9  8906d1a8       mov    word ptr [0xa8d1], ax
   ovl5:32ED  0B4BD  8906d2a6       mov    word ptr [0xa6d2], ax
@@ -20900,9 +20903,9 @@ ovl5_3b5b:
   ovl5:3B8E  0BD5E  50             push   ax
   ovl5:3B8F  0BD5F  e8d3e9         call   print_string
   ovl5:3B92  0BD62  5f             pop    di
-  ovl5:3B93  0BD63  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl5:3B93  0BD63  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl5:3B99  0BD69  74f8           je     0x3b93
-  ovl5:3B9B  0BD6B  813e2f051500   cmp    word ptr [0x52f], 0x15
+  ovl5:3B9B  0BD6B  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl5:3BA1  0BD71  7514           jne    0x3bb7
   ovl5:3BA3  0BD73  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl5:3BA7  0BD77  050906         add    ax, 0x609
@@ -20912,7 +20915,7 @@ ovl5_3b5b:
   ovl5:3BAF  0BD7F  e8bc08         call   ovl5_446e
   ovl5:3BB2  0BD82  e89909         call   ovl5_454e
   ovl5:3BB5  0BD85  eb08           jmp    0x3bbf
-  ovl5:3BB7  0BD87  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl5:3BB7  0BD87  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl5:3BBD  0BD8D  75c0           jne    0x3b7f
   ovl5:3BBF  0BD8F  b80100         mov    ax, 1
   ovl5:3BC2  0BD92  8be5           mov    sp, bp
@@ -21268,14 +21271,14 @@ ovl5_3f90:
   ovl5:3F96  0C166  e890c5         call   rt_0529
   ovl5:3F99  0C169  b86400         mov    ax, 0x64
   ovl5:3F9C  0C16C  8906d0a5       mov    word ptr [0xa5d0], ax
-  ovl5:3FA0  0C170  813e31054600   cmp    word ptr [0x531], 0x46
+  ovl5:3FA0  0C170  813e31054600   cmp    word ptr [0x531], 0x46       ; [0531] key pressed (scan code, latched)
   ovl5:3FA6  0C176  7e08           jle    0x3fb0
-  ovl5:3FA8  0C178  8b062f05       mov    ax, word ptr [0x52f]
-  ovl5:3FAC  0C17C  89063105       mov    word ptr [0x531], ax
-  ovl5:3FB0  0C180  8b063105       mov    ax, word ptr [0x531]
+  ovl5:3FA8  0C178  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
+  ovl5:3FAC  0C17C  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl5:3FB0  0C180  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl5:3FB4  0C184  8946fe         mov    word ptr [bp - 2], ax
-  ovl5:3FB7  0C187  8b062f05       mov    ax, word ptr [0x52f]
-  ovl5:3FBB  0C18B  89063105       mov    word ptr [0x531], ax
+  ovl5:3FB7  0C187  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
+  ovl5:3FBB  0C18B  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl5:3FBF  0C18F  817efe0000     cmp    word ptr [bp - 2], 0
   ovl5:3FC4  0C194  7511           jne    0x3fd7
   ovl5:3FC6  0C196  e81500         call   ovl5_3fde
@@ -22223,7 +22226,7 @@ campaign_play:
   ovl6:318F  0C9EF  ff46f8         inc    word ptr [bp - 8]
   ovl6:3192  0C9F2  ebf1           jmp    0x3185
   ovl6:3194  0C9F4  e85f07         call   play_end_sound
-  ovl6:3197  0C9F7  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:3197  0C9F7  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:319B  0C9FB  0bc0           or     ax, ax
   ovl6:319D  0C9FD  7407           je     0x31a6
   ovl6:319F  0C9FF  b84a00         mov    ax, 0x4a
@@ -22291,10 +22294,10 @@ campaign_play:
   ovl6:322D  0CA8D  8be5           mov    sp, bp
   ovl6:322F  0CA8F  5d             pop    bp
   ovl6:3230  0CA90  c3             ret
-  ovl6:3231  0CA91  8b063105       mov    ax, word ptr [0x531]
+  ovl6:3231  0CA91  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl6:3235  0CA95  0bc0           or     ax, ax
   ovl6:3237  0CA97  740f           je     0x3248
-  ovl6:3239  0CA99  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:3239  0CA99  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:323D  0CA9D  0bc0           or     ax, ax
   ovl6:323F  0CA9F  7407           je     0x3248
   ovl6:3241  0CAA1  b80100         mov    ax, 1
@@ -22394,11 +22397,11 @@ campaign_play:
   ovl6:333E  0CB9E  50             push   ax
   ovl6:333F  0CB9F  e846ee         call   delay
   ovl6:3342  0CBA2  5f             pop    di
-  ovl6:3343  0CBA3  8b062f05       mov    ax, word ptr [0x52f]
+  ovl6:3343  0CBA3  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl6:3347  0CBA7  0bc0           or     ax, ax
   ovl6:3349  0CBA9  7502           jne    0x334d
   ovl6:334B  0CBAB  ebf6           jmp    0x3343
-  ovl6:334D  0CBAD  813e2f051500   cmp    word ptr [0x52f], 0x15
+  ovl6:334D  0CBAD  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl6:3353  0CBB3  7528           jne    0x337d
   ovl6:3355  0CBB5  e828dc         call   text_area_reset
   ovl6:3358  0CBB8  ff36bea5       push   word ptr [0xa5be]
@@ -22416,7 +22419,7 @@ campaign_play:
   ovl6:3373  0CBD3  b80b00         mov    ax, 0xb
   ovl6:3376  0CBD6  8906f7a6       mov    word ptr [0xa6f7], ax        ; [A6F7] campaign result code
   ovl6:337A  0CBDA  e98f00         jmp    0x340c
-  ovl6:337D  0CBDD  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl6:337D  0CBDD  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl6:3383  0CBE3  75be           jne    0x3343
   ovl6:3385  0CBE5  e82438         call   show_command_line
   ovl6:3388  0CBE8  eb4a           jmp    0x33d4
@@ -22859,7 +22862,7 @@ check_victory:
   ovl6:37B6  0D016  b80100         mov    ax, 1
   ovl6:37B9  0D019  0bc0           or     ax, ax
   ovl6:37BB  0D01B  7435           je     0x37f2
-  ovl6:37BD  0D01D  813e2f051500   cmp    word ptr [0x52f], 0x15
+  ovl6:37BD  0D01D  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl6:37C3  0D023  7516           jne    0x37db
   ovl6:37C5  0D025  e8e1cd         call   beep_low
   ovl6:37C8  0D028  b8cf01         mov    ax, 0x1cf                    ; DS:01CF "Yes"
@@ -22871,7 +22874,7 @@ check_victory:
   ovl6:37D7  0D037  8be5           mov    sp, bp
   ovl6:37D9  0D039  5d             pop    bp
   ovl6:37DA  0D03A  c3             ret
-  ovl6:37DB  0D03B  813e2f053100   cmp    word ptr [0x52f], 0x31
+  ovl6:37DB  0D03B  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl6:37E1  0D041  750d           jne    0x37f0
   ovl6:37E3  0D043  e8c3cd         call   beep_low
   ovl6:37E6  0D046  b8d301         mov    ax, 0x1d3
@@ -22996,7 +22999,7 @@ game_over:
   ovl6:38D6  0D136  e8d908         call   ovl6_41b2
   ovl6:38D9  0D139  0bc0           or     ax, ax
   ovl6:38DB  0D13B  7508           jne    0x38e5
-  ovl6:38DD  0D13D  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:38DD  0D13D  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:38E1  0D141  0bc0           or     ax, ax
   ovl6:38E3  0D143  7402           je     0x38e7
   ovl6:38E5  0D145  eb0b           jmp    0x38f2
@@ -23291,7 +23294,7 @@ campaign_input:
   ovl6:3B8D  0D3ED  813eedaa6300   cmp    word ptr [0xaaed], 0x63      ; [AAED] key scan code
   ovl6:3B93  0D3F3  7503           jne    0x3b98
   ovl6:3B95  0D3F5  e88406         call   poll_input
-  ovl6:3B98  0D3F8  813ed8a60200   cmp    word ptr [0xa6d8], 2
+  ovl6:3B98  0D3F8  813ed8a60200   cmp    word ptr [0xa6d8], 2         ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:3B9E  0D3FE  750d           jne    0x3bad
   ovl6:3BA0  0D400  b82c00         mov    ax, 0x2c
   ovl6:3BA3  0D403  8906edaa       mov    word ptr [0xaaed], ax        ; [AAED] key scan code
@@ -23301,7 +23304,7 @@ campaign_input:
   ovl6:3BB3  0D413  751a           jne    0x3bcf
   ovl6:3BB5  0D415  813eedaa1c00   cmp    word ptr [0xaaed], 0x1c      ; [AAED] key scan code
   ovl6:3BBB  0D41B  7408           je     0x3bc5
-  ovl6:3BBD  0D41D  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:3BBD  0D41D  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:3BC1  0D421  0bc0           or     ax, ax
   ovl6:3BC3  0D423  7407           je     0x3bcc
   ovl6:3BC5  0D425  b80300         mov    ax, 3
@@ -23593,7 +23596,7 @@ campaign_input:
   ovl6:3EED  0D74D  e98700         jmp    0x3f77
   ovl6:3EF0  0D750  813e6a880200   cmp    word ptr [0x886a], 2         ; [886A] view top (line pairs)
   ovl6:3EF6  0D756  7d11           jge    0x3f09
-  ovl6:3EF8  0D758  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:3EF8  0D758  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:3EFC  0D75C  0bc0           or     ax, ax
   ovl6:3EFE  0D75E  7406           je     0x3f06
   ovl6:3F00  0D760  33c0           xor    ax, ax
@@ -23639,7 +23642,7 @@ campaign_input:
   ovl6:3F83  0D7E3  e98400         jmp    0x400a
   ovl6:3F86  0D7E6  813e6a886c00   cmp    word ptr [0x886a], 0x6c      ; [886A] view top (line pairs)
   ovl6:3F8C  0D7EC  7c11           jl     0x3f9f
-  ovl6:3F8E  0D7EE  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:3F8E  0D7EE  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:3F92  0D7F2  0bc0           or     ax, ax
   ovl6:3F94  0D7F4  7406           je     0x3f9c
   ovl6:3F96  0D7F6  33c0           xor    ax, ax
@@ -23826,17 +23829,17 @@ ovl6_41b2:
   ovl6:41C5  0DA25  7417           je     0x41de
   ovl6:41C7  0DA27  813e2fa96300   cmp    word ptr [0xa92f], 0x63      ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl6:41CD  0DA2D  740f           je     0x41de
-  ovl6:41CF  0DA2F  813e31050000   cmp    word ptr [0x531], 0
+  ovl6:41CF  0DA2F  813e31050000   cmp    word ptr [0x531], 0          ; [0531] key pressed (scan code, latched)
   ovl6:41D5  0DA35  7507           jne    0x41de
   ovl6:41D7  0DA37  8b46fe         mov    ax, word ptr [bp - 2]
-  ovl6:41DA  0DA3A  89063105       mov    word ptr [0x531], ax
-  ovl6:41DE  0DA3E  8b062f05       mov    ax, word ptr [0x52f]
+  ovl6:41DA  0DA3A  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl6:41DE  0DA3E  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl6:41E2  0DA42  0bc0           or     ax, ax
   ovl6:41E4  0DA44  7403           je     0x41e9
   ovl6:41E6  0DA46  b80100         mov    ax, 1
   ovl6:41E9  0DA49  0bc0           or     ax, ax
   ovl6:41EB  0DA4B  7513           jne    0x4200
-  ovl6:41ED  0DA4D  8b063105       mov    ax, word ptr [0x531]
+  ovl6:41ED  0DA4D  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl6:41F1  0DA51  0bc0           or     ax, ax
   ovl6:41F3  0DA53  7403           je     0x41f8
   ovl6:41F5  0DA55  b80100         mov    ax, 1
@@ -23856,47 +23859,47 @@ clear_keys:
   ovl6:4208  0DA68  8bec           mov    bp, sp
   ovl6:420A  0DA6A  33c0           xor    ax, ax
   ovl6:420C  0DA6C  8906edaa       mov    word ptr [0xaaed], ax        ; [AAED] key scan code
-  ovl6:4210  0DA70  89063105       mov    word ptr [0x531], ax
-  ovl6:4214  0DA74  89062f05       mov    word ptr [0x52f], ax
+  ovl6:4210  0DA70  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl6:4214  0DA74  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl6:4218  0DA78  8be5           mov    sp, bp
   ovl6:421A  0DA7A  5d             pop    bp
   ovl6:421B  0DA7B  c3             ret
 
 ; ---- poll_input   (called from 7 places)
-;      Read the key ([AAED], scan code); cursor keys repeat while held
+;      Read the key ([AAED], scan code); cursor keys repeat while held; the demo holds its key, 1 in 32 a new - or +
 poll_input:
   ovl6:421C  0DA7C  55             push   bp
   ovl6:421D  0DA7D  8bec           mov    bp, sp
   ovl6:421F  0DA7F  e807c3         call   rt_0529
   ovl6:4222  0DA82  b80200         mov    ax, 2
   ovl6:4225  0DA85  8906d0a5       mov    word ptr [0xa5d0], ax
-  ovl6:4229  0DA89  813e31054600   cmp    word ptr [0x531], 0x46
+  ovl6:4229  0DA89  813e31054600   cmp    word ptr [0x531], 0x46       ; [0531] key pressed (scan code, latched)
   ovl6:422F  0DA8F  7e10           jle    0x4241
-  ovl6:4231  0DA91  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:4231  0DA91  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:4235  0DA95  0bc0           or     ax, ax
   ovl6:4237  0DA97  7508           jne    0x4241
-  ovl6:4239  0DA99  8b062f05       mov    ax, word ptr [0x52f]
-  ovl6:423D  0DA9D  89063105       mov    word ptr [0x531], ax
-  ovl6:4241  0DAA1  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:4239  0DA99  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
+  ovl6:423D  0DA9D  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl6:4241  0DAA1  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:4245  0DAA5  0bc0           or     ax, ax
   ovl6:4247  0DAA7  742a           je     0x4273
   ovl6:4249  0DAA9  e85ede         call   random
   ovl6:424C  0DAAC  83f803         cmp    ax, 3
   ovl6:424F  0DAAF  7e0a           jle    0x425b
   ovl6:4251  0DAB1  8b06edaa       mov    ax, word ptr [0xaaed]        ; [AAED] key scan code
-  ovl6:4255  0DAB5  89063105       mov    word ptr [0x531], ax
+  ovl6:4255  0DAB5  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl6:4259  0DAB9  eb18           jmp    0x4273
   ovl6:425B  0DABB  813e35050100   cmp    word ptr [0x535], 1          ; [0535] random value
   ovl6:4261  0DAC1  7e09           jle    0x426c
   ovl6:4263  0DAC3  b84a00         mov    ax, 0x4a
-  ovl6:4266  0DAC6  89063105       mov    word ptr [0x531], ax
+  ovl6:4266  0DAC6  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl6:426A  0DACA  eb07           jmp    0x4273
   ovl6:426C  0DACC  b84e00         mov    ax, 0x4e
-  ovl6:426F  0DACF  89063105       mov    word ptr [0x531], ax
-  ovl6:4273  0DAD3  8b063105       mov    ax, word ptr [0x531]
+  ovl6:426F  0DACF  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl6:4273  0DAD3  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl6:4277  0DAD7  8906edaa       mov    word ptr [0xaaed], ax        ; [AAED] key scan code
-  ovl6:427B  0DADB  8b062f05       mov    ax, word ptr [0x52f]
-  ovl6:427F  0DADF  89063105       mov    word ptr [0x531], ax
+  ovl6:427B  0DADB  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
+  ovl6:427F  0DADF  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl6:4283  0DAE3  8b06edaa       mov    ax, word ptr [0xaaed]        ; [AAED] key scan code
   ovl6:4287  0DAE7  0bc0           or     ax, ax
   ovl6:4289  0DAE9  7516           jne    0x42a1
@@ -26447,11 +26450,11 @@ msg_encounter:
   ovl6:5AA2  0F302  813e2fa90100   cmp    word ptr [0xa92f], 1         ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl6:5AA8  0F308  7503           jne    0x5aad
   ovl6:5AAA  0F30A  e83012         call   show_squad_commands
-  ovl6:5AAD  0F30D  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:5AAD  0F30D  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:5AB1  0F311  0bc0           or     ax, ax
   ovl6:5AB3  0F313  740e           je     0x5ac3
   ovl6:5AB5  0F315  b80200         mov    ax, 2
-  ovl6:5AB8  0F318  8906d8a6       mov    word ptr [0xa6d8], ax
+  ovl6:5AB8  0F318  8906d8a6       mov    word ptr [0xa6d8], ax        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:5ABC  0F31C  8b4604         mov    ax, word ptr [bp + 4]
   ovl6:5ABF  0F31F  890606a5       mov    word ptr [0xa506], ax        ; [A506] selected squad
   ovl6:5AC3  0F323  8be5           mov    sp, bp
@@ -26779,7 +26782,7 @@ print_map_region:
   ovl6:5D69  0F5C9  5f             pop    di
   ovl6:5D6A  0F5CA  b80100         mov    ax, 1
   ovl6:5D6D  0F5CD  8946fe         mov    word ptr [bp - 2], ax
-  ovl6:5D70  0F5D0  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:5D70  0F5D0  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:5D74  0F5D4  0bc0           or     ax, ax
   ovl6:5D76  0F5D6  7407           je     0x5d7f
   ovl6:5D78  0F5D8  b84a00         mov    ax, 0x4a
@@ -26793,7 +26796,7 @@ print_map_region:
   ovl6:5D8F  0F5EF  5f             pop    di
   ovl6:5D90  0F5F0  b80100         mov    ax, 1
   ovl6:5D93  0F5F3  8946fe         mov    word ptr [bp - 2], ax
-  ovl6:5D96  0F5F6  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl6:5D96  0F5F6  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl6:5D9A  0F5FA  0bc0           or     ax, ax
   ovl6:5D9C  0F5FC  7407           je     0x5da5
   ovl6:5D9E  0F5FE  b84e00         mov    ax, 0x4e
@@ -33185,7 +33188,7 @@ battle:
   ovl7:3FE3  133B3  8904           mov    word ptr [si], ax
   ovl7:3FE5  133B5  ff46f8         inc    word ptr [bp - 8]
   ovl7:3FE8  133B8  ebe2           jmp    0x3fcc
-  ovl7:3FEA  133BA  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl7:3FEA  133BA  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl7:3FEE  133BE  0bc0           or     ax, ax
   ovl7:3FF0  133C0  7414           je     0x4006
   ovl7:3FF2  133C2  b80100         mov    ax, 1
@@ -33207,8 +33210,8 @@ battle:
   ovl7:401A  133EA  8906c7a8       mov    word ptr [0xa8c7], ax
   ovl7:401E  133EE  e83610         call   battle_alive_types
   ovl7:4021  133F1  33c0           xor    ax, ax
-  ovl7:4023  133F3  89063105       mov    word ptr [0x531], ax
-  ovl7:4027  133F7  89062f05       mov    word ptr [0x52f], ax
+  ovl7:4023  133F3  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl7:4027  133F7  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl7:402B  133FB  8906a3ab       mov    word ptr [0xaba3], ax
   ovl7:402F  133FF  8906d5a8       mov    word ptr [0xa8d5], ax
   ovl7:4033  13403  8906d3a8       mov    word ptr [0xa8d3], ax
@@ -33267,7 +33270,7 @@ battle:
   ovl7:40C3  13493  e86924         call   battle_input
   ovl7:40C6  13496  813ed5a86300   cmp    word ptr [0xa8d5], 0x63
   ovl7:40CC  1349C  750f           jne    0x40dd
-  ovl7:40CE  1349E  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl7:40CE  1349E  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl7:40D2  134A2  0bc0           or     ax, ax
   ovl7:40D4  134A4  7407           je     0x40dd
   ovl7:40D6  134A6  b80100         mov    ax, 1
@@ -33494,7 +33497,7 @@ battle:
   ovl7:432E  136FE  e8e4db         call   memset
   ovl7:4331  13701  83c406         add    sp, 6
   ovl7:4334  13704  33c0           xor    ax, ax
-  ovl7:4336  13706  89062f05       mov    word ptr [0x52f], ax
+  ovl7:4336  13706  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl7:433A  1370A  bef4a0         mov    si, 0xa0f4
   ovl7:433D  1370D  8b160ca5       mov    dx, word ptr [0xa50c]
   ovl7:4341  13711  d1e2           shl    dx, 1
@@ -33517,10 +33520,10 @@ battle:
   ovl7:436F  1373F  d1e2           shl    dx, 1
   ovl7:4371  13741  03f2           add    si, dx
   ovl7:4373  13743  8904           mov    word ptr [si], ax
-  ovl7:4375  13745  813ed8a60200   cmp    word ptr [0xa6d8], 2
+  ovl7:4375  13745  813ed8a60200   cmp    word ptr [0xa6d8], 2         ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl7:437B  1374B  7507           jne    0x4384
   ovl7:437D  1374D  b80100         mov    ax, 1
-  ovl7:4380  13750  8906d8a6       mov    word ptr [0xa6d8], ax
+  ovl7:4380  13750  8906d8a6       mov    word ptr [0xa6d8], ax        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl7:4384  13754  33c0           xor    ax, ax
   ovl7:4386  13756  8be5           mov    sp, bp
   ovl7:4388  13758  5d             pop    bp
@@ -35225,7 +35228,7 @@ battle_soldiers:
   ovl7:52C4  14694  8906cda8       mov    word ptr [0xa8cd], ax
   ovl7:52C8  14698  33c0           xor    ax, ax
   ovl7:52CA  1469A  8906cba8       mov    word ptr [0xa8cb], ax
-  ovl7:52CE  1469E  813ed8a60000   cmp    word ptr [0xa6d8], 0
+  ovl7:52CE  1469E  813ed8a60000   cmp    word ptr [0xa6d8], 0         ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl7:52D4  146A4  7511           jne    0x52e7
   ovl7:52D6  146A6  33c0           xor    ax, ax
   ovl7:52D8  146A8  be7bab         mov    si, 0xab7b
@@ -37029,7 +37032,7 @@ battle_input:
   ovl7:653D  1590D  8be5           mov    sp, bp
   ovl7:653F  1590F  5d             pop    bp
   ovl7:6540  15910  c3             ret
-  ovl7:6541  15911  8b06d8a6       mov    ax, word ptr [0xa6d8]
+  ovl7:6541  15911  8b06d8a6       mov    ax, word ptr [0xa6d8]        ; [A6D8] demo (1 running, 2 zoom to an encounter)
   ovl7:6545  15915  0bc0           or     ax, ax
   ovl7:6547  15917  740b           je     0x6554
   ovl7:6549  15919  b86300         mov    ax, 0x63
@@ -37360,12 +37363,12 @@ ovl7_68a9:
   ovl7:68ED  15CBD  0bc0           or     ax, ax
   ovl7:68EF  15CBF  7407           je     0x68f8
   ovl7:68F1  15CC1  8b46fe         mov    ax, word ptr [bp - 2]
-  ovl7:68F4  15CC4  89063105       mov    word ptr [0x531], ax
-  ovl7:68F8  15CC8  8b063105       mov    ax, word ptr [0x531]
+  ovl7:68F4  15CC4  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl7:68F8  15CC8  8b063105       mov    ax, word ptr [0x531]         ; [0531] key pressed (scan code, latched)
   ovl7:68FC  15CCC  8906a3ab       mov    word ptr [0xaba3], ax
   ovl7:6900  15CD0  33c0           xor    ax, ax
-  ovl7:6902  15CD2  89063105       mov    word ptr [0x531], ax
-  ovl7:6906  15CD6  813e2f050000   cmp    word ptr [0x52f], 0
+  ovl7:6902  15CD2  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
+  ovl7:6906  15CD6  813e2f050000   cmp    word ptr [0x52f], 0          ; [052F] key held (scan code, 0 none)
   ovl7:690C  15CDC  7510           jne    0x691e
   ovl7:690E  15CDE  813e53050000   cmp    word ptr [0x553], 0
   ovl7:6914  15CE4  7508           jne    0x691e
