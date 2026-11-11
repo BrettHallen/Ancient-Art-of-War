@@ -2,8 +2,8 @@
 Analysis of my favourite MS-DOS game by Brøderbund Software Inc.<br>
 
 I played two of the games in the series in CGA so this is how I remember them:
-- The Ancient Art of War (1984)
-- The Ancient Art of War at Sea (1987)
+- WAR: The Ancient Art of War (1984)
+- WAS: The Ancient Art of War at Sea (1987)
 
 I never played The Ancient Art of War in the Skies (1992).<br>
 
