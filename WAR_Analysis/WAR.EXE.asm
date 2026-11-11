@@ -138,8 +138,9 @@
 ; rt:0400  disk_prompt                Status-line prompt for disk errors / "Not found", <R>etry or <Q>uit
 ; rt:0468  open_m_file                Open file M (map tiles) on the WAR disk, prompting until found
 ; rt:055B  text_rows_add              text_rows_add(n): grow the text area under the map by n rows ([A5C0]); the map t
-; rt:05A9  beep_low                   PC-speaker beep (500 Hz-ish, short)
-; rt:05CC  beep_high                  PC-speaker beep (higher pitch)
+; rt:05A9  beep_low                   The key beep: timer divisor 500 (2386 Hz) for 400 delay units (about 8 ms)
+; rt:05CC  beep_high                  Beep: divisor 2000 (597 Hz) for 300 units
+; rt:05E9  beep_buzz                  Buzz: divisor 8000 (149 Hz) for 600 units (the cursor comes onto a squad; a wron
 ; rt:0606  set_display_palette        CGA palette registers for the display setting (black/white, composite, rgb) when
 ; rt:06C1  show_one_moment            Clear status row 24 and print "One moment, please"
 ; rt:0859  squad_strength             squad_strength(i, j): battle_edge/2 + 4 x (men_i - men_j); spies only: -67 / +67
@@ -201,13 +202,20 @@
 ; rt:207D  print_spaces               Print N spaces
 ; rt:2096  seed_random                Seed random() from the BIOS tick count; table pointer 0BB8h
 ; rt:20AA  random                     Table-driven pseudo-random number 0-127
+; rt:20CE  speaker_click              Flip the speaker data bit (port 61h bit 1) if sound is on: a click, or the timer
 ; rt:20DC  speaker_freq               Program PIT channel 2 divisor (ports 43h/42h)
 ; rt:20EF  speaker_on                 Enable PC speaker (port 61h) if sound is on
 ; rt:20FD  speaker_off                Disable PC speaker (port 61h)
+; rt:2104  tandy_tone                 tandy_tone(voice, n): SN76496 tone register of a voice (port C0h), f = 3579545 /
 ; rt:2135  tandy_sound                Write to the Tandy 1000 / PCjr SN76489 sound chip (port C0h)
+; rt:2153  tandy_noise                SN76496 noise control (never called)
+; rt:2163  tandy_enable               Port 61h bits 5-6: route the Tandy/PCjr sound chip to the speaker (if sound is o
+; rt:2171  tandy_silence              All four SN76496 voices to attenuation 15, sound routing off
 ; rt:2188  delay                      delay(n): n x m calls of random(), m = 1/2, 1, 1 1/2, 2 ... from [0948]; a delay
 ; rt:22C8  set_cga_palette            BIOS INT 10h AH=0Bh BH=1: choose CGA palette 0 or 1
 ; rt:22E2  set_palette_reg            BIOS INT 10h AH=10h (PCjr/Tandy/EGA palette register)
+; rt:22F5  beep_alert                 Beep: divisor 1000 (1193 Hz) for 1350 units (map messages, battle orders, a surr
+; rt:230C  beep_error                 Beep: divisor 5000 (239 Hz) for 3000 units (disk prompts)
 ; rt:24E7  put_char                   Draw one character with the 8x8 font, handles CR/LF/BS
 ; rt:2565  print_string               print_string(s): put_char for each byte until NUL
 ; rt:260A  dos_open                   dos_open(name, mode): install INT 24h handler, INT 21h AH=3Dh (AH=3Ch create if 
@@ -226,6 +234,7 @@
 ; ovl1:35C4  save_game                  thunk 4. Save the game to file S on the data disk; on failure "Game not saved!" 
 ; ovl1:37E5  load_saved_game            Read the saved game S from the data disk (0x217E bytes of DS)
 ; ovl1:389B  ensure_war_disk            thunk 15. Make sure the WAR disk is in a drive (check_war_disk)
+; ovl1:3977  disk_sound                 A falling sweep, divisor 7000 down to 3000 in steps of 500, 300 units each (disk
 ; ovl1:39AA  show_scroll                thunk 14. Story / text scroll: loads PE or PF
 ; ovl1:3D1E  campaign_menu              thunk 6. Loads PG (scene sheet 1) and O4 (menu text)
 ; ovl1:3E08  campaign_intro             thunk 10. Story scrolls (show_scroll) and choose_opponent
@@ -233,8 +242,11 @@
 ; ovl1:3FA0  clear_all_text_rows        Clear text rows 24 down to 0 (a black screen)
 ; ovl1:3FC3  ovl1_entry_3fc3            thunk 17
 ; ovl1:4000  select_campaign            thunk 11. Copy the campaign file name (table of T0-TA at DS:08C1, 3 bytes each, 
+; ovl1:4125  scroll_erase_line          Clear a scroll line cell by cell with a click each (removing a campaign)
 ; ovl1:4161  show_title_barbarian       Loads PI (title screen with barbarian); 189 turns with no key start the demo: on
 ; ovl1:4545  menu_poll_key              Menus: read a key (or the joystick)
+; ovl1:462C  play_tune                  play_tune(divisors, lengths): one voice on the PC speaker, each note length x 4 
+; ovl1:469F  play_tune_tandy            play_tune_tandy(v0, v1, v2, lengths): three voices on the SN76496 (divisor / 15,
 ; ovl1:4808  choose_opponent            thunk 18. Loads PJ (the 8 opponent portraits)
 ; ovl1:4D08  help_change_select         Row 24: [+] or [-] to change, [Enter] ...
 ; ovl1:4EB2  data_disk                  thunk 7. Data disk handling (ovl1_61fd prints "Unable to use data disk.")
@@ -302,7 +314,7 @@
 ; ovl6:3413  init_cell_costs            Cost of each map cell for the enemy (DS:8B8C) from water, mountains, forest and 
 ; ovl6:3589  check_victory              Count men on each side; win, loss, or the opponent offers to surrender
 ; ovl6:380F  game_over                  Show every squad, "You Won" / "You Lost ... [Enter] to continue", wait in mode 9
-; ovl6:38F6  play_end_sound             Two tones on the PC speaker
+; ovl6:38F6  play_end_sound             Two low tones: divisor 9000 for 5000 units, 8500 for 2500 (only with all sounds 
 ; ovl6:392B  check_flags                Each tick: a squad within 1 column and -1..2 line pairs of the other side's flag
 ; ovl6:3ADE  count_flags                Returns 1 if you have no flags left, 2 if the enemy has none (also picks the ene
 ; ovl6:3B87  campaign_input             Handle one key: commands for the current mode, then cursor movement and scrollin
@@ -385,6 +397,7 @@
 ; ovl7:60B0  tile_is_battle_p7          Map tile 11, 12, 16-18, 58-60, 64 or 70 (battle background P7)
 ; ovl7:61CE  battle_kill                A soldier falls: counts, death script, and perhaps a rout or a lost fort
 ; ovl7:652F  battle_input               Battle command line: choose Archer / Barbarian / Knight / Squad, then Attack, Ba
+; ovl7:6AE9  battle_bugle               battle_bugle(tune): O7 pairs of divisor and length; each call then a rest of 500
 ; ovl7:6C4E  battle_check_target        Is the soldier's target still alive and within reach (-2 if not)?
 ; ovl7:6D01  battle_choose_target       Nearest enemy (his own attacker first; barbarians favour archers, knights barbar
 ; ovl7:6F48  battle_toward              Direction to the target: -160/0/160 for up/down, +-1 for across
@@ -404,6 +417,7 @@
 ; [0531]  key pressed (scan code, latched)
 ; [0535]  random value
 ; [0537]  random table pointer
+; [0541]  Tandy/PCjr sound chip (INT 11h bit 8)
 ; [0944]  picture decode destination
 ; [0948]  delay calibration
 ; [0959]  video segment (B800h)
@@ -430,7 +444,7 @@
 ; [A6CE]  file read buffer pointer
 ; [A6D8]  demo (1 running, 2 zoom to an encounter)
 ; [A6DC]  data drive mode
-; [A6E1]  sound on flag
+; [A6E1]  sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
 ; [A6F5]  data disk in drive B flag
 ; [A6F7]  campaign result code
 ; [A6FD]  your men lost
@@ -909,7 +923,7 @@ rt_02b9:
 disk_prompt:
   rt:0400  00600  55             push   bp
   rt:0401  00601  8bec           mov    bp, sp
-  rt:0403  00603  e8061f         call   rt_230c
+  rt:0403  00603  e8061f         call   beep_error
   rt:0406  00606  b81800         mov    ax, 0x18
   rt:0409  00609  50             push   ax
   rt:040A  0060A  e8d11a         call   clear_text_row
@@ -1099,7 +1113,7 @@ text_rows_add:
   rt:05A8  007A8  c3             ret
 
 ; ---- beep_low   (called from 130 places)
-;      PC-speaker beep (500 Hz-ish, short)
+;      The key beep: timer divisor 500 (2386 Hz) for 400 delay units (about 8 ms)
 beep_low:
   rt:05A9  007A9  55             push   bp
   rt:05AA  007AA  8bec           mov    bp, sp
@@ -1120,7 +1134,7 @@ beep_low:
   rt:05CB  007CB  c3             ret
 
 ; ---- beep_high   (called from 11 places)
-;      PC-speaker beep (higher pitch)
+;      Beep: divisor 2000 (597 Hz) for 300 units
 beep_high:
   rt:05CC  007CC  55             push   bp
   rt:05CD  007CD  8bec           mov    bp, sp
@@ -1138,8 +1152,9 @@ beep_high:
   rt:05E7  007E7  5d             pop    bp
   rt:05E8  007E8  c3             ret
 
-; ---- rt_05e9   (called from 5 places)
-rt_05e9:
+; ---- beep_buzz   (called from 5 places)
+;      Buzz: divisor 8000 (149 Hz) for 600 units (the cursor comes onto a squad; a wrong answer)
+beep_buzz:
   rt:05E9  007E9  55             push   bp
   rt:05EA  007EA  8bec           mov    bp, sp
   rt:05EC  007EC  e8001b         call   speaker_on
@@ -1161,7 +1176,7 @@ rt_05e9:
 set_display_palette:
   rt:0606  00806  55             push   bp
   rt:0607  00807  8bec           mov    bp, sp
-  rt:0609  00809  813e41050000   cmp    word ptr [0x541], 0
+  rt:0609  00809  813e41050000   cmp    word ptr [0x541], 0            ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   rt:060F  0080F  750b           jne    0x61c
   rt:0611  00811  b80100         mov    ax, 1
   rt:0614  00814  50             push   ax
@@ -4467,9 +4482,10 @@ random:
   rt:20CA  022CA  a33505         mov    word ptr [0x535], ax           ; [0535] random value
   rt:20CD  022CD  c3             ret
 
-; ---- rt_20ce   (called from 3 places)
-rt_20ce:
-  rt:20CE  022CE  833ee1a600     cmp    word ptr [0xa6e1], 0           ; [A6E1] sound on flag
+; ---- speaker_click   (called from 3 places)
+;      Flip the speaker data bit (port 61h bit 1) if sound is on: a click, or the timer tone on/off
+speaker_click:
+  rt:20CE  022CE  833ee1a600     cmp    word ptr [0xa6e1], 0           ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   rt:20D3  022D3  7406           je     0x20db
   rt:20D5  022D5  e461           in     al, 0x61
   rt:20D7  022D7  3402           xor    al, 2
@@ -4494,7 +4510,7 @@ speaker_freq:
 ; ---- speaker_on   (called from 15 places)
 ;      Enable PC speaker (port 61h) if sound is on
 speaker_on:
-  rt:20EF  022EF  833ee1a600     cmp    word ptr [0xa6e1], 0           ; [A6E1] sound on flag
+  rt:20EF  022EF  833ee1a600     cmp    word ptr [0xa6e1], 0           ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   rt:20F4  022F4  7406           je     0x20fc
   rt:20F6  022F6  e461           in     al, 0x61
   rt:20F8  022F8  0c03           or     al, 3
@@ -4509,8 +4525,9 @@ speaker_off:
   rt:2101  02301  e661           out    0x61, al
   rt:2103  02303  c3             ret
 
-; ---- rt_2104   (called from 9 places)
-rt_2104:
+; ---- tandy_tone   (called from 9 places)
+;      tandy_tone(voice, n): SN76496 tone register of a voice (port C0h), f = 3579545 / (32 n)
+tandy_tone:
   rt:2104  02304  55             push   bp
   rt:2105  02305  8bec           mov    bp, sp
   rt:2107  02307  8b5e04         mov    bx, word ptr [bp + 4]
@@ -4555,8 +4572,9 @@ tandy_sound:
   rt:2151  02351  5d             pop    bp
   rt:2152  02352  c3             ret
 
-; ---- rt_2153
-rt_2153:
+; ---- tandy_noise
+;      SN76496 noise control (never called)
+tandy_noise:
   rt:2153  02353  55             push   bp
   rt:2154  02354  8bec           mov    bp, sp
   rt:2156  02356  8b4604         mov    ax, word ptr [bp + 4]
@@ -4566,17 +4584,19 @@ rt_2153:
   rt:2161  02361  5d             pop    bp
   rt:2162  02362  c3             ret
 
-; ---- rt_2163   (called from 2 places)
-rt_2163:
-  rt:2163  02363  833ee1a600     cmp    word ptr [0xa6e1], 0           ; [A6E1] sound on flag
+; ---- tandy_enable   (called from 2 places)
+;      Port 61h bits 5-6: route the Tandy/PCjr sound chip to the speaker (if sound is on)
+tandy_enable:
+  rt:2163  02363  833ee1a600     cmp    word ptr [0xa6e1], 0           ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   rt:2168  02368  7406           je     0x2170
   rt:216A  0236A  e461           in     al, 0x61
   rt:216C  0236C  0c60           or     al, 0x60
   rt:216E  0236E  e661           out    0x61, al
   rt:2170  02370  c3             ret
 
-; ---- rt_2171   (called from 2 places)
-rt_2171:
+; ---- tandy_silence   (called from 2 places)
+;      All four SN76496 voices to attenuation 15, sound routing off
+tandy_silence:
   rt:2171  02371  b09f           mov    al, 0x9f
   rt:2173  02373  e6c0           out    0xc0, al
   rt:2175  02375  b0bf           mov    al, 0xbf
@@ -4696,8 +4716,9 @@ set_palette_reg:
   rt:22F3  024F3  5d             pop    bp
   rt:22F4  024F4  c3             ret
 
-; ---- rt_22f5   (called from 7 places)
-rt_22f5:
+; ---- beep_alert   (called from 7 places)
+;      Beep: divisor 1000 (1193 Hz) for 1350 units (map messages, battle orders, a surrender offer)
+beep_alert:
   rt:22F5  024F5  e8f7fd         call   speaker_on
   rt:22F8  024F8  b8e803         mov    ax, 0x3e8
   rt:22FB  024FB  50             push   ax
@@ -4710,8 +4731,9 @@ rt_22f5:
   rt:2308  02508  e8f2fd         call   speaker_off
   rt:230B  0250B  c3             ret
 
-; ---- rt_230c   (called from 6 places)
-rt_230c:
+; ---- beep_error   (called from 6 places)
+;      Beep: divisor 5000 (239 Hz) for 3000 units (disk prompts)
+beep_error:
   rt:230C  0250C  e8e0fd         call   speaker_on
   rt:230F  0250F  b88813         mov    ax, 0x1388
   rt:2312  02512  50             push   ax
@@ -5030,7 +5052,7 @@ dos_close:
   rt:2692  02892  cd21           int    0x21                           ; DOS AH=3Eh: close file
   rt:2694  02894  5d             pop    bp
   rt:2695  02895  c3             ret
-  rt:2696  02896  e873fc         call   rt_230c
+  rt:2696  02896  e873fc         call   beep_error
   rt:2699  02899  e8e6fb         call   rt_2282
   rt:269C  0289C  e8b0fc         call   rt_234f
   rt:269F  0289F  33c0           xor    ax, ax
@@ -5989,7 +6011,7 @@ ovl1_startup:
   ovl1:3114  03314  b89001         mov    ax, 0x190
   ovl1:3117  03317  8906e3a6       mov    word ptr [0xa6e3], ax
   ovl1:311B  0331B  b80200         mov    ax, 2
-  ovl1:311E  0331E  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sound on flag
+  ovl1:311E  0331E  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:3122  03322  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
   ovl1:3126  03326  33c0           xor    ax, ax
   ovl1:3128  03328  8906f5a6       mov    word ptr [0xa6f5], ax        ; [A6F5] data disk in drive B flag
@@ -6088,13 +6110,13 @@ ovl1_startup:
   ovl1:31E3  033E3  8be5           mov    sp, bp
   ovl1:31E5  033E5  5d             pop    bp
   ovl1:31E6  033E6  c3             ret
-  ovl1:31E7  033E7  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sound on flag
+  ovl1:31E7  033E7  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:31ED  033ED  750f           jne    0x31fe
-  ovl1:31EF  033EF  813e41050000   cmp    word ptr [0x541], 0
+  ovl1:31EF  033EF  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl1:31F5  033F5  7507           jne    0x31fe
   ovl1:31F7  033F7  b80200         mov    ax, 2
-  ovl1:31FA  033FA  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sound on flag
-  ovl1:31FE  033FE  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sound on flag
+  ovl1:31FA  033FA  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
+  ovl1:31FE  033FE  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:3204  03404  7517           jne    0x321d
   ovl1:3206  03406  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:320A  0340A  058b04         add    ax, 0x48b
@@ -6102,11 +6124,11 @@ ovl1_startup:
   ovl1:320E  0340E  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:3212  03412  054704         add    ax, 0x447
   ovl1:3215  03415  50             push   ax
-  ovl1:3216  03416  e81314         call   ovl1_462c
+  ovl1:3216  03416  e81314         call   play_tune
   ovl1:3219  03419  5f             pop    di
   ovl1:321A  0341A  5f             pop    di
   ovl1:321B  0341B  eb3c           jmp    0x3259
-  ovl1:321D  0341D  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sound on flag
+  ovl1:321D  0341D  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:3223  03423  7528           jne    0x324d
   ovl1:3225  03425  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:3229  03429  05e711         add    ax, 0x11e7
@@ -6120,7 +6142,7 @@ ovl1_startup:
   ovl1:323D  0343D  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:3241  03441  050d11         add    ax, 0x110d
   ovl1:3244  03444  50             push   ax
-  ovl1:3245  03445  e85714         call   ovl1_469f
+  ovl1:3245  03445  e85714         call   play_tune_tandy
   ovl1:3248  03448  83c408         add    sp, 8
   ovl1:324B  0344B  eb0c           jmp    0x3259
   ovl1:324D  0344D  b860ea         mov    ax, 0xea60
@@ -6811,7 +6833,7 @@ ensure_war_disk:
   ovl1:38A5  03AA5  5f             pop    di
   ovl1:38A6  03AA6  0bc0           or     ax, ax
   ovl1:38A8  03AA8  7533           jne    0x38dd
-  ovl1:38AA  03AAA  e8ca00         call   ovl1_3977
+  ovl1:38AA  03AAA  e8ca00         call   disk_sound
   ovl1:38AD  03AAD  813ec0a50100   cmp    word ptr [0xa5c0], 1         ; [A5C0] text rows under the map
   ovl1:38B3  03AB3  7e08           jle    0x38bd
   ovl1:38B5  03AB5  b81700         mov    ax, 0x17
@@ -6827,7 +6849,7 @@ ensure_war_disk:
   ovl1:38CD  03ACD  5f             pop    di
   ovl1:38CE  03ACE  09c0           or     ax, ax
   ovl1:38D0  03AD0  7505           jne    0x38d7
-  ovl1:38D2  03AD2  e837ea         call   rt_230c
+  ovl1:38D2  03AD2  e837ea         call   beep_error
   ovl1:38D5  03AD5  ebe6           jmp    0x38bd
   ovl1:38D7  03AD7  33c0           xor    ax, ax
   ovl1:38D9  03AD9  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
@@ -6852,7 +6874,7 @@ ovl1_38e1:
   ovl1:3902  03B02  50             push   ax
   ovl1:3903  03B03  e8d8e5         call   clear_text_row
   ovl1:3906  03B06  5f             pop    di
-  ovl1:3907  03B07  e86d00         call   ovl1_3977
+  ovl1:3907  03B07  e86d00         call   disk_sound
   ovl1:390A  03B0A  8b06d0a6       mov    ax, word ptr [0xa6d0]
   ovl1:390E  03B0E  05e70d         add    ax, 0xde7
   ovl1:3911  03B11  50             push   ax
@@ -6888,7 +6910,7 @@ ovl1_38e1:
   ovl1:395E  03B5E  5f             pop    di
   ovl1:395F  03B5F  0bc0           or     ax, ax
   ovl1:3961  03B61  740a           je     0x396d
-  ovl1:3963  03B63  e8a6e9         call   rt_230c
+  ovl1:3963  03B63  e8a6e9         call   beep_error
   ovl1:3966  03B66  b80200         mov    ax, 2
   ovl1:3969  03B69  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
   ovl1:396D  03B6D  33c0           xor    ax, ax
@@ -6897,8 +6919,9 @@ ovl1_38e1:
   ovl1:3975  03B75  5d             pop    bp
   ovl1:3976  03B76  c3             ret
 
-; ---- ovl1_3977   (called from 2 places)
-ovl1_3977:
+; ---- disk_sound   (called from 2 places)
+;      A falling sweep, divisor 7000 down to 3000 in steps of 500, 300 units each (disk prompts)
+disk_sound:
   ovl1:3977  03B77  55             push   bp
   ovl1:3978  03B78  8bec           mov    bp, sp
   ovl1:397A  03B7A  83ec02         sub    sp, 2
@@ -7700,7 +7723,7 @@ select_campaign:
   ovl1:40F3  042F3  50             push   ax
   ovl1:40F4  042F4  e81ede         call   memset
   ovl1:40F7  042F7  83c406         add    sp, 6
-  ovl1:40FA  042FA  e82800         call   ovl1_4125
+  ovl1:40FA  042FA  e82800         call   scroll_erase_line
   ovl1:40FD  042FD  e85935         call   scroll_rollup
   ovl1:4100  04300  e87d2d         call   scroll_clear
   ovl1:4103  04303  ff0ecda8       dec    word ptr [0xa8cd]
@@ -7719,8 +7742,9 @@ select_campaign:
   ovl1:4123  04323  5d             pop    bp
   ovl1:4124  04324  c3             ret
 
-; ---- ovl1_4125   (called from 1 place)
-ovl1_4125:
+; ---- scroll_erase_line   (called from 1 place)
+;      Clear a scroll line cell by cell with a click each (removing a campaign)
+scroll_erase_line:
   ovl1:4125  04325  55             push   bp
   ovl1:4126  04326  8bec           mov    bp, sp
   ovl1:4128  04328  83ec02         sub    sp, 2
@@ -7736,7 +7760,7 @@ ovl1_4125:
   ovl1:4145  04345  ff36bea5       push   word ptr [0xa5be]
   ovl1:4149  04349  e85dd6         call   blit_buffer_to_cga
   ovl1:414C  0434C  5f             pop    di
-  ovl1:414D  0434D  e87edf         call   rt_20ce
+  ovl1:414D  0434D  e87edf         call   speaker_click
   ovl1:4150  04350  b8f401         mov    ax, 0x1f4
   ovl1:4153  04353  50             push   ax
   ovl1:4154  04354  e831e0         call   delay
@@ -8257,8 +8281,9 @@ ovl1_45b6:
   ovl1:462A  0482A  5d             pop    bp
   ovl1:462B  0482B  c3             ret
 
-; ---- ovl1_462c   (called from 3 places)
-ovl1_462c:
+; ---- play_tune   (called from 3 places)
+;      play_tune(divisors, lengths): one voice on the PC speaker, each note length x 4 delay units (O2 tunes)
+play_tune:
   ovl1:462C  0482C  55             push   bp
   ovl1:462D  0482D  8bec           mov    bp, sp
   ovl1:462F  0482F  83ec02         sub    sp, 2
@@ -8312,12 +8337,13 @@ ovl1_462c:
   ovl1:469D  0489D  5d             pop    bp
   ovl1:469E  0489E  c3             ret
 
-; ---- ovl1_469f   (called from 3 places)
-ovl1_469f:
+; ---- play_tune_tandy   (called from 3 places)
+;      play_tune_tandy(v0, v1, v2, lengths): three voices on the SN76496 (divisor / 15, attenuation 0, 2, 1), then a fade over 11 x 3000 units
+play_tune_tandy:
   ovl1:469F  0489F  55             push   bp
   ovl1:46A0  048A0  8bec           mov    bp, sp
   ovl1:46A2  048A2  83ec02         sub    sp, 2
-  ovl1:46A5  048A5  e8bbda         call   rt_2163
+  ovl1:46A5  048A5  e8bbda         call   tandy_enable
   ovl1:46A8  048A8  b80f00         mov    ax, 0xf
   ovl1:46AB  048AB  50             push   ax
   ovl1:46AC  048AC  8b7604         mov    si, word ptr [bp + 4]
@@ -8328,7 +8354,7 @@ ovl1_469f:
   ovl1:46B5  048B5  50             push   ax
   ovl1:46B6  048B6  33c0           xor    ax, ax
   ovl1:46B8  048B8  50             push   ax
-  ovl1:46B9  048B9  e848da         call   rt_2104
+  ovl1:46B9  048B9  e848da         call   tandy_tone
   ovl1:46BC  048BC  5f             pop    di
   ovl1:46BD  048BD  5f             pop    di
   ovl1:46BE  048BE  33c0           xor    ax, ax
@@ -8347,7 +8373,7 @@ ovl1_469f:
   ovl1:46D4  048D4  50             push   ax
   ovl1:46D5  048D5  b80100         mov    ax, 1
   ovl1:46D8  048D8  50             push   ax
-  ovl1:46D9  048D9  e828da         call   rt_2104
+  ovl1:46D9  048D9  e828da         call   tandy_tone
   ovl1:46DC  048DC  5f             pop    di
   ovl1:46DD  048DD  5f             pop    di
   ovl1:46DE  048DE  b80200         mov    ax, 2
@@ -8367,7 +8393,7 @@ ovl1_469f:
   ovl1:46F7  048F7  50             push   ax
   ovl1:46F8  048F8  b80200         mov    ax, 2
   ovl1:46FB  048FB  50             push   ax
-  ovl1:46FC  048FC  e805da         call   rt_2104
+  ovl1:46FC  048FC  e805da         call   tandy_tone
   ovl1:46FF  048FF  5f             pop    di
   ovl1:4700  04900  5f             pop    di
   ovl1:4701  04901  b80100         mov    ax, 1
@@ -8400,7 +8426,7 @@ ovl1_469f:
   ovl1:4739  04939  50             push   ax
   ovl1:473A  0493A  33c0           xor    ax, ax
   ovl1:473C  0493C  50             push   ax
-  ovl1:473D  0493D  e8c4d9         call   rt_2104
+  ovl1:473D  0493D  e8c4d9         call   tandy_tone
   ovl1:4740  04940  5f             pop    di
   ovl1:4741  04941  5f             pop    di
   ovl1:4742  04942  b80f00         mov    ax, 0xf
@@ -8416,7 +8442,7 @@ ovl1_469f:
   ovl1:4756  04956  50             push   ax
   ovl1:4757  04957  b80100         mov    ax, 1
   ovl1:475A  0495A  50             push   ax
-  ovl1:475B  0495B  e8a6d9         call   rt_2104
+  ovl1:475B  0495B  e8a6d9         call   tandy_tone
   ovl1:475E  0495E  5f             pop    di
   ovl1:475F  0495F  5f             pop    di
   ovl1:4760  04960  b80f00         mov    ax, 0xf
@@ -8432,7 +8458,7 @@ ovl1_469f:
   ovl1:4774  04974  50             push   ax
   ovl1:4775  04975  b80200         mov    ax, 2
   ovl1:4778  04978  50             push   ax
-  ovl1:4779  04979  e888d9         call   rt_2104
+  ovl1:4779  04979  e888d9         call   tandy_tone
   ovl1:477C  0497C  5f             pop    di
   ovl1:477D  0497D  5f             pop    di
   ovl1:477E  0497E  8b760a         mov    si, word ptr [bp + 0xa]
@@ -8496,7 +8522,7 @@ ovl1_469f:
   ovl1:47FB  049FB  5f             pop    di
   ovl1:47FC  049FC  ff46fe         inc    word ptr [bp - 2]
   ovl1:47FF  049FF  ebc2           jmp    0x47c3
-  ovl1:4801  04A01  e86dd9         call   rt_2171
+  ovl1:4801  04A01  e86dd9         call   tandy_silence
   ovl1:4804  04A04  8be5           mov    sp, bp
   ovl1:4806  04A06  5d             pop    bp
   ovl1:4807  04A07  c3             ret
@@ -9283,7 +9309,7 @@ data_disk:
   ovl1:4F15  05115  8b06cda8       mov    ax, word ptr [0xa8cd]
   ovl1:4F19  05119  83f80b         cmp    ax, 0xb
   ovl1:4F1C  0511C  7e29           jle    0x4f47
-  ovl1:4F1E  0511E  e8ebd3         call   rt_230c
+  ovl1:4F1E  0511E  e8ebd3         call   beep_error
   ovl1:4F21  05121  b81800         mov    ax, 0x18
   ovl1:4F24  05124  50             push   ax
   ovl1:4F25  05125  e8b6cf         call   clear_text_row
@@ -10008,7 +10034,7 @@ battle_report:
   ovl1:55AD  057AD  50             push   ax
   ovl1:55AE  057AE  e8b4cf         call   print_string
   ovl1:55B1  057B1  5f             pop    di
-  ovl1:55B2  057B2  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sound on flag
+  ovl1:55B2  057B2  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:55B8  057B8  7517           jne    0x55d1
   ovl1:55BA  057BA  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:55BE  057BE  05c712         add    ax, 0x12c7
@@ -10016,13 +10042,13 @@ battle_report:
   ovl1:55C2  057C2  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:55C6  057C6  052f12         add    ax, 0x122f
   ovl1:55C9  057C9  50             push   ax
-  ovl1:55CA  057CA  e85ff0         call   ovl1_462c
+  ovl1:55CA  057CA  e85ff0         call   play_tune
   ovl1:55CD  057CD  5f             pop    di
   ovl1:55CE  057CE  5f             pop    di
   ovl1:55CF  057CF  eb36           jmp    0x5607
-  ovl1:55D1  057D1  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sound on flag
+  ovl1:55D1  057D1  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:55D7  057D7  752e           jne    0x5607
-  ovl1:55D9  057D9  8b064105       mov    ax, word ptr [0x541]
+  ovl1:55D9  057D9  8b064105       mov    ax, word ptr [0x541]         ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl1:55DD  057DD  0bc0           or     ax, ax
   ovl1:55DF  057DF  7426           je     0x5607
   ovl1:55E1  057E1  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
@@ -10037,7 +10063,7 @@ battle_report:
   ovl1:55F9  057F9  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:55FD  057FD  052f12         add    ax, 0x122f
   ovl1:5600  05800  50             push   ax
-  ovl1:5601  05801  e89bf0         call   ovl1_469f
+  ovl1:5601  05801  e89bf0         call   play_tune_tandy
   ovl1:5604  05804  83c408         add    sp, 8
   ovl1:5607  05807  e9c500         jmp    0x56cf
   ovl1:560A  0580A  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
@@ -10082,7 +10108,7 @@ battle_report:
   ovl1:5675  05875  50             push   ax
   ovl1:5676  05876  e8ecce         call   print_string
   ovl1:5679  05879  5f             pop    di
-  ovl1:567A  0587A  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sound on flag
+  ovl1:567A  0587A  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:5680  05880  7517           jne    0x5699
   ovl1:5682  05882  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:5686  05886  053d13         add    ax, 0x133d
@@ -10090,13 +10116,13 @@ battle_report:
   ovl1:568A  0588A  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:568E  0588E  05f912         add    ax, 0x12f9
   ovl1:5691  05891  50             push   ax
-  ovl1:5692  05892  e897ef         call   ovl1_462c
+  ovl1:5692  05892  e897ef         call   play_tune
   ovl1:5695  05895  5f             pop    di
   ovl1:5696  05896  5f             pop    di
   ovl1:5697  05897  eb36           jmp    0x56cf
-  ovl1:5699  05899  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sound on flag
+  ovl1:5699  05899  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:569F  0589F  752e           jne    0x56cf
-  ovl1:56A1  058A1  8b064105       mov    ax, word ptr [0x541]
+  ovl1:56A1  058A1  8b064105       mov    ax, word ptr [0x541]         ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl1:56A5  058A5  0bc0           or     ax, ax
   ovl1:56A7  058A7  7426           je     0x56cf
   ovl1:56A9  058A9  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
@@ -10111,7 +10137,7 @@ battle_report:
   ovl1:56C1  058C1  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:56C5  058C5  05f912         add    ax, 0x12f9
   ovl1:56C8  058C8  50             push   ax
-  ovl1:56C9  058C9  e8d3ef         call   ovl1_469f
+  ovl1:56C9  058C9  e8d3ef         call   play_tune_tandy
   ovl1:56CC  058CC  83c408         add    sp, 8
   ovl1:56CF  058CF  b81800         mov    ax, 0x18
   ovl1:56D2  058D2  50             push   ax
@@ -10440,18 +10466,18 @@ options_shoppe:
   ovl1:59DA  05BDA  817efe0300     cmp    word ptr [bp - 2], 3
   ovl1:59DF  05BDF  7537           jne    0x5a18
   ovl1:59E1  05BE1  e8c5ab         call   beep_low
-  ovl1:59E4  05BE4  ff06e1a6       inc    word ptr [0xa6e1]            ; [A6E1] sound on flag
-  ovl1:59E8  05BE8  8b06e1a6       mov    ax, word ptr [0xa6e1]        ; [A6E1] sound on flag
+  ovl1:59E4  05BE4  ff06e1a6       inc    word ptr [0xa6e1]            ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
+  ovl1:59E8  05BE8  8b06e1a6       mov    ax, word ptr [0xa6e1]        ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:59EC  05BEC  83f803         cmp    ax, 3
   ovl1:59EF  05BEF  7e06           jle    0x59f7
   ovl1:59F1  05BF1  33c0           xor    ax, ax
-  ovl1:59F3  05BF3  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sound on flag
-  ovl1:59F7  05BF7  813e41050000   cmp    word ptr [0x541], 0
+  ovl1:59F3  05BF3  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
+  ovl1:59F7  05BF7  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl1:59FD  05BFD  750e           jne    0x5a0d
-  ovl1:59FF  05BFF  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sound on flag
+  ovl1:59FF  05BFF  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:5A05  05C05  7e06           jle    0x5a0d
   ovl1:5A07  05C07  33c0           xor    ax, ax
-  ovl1:5A09  05C09  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sound on flag
+  ovl1:5A09  05C09  8906e1a6       mov    word ptr [0xa6e1], ax        ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:5A0D  05C0D  e8ea00         call   shoppe_sounds
   ovl1:5A10  05C10  b80100         mov    ax, 1
   ovl1:5A13  05C13  8946fc         mov    word ptr [bp - 4], ax
@@ -10568,7 +10594,7 @@ shoppe_sounds:
   ovl1:5B07  05D07  b8680b         mov    ax, 0xb68
   ovl1:5B0A  05D0A  053c07         add    ax, 0x73c
   ovl1:5B0D  05D0D  8906c1a8       mov    word ptr [0xa8c1], ax        ; [A8C1] trace half-speed toggle
-  ovl1:5B11  05D11  813ee1a60000   cmp    word ptr [0xa6e1], 0         ; [A6E1] sound on flag
+  ovl1:5B11  05D11  813ee1a60000   cmp    word ptr [0xa6e1], 0         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:5B17  05D17  751a           jne    0x5b33
   ovl1:5B19  05D19  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:5B1D  05D1D  05a813         add    ax, 0x13a8
@@ -10581,7 +10607,7 @@ shoppe_sounds:
   ovl1:5B2D  05D2D  e8b412         call   small_caps
   ovl1:5B30  05D30  5f             pop    di
   ovl1:5B31  05D31  eb5a           jmp    0x5b8d
-  ovl1:5B33  05D33  813ee1a60100   cmp    word ptr [0xa6e1], 1         ; [A6E1] sound on flag
+  ovl1:5B33  05D33  813ee1a60100   cmp    word ptr [0xa6e1], 1         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:5B39  05D39  750e           jne    0x5b49
   ovl1:5B3B  05D3B  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:5B3F  05D3F  05c013         add    ax, 0x13c0
@@ -10589,9 +10615,9 @@ shoppe_sounds:
   ovl1:5B43  05D43  e89e12         call   small_caps
   ovl1:5B46  05D46  5f             pop    di
   ovl1:5B47  05D47  eb44           jmp    0x5b8d
-  ovl1:5B49  05D49  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sound on flag
+  ovl1:5B49  05D49  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl1:5B4F  05D4F  7530           jne    0x5b81
-  ovl1:5B51  05D51  813e41050000   cmp    word ptr [0x541], 0
+  ovl1:5B51  05D51  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl1:5B57  05D57  751a           jne    0x5b73
   ovl1:5B59  05D59  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl1:5B5D  05D5D  05a813         add    ax, 0x13a8
@@ -13358,7 +13384,7 @@ scroll_unroll:
   ovl1:75E9  077E9  e8beaa         call   random
   ovl1:75EC  077EC  83f85f         cmp    ax, 0x5f
   ovl1:75EF  077EF  7d03           jge    0x75f4
-  ovl1:75F1  077F1  e8daaa         call   rt_20ce
+  ovl1:75F1  077F1  e8daaa         call   speaker_click
   ovl1:75F4  077F4  b8b600         mov    ax, 0xb6                     ; file "PJ"
   ovl1:75F7  077F7  2b46fe         sub    ax, word ptr [bp - 2]
   ovl1:75FA  077FA  d1f8           sar    ax, 1
@@ -13418,7 +13444,7 @@ scroll_rollup:
   ovl1:7677  07877  e830aa         call   random
   ovl1:767A  0787A  83f850         cmp    ax, 0x50
   ovl1:767D  0787D  7d03           jge    0x7682
-  ovl1:767F  0787F  e84caa         call   rt_20ce
+  ovl1:767F  0787F  e84caa         call   speaker_click
   ovl1:7682  07882  b8b600         mov    ax, 0xb6                     ; file "PJ"
   ovl1:7685  07885  2b46fc         sub    ax, word ptr [bp - 4]
   ovl1:7688  07888  d1f8           sar    ax, 1
@@ -14368,7 +14394,7 @@ init_hardware:
   ovl1:7EDC  080DC  33c0           xor    ax, ax
   ovl1:7EDE  080DE  a34505         mov    word ptr [0x545], ax
   ovl1:7EE1  080E1  a34305         mov    word ptr [0x543], ax
-  ovl1:7EE4  080E4  a34105         mov    word ptr [0x541], ax
+  ovl1:7EE4  080E4  a34105         mov    word ptr [0x541], ax         ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl1:7EE7  080E7  8ec0           mov    es, ax
   ovl1:7EE9  080E9  26a11400       mov    ax, word ptr es:[0x14]
   ovl1:7EED  080ED  a32705         mov    word ptr [0x527], ax
@@ -14394,7 +14420,7 @@ init_hardware:
   ovl1:7F29  08129  c70645050100   mov    word ptr [0x545], 1
   ovl1:7F2F  0812F  f6c401         test   ah, 1
   ovl1:7F32  08132  7406           je     0x7f3a
-  ovl1:7F34  08134  c70641050100   mov    word ptr [0x541], 1
+  ovl1:7F34  08134  c70641050100   mov    word ptr [0x541], 1          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl1:7F3A  0813A  c70646090000   mov    word ptr [0x946], 0
   ovl1:7F40  08140  a830           test   al, 0x30
   ovl1:7F42  08142  7506           jne    0x7f4a
@@ -15660,7 +15686,7 @@ show_thank_you:
 show_wrong_answer:
   ovl2:8981  08B81  55             push   bp
   ovl2:8982  08B82  8bec           mov    bp, sp
-  ovl2:8984  08B84  e8627c         call   rt_05e9
+  ovl2:8984  08B84  e8627c         call   beep_buzz
   ovl2:8987  08B87  b80f00         mov    ax, 0xf
   ovl2:898A  08B8A  50             push   ax
   ovl2:898B  08B8B  b005           mov    al, 5
@@ -16093,7 +16119,7 @@ squads_editor:
   ovl3:335F  08F6F  7407           je     0x3368
   ovl3:3361  08F71  817efd0000     cmp    word ptr [bp - 3], 0
   ovl3:3366  08F76  7526           jne    0x338e
-  ovl3:3368  08F78  e8a1ef         call   rt_230c
+  ovl3:3368  08F78  e8a1ef         call   beep_error
   ovl3:336B  08F7B  b81800         mov    ax, 0x18
   ovl3:336E  08F7E  50             push   ax
   ovl3:336F  08F7F  e86ceb         call   clear_text_row
@@ -17602,7 +17628,7 @@ ovl3_419d:
   ovl3:4221  09E31  890606a5       mov    word ptr [0xa506], ax        ; [A506] selected squad
   ovl3:4225  09E35  813ecba80000   cmp    word ptr [0xa8cb], 0
   ovl3:422B  09E3B  7506           jne    0x4233
-  ovl3:422D  09E3D  e8b9c3         call   rt_05e9
+  ovl3:422D  09E3D  e8b9c3         call   beep_buzz
   ovl3:4230  09E40  e80ef3         call   ovl3_3541
   ovl3:4233  09E43  ff46fa         inc    word ptr [bp - 6]
   ovl3:4236  09E46  e97bff         jmp    0x41b4
@@ -17672,7 +17698,7 @@ ovl3_4256:
   ovl3:42DA  09EEA  890604a5       mov    word ptr [0xa504], ax
   ovl3:42DE  09EEE  813ec9a80000   cmp    word ptr [0xa8c9], 0
   ovl3:42E4  09EF4  7506           jne    0x42ec
-  ovl3:42E6  09EF6  e800c3         call   rt_05e9
+  ovl3:42E6  09EF6  e800c3         call   beep_buzz
   ovl3:42E9  09EF9  e8fcf2         call   ovl3_35e8
   ovl3:42EC  09EFC  ff46fa         inc    word ptr [bp - 6]
   ovl3:42EF  09EFF  e97bff         jmp    0x426d
@@ -20059,7 +20085,7 @@ formation_editor:
   ovl5:3383  0B553  0bc0           or     ax, ax
   ovl5:3385  0B555  7515           jne    0x339c
   ovl5:3387  0B557  e83b13         call   ovl5_46c5
-  ovl5:338A  0B55A  813e41050000   cmp    word ptr [0x541], 0
+  ovl5:338A  0B55A  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl5:3390  0B560  7508           jne    0x339a
   ovl5:3392  0B562  b8bc02         mov    ax, 0x2bc
   ovl5:3395  0B565  50             push   ax
@@ -21136,7 +21162,7 @@ ovl5_3b5b:
   ovl5:3E31  0C001  8b06c5a8       mov    ax, word ptr [0xa8c5]
   ovl5:3E35  0C005  3b06c3a8       cmp    ax, word ptr [0xa8c3]
   ovl5:3E39  0C009  740e           je     0x3e49
-  ovl5:3E3B  0C00B  e8abc7         call   rt_05e9
+  ovl5:3E3B  0C00B  e8abc7         call   beep_buzz
   ovl5:3E3E  0C00E  e83cf6         call   ovl5_347d
   ovl5:3E41  0C011  8b06c3a8       mov    ax, word ptr [0xa8c3]
   ovl5:3E45  0C015  8906c5a8       mov    word ptr [0xa8c5], ax
@@ -22800,7 +22826,7 @@ check_victory:
   ovl6:3735  0CF95  b8f401         mov    ax, 0x1f4
   ovl6:3738  0CF98  beeaa4         mov    si, 0xa4ea
   ovl6:373B  0CF9B  8904           mov    word ptr [si], ax
-  ovl6:373D  0CF9D  e8b5eb         call   rt_22f5
+  ovl6:373D  0CF9D  e8b5eb         call   beep_alert
   ovl6:3740  0CFA0  b80300         mov    ax, 3
   ovl6:3743  0CFA3  50             push   ax
   ovl6:3744  0CFA4  e897e7         call   clear_text_row
@@ -23013,11 +23039,11 @@ game_over:
   ovl6:38F5  0D155  c3             ret
 
 ; ---- play_end_sound   (called from 4 places)
-;      Two tones on the PC speaker
+;      Two low tones: divisor 9000 for 5000 units, 8500 for 2500 (only with all sounds on); three at the start of a game, one at its end
 play_end_sound:
   ovl6:38F6  0D156  55             push   bp
   ovl6:38F7  0D157  8bec           mov    bp, sp
-  ovl6:38F9  0D159  813ee1a60100   cmp    word ptr [0xa6e1], 1         ; [A6E1] sound on flag
+  ovl6:38F9  0D159  813ee1a60100   cmp    word ptr [0xa6e1], 1         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl6:38FF  0D15F  7e26           jle    0x3927
   ovl6:3901  0D161  e8ebe7         call   speaker_on
   ovl6:3904  0D164  b82823         mov    ax, 0x2328
@@ -26766,7 +26792,7 @@ print_map_region:
   ovl6:5D42  0F5A2  55             push   bp
   ovl6:5D43  0F5A3  8bec           mov    bp, sp
   ovl6:5D45  0F5A5  83ec02         sub    sp, 2
-  ovl6:5D48  0F5A8  e8aac5         call   rt_22f5
+  ovl6:5D48  0F5A8  e8aac5         call   beep_alert
   ovl6:5D4B  0F5AB  b82494         mov    ax, 0x9424
   ovl6:5D4E  0F5AE  059d02         add    ax, 0x29d
   ovl6:5D51  0F5B1  50             push   ax
@@ -27313,7 +27339,7 @@ check_cursor_over_squad:
   ovl6:625A  0FABA  890606a5       mov    word ptr [0xa506], ax        ; [A506] selected squad
   ovl6:625E  0FABE  813ee5aa0000   cmp    word ptr [0xaae5], 0         ; [AAE5] cursor on a squad
   ovl6:6264  0FAC4  750e           jne    0x6274
-  ovl6:6266  0FAC6  e880a3         call   rt_05e9
+  ovl6:6266  0FAC6  e880a3         call   beep_buzz
   ovl6:6269  0FAC9  e8370a         call   select_squad
   ovl6:626C  0FACC  b86419         mov    ax, 0x1964
   ovl6:626F  0FACF  50             push   ax
@@ -32789,7 +32815,7 @@ battle:
   ovl7:3C06  12FD6  99             cdq
   ovl7:3C07  12FD7  f7fb           idiv   bx
   ovl7:3C09  12FD9  89069dab       mov    word ptr [0xab9d], ax
-  ovl7:3C0D  12FDD  813e41050000   cmp    word ptr [0x541], 0
+  ovl7:3C0D  12FDD  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl7:3C13  12FE3  750e           jne    0x3c23
   ovl7:3C15  12FE5  33c0           xor    ax, ax
   ovl7:3C17  12FE7  89069fab       mov    word ptr [0xab9f], ax
@@ -33644,7 +33670,7 @@ battle_retreat:
   ovl7:44B7  13887  8b06d0a6       mov    ax, word ptr [0xa6d0]
   ovl7:44BB  1388B  05a807         add    ax, 0x7a8
   ovl7:44BE  1388E  50             push   ax
-  ovl7:44BF  1388F  e82726         call   ovl7_6ae9
+  ovl7:44BF  1388F  e82726         call   battle_bugle
   ovl7:44C2  13892  5f             pop    di
   ovl7:44C3  13893  b80100         mov    ax, 1
   ovl7:44C6  13896  8906cfa8       mov    word ptr [0xa8cf], ax
@@ -33761,7 +33787,7 @@ battle_retreat:
   ovl7:45E9  139B9  8b06d0a6       mov    ax, word ptr [0xa6d0]
   ovl7:45ED  139BD  05be07         add    ax, 0x7be
   ovl7:45F0  139C0  50             push   ax
-  ovl7:45F1  139C1  e8f524         call   ovl7_6ae9
+  ovl7:45F1  139C1  e8f524         call   battle_bugle
   ovl7:45F4  139C4  5f             pop    di
   ovl7:45F5  139C5  bed89e         mov    si, 0x9ed8
   ovl7:45F8  139C8  8b060ca5       mov    ax, word ptr [0xa50c]
@@ -35074,7 +35100,7 @@ battle_show_groups:
   ovl7:5149  14519  8bec           mov    bp, sp
   ovl7:514B  1451B  813ed1a80200   cmp    word ptr [0xa8d1], 2
   ovl7:5151  14521  7503           jne    0x5156
-  ovl7:5153  14523  e89fd1         call   rt_22f5
+  ovl7:5153  14523  e89fd1         call   beep_alert
   ovl7:5156  14526  b81800         mov    ax, 0x18
   ovl7:5159  14529  50             push   ax
   ovl7:515A  1452A  e881cd         call   clear_text_row
@@ -35246,7 +35272,7 @@ battle_soldiers:
   ovl7:52FA  146CA  8b06d0a6       mov    ax, word ptr [0xa6d0]
   ovl7:52FE  146CE  057807         add    ax, 0x778
   ovl7:5301  146D1  50             push   ax
-  ovl7:5302  146D2  e8e417         call   ovl7_6ae9
+  ovl7:5302  146D2  e8e417         call   battle_bugle
   ovl7:5305  146D5  5f             pop    di
   ovl7:5306  146D6  33c0           xor    ax, ax
   ovl7:5308  146D8  8946fc         mov    word ptr [bp - 4], ax
@@ -37064,7 +37090,7 @@ battle_input:
   ovl7:6596  15966  8b06d0a6       mov    ax, word ptr [0xa6d0]
   ovl7:659A  1596A  059207         add    ax, 0x792
   ovl7:659D  1596D  50             push   ax
-  ovl7:659E  1596E  e84805         call   ovl7_6ae9
+  ovl7:659E  1596E  e84805         call   battle_bugle
   ovl7:65A1  15971  83c402         add    sp, 2
   ovl7:65A4  15974  e9e902         jmp    0x6890
   ovl7:65A7  15977  813ed1a80100   cmp    word ptr [0xa8d1], 1
@@ -37214,7 +37240,7 @@ battle_input:
   ovl7:6750  15B20  d1e2           shl    dx, 1
   ovl7:6752  15B22  03f2           add    si, dx
   ovl7:6754  15B24  8904           mov    word ptr [si], ax
-  ovl7:6756  15B26  e89cbb         call   rt_22f5
+  ovl7:6756  15B26  e89cbb         call   beep_alert
   ovl7:6759  15B29  b80100         mov    ax, 1
   ovl7:675C  15B2C  8906d1a8       mov    word ptr [0xa8d1], ax
   ovl7:6760  15B30  e8e5e9         call   battle_show_groups
@@ -37251,7 +37277,7 @@ battle_input:
   ovl7:67B6  15B86  8904           mov    word ptr [si], ax
   ovl7:67B8  15B88  b8e703         mov    ax, 0x3e7
   ovl7:67BB  15B8B  8906d1a8       mov    word ptr [0xa8d1], ax
-  ovl7:67BF  15B8F  e833bb         call   rt_22f5
+  ovl7:67BF  15B8F  e833bb         call   beep_alert
   ovl7:67C2  15B92  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl7:67C6  15B96  05721c         add    ax, 0x1c72
   ovl7:67C9  15B99  50             push   ax
@@ -37291,7 +37317,7 @@ battle_input:
   ovl7:6826  15BF6  8904           mov    word ptr [si], ax
   ovl7:6828  15BF8  b8e703         mov    ax, 0x3e7
   ovl7:682B  15BFB  8906d1a8       mov    word ptr [0xa8d1], ax
-  ovl7:682F  15BFF  e8c3ba         call   rt_22f5
+  ovl7:682F  15BFF  e8c3ba         call   beep_alert
   ovl7:6832  15C02  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl7:6836  15C06  057b1c         add    ax, 0x1c7b
   ovl7:6839  15C09  50             push   ax
@@ -37318,7 +37344,7 @@ battle_input:
   ovl7:6873  15C43  8904           mov    word ptr [si], ax
   ovl7:6875  15C45  b8e703         mov    ax, 0x3e7
   ovl7:6878  15C48  8906d1a8       mov    word ptr [0xa8d1], ax
-  ovl7:687C  15C4C  e876ba         call   rt_22f5
+  ovl7:687C  15C4C  e876ba         call   beep_alert
   ovl7:687F  15C4F  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
   ovl7:6883  15C53  05841c         add    ax, 0x1c84
   ovl7:6886  15C56  50             push   ax
@@ -37492,7 +37518,7 @@ ovl7_6a0d:
   ovl7:6A4A  15E1A  7d1b           jge    0x6a67
   ovl7:6A4C  15E1C  8b46fe         mov    ax, word ptr [bp - 2]
   ovl7:6A4F  15E1F  8906d4a6       mov    word ptr [0xa6d4], ax
-  ovl7:6A53  15E23  813e41050000   cmp    word ptr [0x541], 0
+  ovl7:6A53  15E23  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl7:6A59  15E29  750a           jne    0x6a65
   ovl7:6A5B  15E2B  b8d007         mov    ax, 0x7d0
   ovl7:6A5E  15E2E  50             push   ax
@@ -37531,7 +37557,7 @@ ovl7_6a71:
   ovl7:6AAE  15E7E  7c1b           jl     0x6acb
   ovl7:6AB0  15E80  8b46fe         mov    ax, word ptr [bp - 2]
   ovl7:6AB3  15E83  8906d4a6       mov    word ptr [0xa6d4], ax
-  ovl7:6AB7  15E87  813e41050000   cmp    word ptr [0x541], 0
+  ovl7:6AB7  15E87  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl7:6ABD  15E8D  750a           jne    0x6ac9
   ovl7:6ABF  15E8F  b8d007         mov    ax, 0x7d0
   ovl7:6AC2  15E92  50             push   ax
@@ -37550,12 +37576,13 @@ ovl7_6a71:
   ovl7:6AE7  15EB7  5d             pop    bp
   ovl7:6AE8  15EB8  c3             ret
 
-; ---- ovl7_6ae9   (called from 4 places)
-ovl7_6ae9:
+; ---- battle_bugle   (called from 4 places)
+;      battle_bugle(tune): O7 pairs of divisor and length; each call then a rest of 500 units; on the Tandy chip a three-voice chord
+battle_bugle:
   ovl7:6AE9  15EB9  55             push   bp
   ovl7:6AEA  15EBA  8bec           mov    bp, sp
   ovl7:6AEC  15EBC  83ec06         sub    sp, 6
-  ovl7:6AEF  15EBF  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sound on flag
+  ovl7:6AEF  15EBF  813ee1a60200   cmp    word ptr [0xa6e1], 2         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl7:6AF5  15EC5  7556           jne    0x6b4d
   ovl7:6AF7  15EC7  e8f5b5         call   speaker_on
   ovl7:6AFA  15ECA  8b7604         mov    si, word ptr [bp + 4]
@@ -37590,14 +37617,14 @@ ovl7_6ae9:
   ovl7:6B45  15F15  ebb3           jmp    0x6afa
   ovl7:6B47  15F17  e8b3b5         call   speaker_off
   ovl7:6B4A  15F1A  e9fd00         jmp    0x6c4a
-  ovl7:6B4D  15F1D  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sound on flag
+  ovl7:6B4D  15F1D  813ee1a60300   cmp    word ptr [0xa6e1], 3         ; [A6E1] sounds (0 off, 1 no music, 2 on / internal speaker, 3 external speaker = Tandy chip)
   ovl7:6B53  15F23  7403           je     0x6b58
   ovl7:6B55  15F25  e9f200         jmp    0x6c4a
-  ovl7:6B58  15F28  8b064105       mov    ax, word ptr [0x541]
+  ovl7:6B58  15F28  8b064105       mov    ax, word ptr [0x541]         ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl7:6B5C  15F2C  0bc0           or     ax, ax
   ovl7:6B5E  15F2E  7503           jne    0x6b63
   ovl7:6B60  15F30  e9e700         jmp    0x6c4a
-  ovl7:6B63  15F33  e8fdb5         call   rt_2163
+  ovl7:6B63  15F33  e8fdb5         call   tandy_enable
   ovl7:6B66  15F36  b80700         mov    ax, 7
   ovl7:6B69  15F39  50             push   ax
   ovl7:6B6A  15F3A  b002           mov    al, 2
@@ -37646,21 +37673,21 @@ ovl7_6ae9:
   ovl7:6BC7  15F97  ff76fa         push   word ptr [bp - 6]
   ovl7:6BCA  15F9A  33c0           xor    ax, ax
   ovl7:6BCC  15F9C  50             push   ax
-  ovl7:6BCD  15F9D  e834b5         call   rt_2104
+  ovl7:6BCD  15F9D  e834b5         call   tandy_tone
   ovl7:6BD0  15FA0  83c404         add    sp, 4
   ovl7:6BD3  15FA3  8b46fc         mov    ax, word ptr [bp - 4]
   ovl7:6BD6  15FA6  0346fa         add    ax, word ptr [bp - 6]
   ovl7:6BD9  15FA9  50             push   ax
   ovl7:6BDA  15FAA  b80100         mov    ax, 1
   ovl7:6BDD  15FAD  50             push   ax
-  ovl7:6BDE  15FAE  e823b5         call   rt_2104
+  ovl7:6BDE  15FAE  e823b5         call   tandy_tone
   ovl7:6BE1  15FB1  83c404         add    sp, 4
   ovl7:6BE4  15FB4  8b46fe         mov    ax, word ptr [bp - 2]
   ovl7:6BE7  15FB7  0346fa         add    ax, word ptr [bp - 6]
   ovl7:6BEA  15FBA  50             push   ax
   ovl7:6BEB  15FBB  b80200         mov    ax, 2
   ovl7:6BEE  15FBE  50             push   ax
-  ovl7:6BEF  15FBF  e812b5         call   rt_2104
+  ovl7:6BEF  15FBF  e812b5         call   tandy_tone
   ovl7:6BF2  15FC2  83c404         add    sp, 4
   ovl7:6BF5  15FC5  8b7604         mov    si, word ptr [bp + 4]
   ovl7:6BF8  15FC8  8146040200     add    word ptr [bp + 4], 2
@@ -37697,7 +37724,7 @@ ovl7_6ae9:
   ovl7:6C3E  1600E  e868fc         call   ovl7_68a9
   ovl7:6C41  16011  83c402         add    sp, 2
   ovl7:6C44  16014  e92cff         jmp    0x6b73
-  ovl7:6C47  16017  e827b5         call   rt_2171
+  ovl7:6C47  16017  e827b5         call   tandy_silence
   ovl7:6C4A  1601A  8be5           mov    sp, bp
   ovl7:6C4C  1601C  5d             pop    bp
   ovl7:6C4D  1601D  c3             ret
