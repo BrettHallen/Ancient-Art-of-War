@@ -31,5 +31,6 @@ Work in progress.<br>
 
 ## Useful Links
 - [Official developer site](https://www.evryware.com/index.html)
-
+- [John Lahmy's Fansite](https://web.archive.org/web/20220224143929/http://ancient-art-of-war.0fees.net/?i=3)
+- [Original Mac version](https://www.macintoshrepository.org/3503-the-ancient-art-of-war)
 
