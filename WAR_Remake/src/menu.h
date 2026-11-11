@@ -20,6 +20,7 @@ typedef enum {
     MENU_CONTINUE,      /* back to the game after saving */
     MENU_QUIT,          /* leave the program */
     MENU_VIEWER,        /* the remake's asset viewer */
+    MENU_DEMO,          /* the demo: menu.game played by the computer (play_start_demo) */
 } MenuAction;
 
 typedef struct {        /* the options in CNF (25 bytes from DS:A6DE) */

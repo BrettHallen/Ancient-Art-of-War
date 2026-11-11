@@ -150,9 +150,19 @@ typedef struct {
     int      ai_dest;            /* A8CF: cell to plan a route to */
     int      ai_dist;            /* A8C7: distance found by the last search */
     int      value_fort, value_village, value_bridge, value_flag;   /* A8D1, A8D3, A8D5, A8D7 */
+
+    /* the demo (attract mode) */
+    int      demo;               /* A6D8: 0 no, 1 the demo is running, 2 an encounter: Zoom to it */
+    int      demo_key;           /* AAED in the demo: the key the demo presses (-/+ scroll, Z) */
+    int      demo_wait;          /* the remake: iterations the end of a demo game stays on screen */
 } Play;
 
 void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed);
+
+/* The demo (show_title_barbarian ovl1:42CC, game_init ovl1:33C9): the game plays
+ * itself, fastest, scrolling the map, and zooms into the first encounter.
+ * play.result becomes PLAY_QUIT when it is over or a key is pressed. */
+void play_start_demo(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed);
 
 /* A key was pressed (PK_ code); Shift held selects jump scrolling. */
 void play_key(Play *p, int key, bool shift);

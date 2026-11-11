@@ -12,6 +12,7 @@ The game starts as the original does (overlay 1 of WAR.EXE):
 - **the opponents**: the eight portraits, the blinking frame and each general's description; then a quote from Sun Tzu and *PREPARE FOR WAR!*
 - **make changes**: the six scenes of the campaign menu. *Ye Olde Options Shoppe* works (display, fight delay, sounds, joystick; saved as `CNF`) and *Return to title page*; the campaign and formation editors come in step 7
 - **the battle report**: victory or defeat, how it was won, and the men captured, the casualties and the flags taken on each side
+- **the demo**: left alone on the title page for 23 seconds, the box says *DEMO* and the computer plays one of the campaigns T3–TA against the first opponent, every squad in sight, at the fastest time, scrolling to what happens. It zooms into the first encounter, and the title page comes back when that battle ends. Any key stops it
 - **saved games**: **Alt+S** during play saves the game (*WARNING: Any previously saved game ... will be erased*, *Saving Game*, *<C>ontinue with game or <Q>uit?*). To carry on a saved game, choose *( data disk )* at the end of the titles and answer **S** for *Saved game*
 
 The map, the rules and the enemy work as they do in the original program (overlay 6 of WAR.EXE):
@@ -77,6 +78,7 @@ Campaigns made with the original game's editor can be played: copy the files fro
 | S / N | *Saved game* or *New campaigns* |
 | C / Q | After saving: continue with the game, or quit to the title page |
 | F12 | The asset viewer |
+| (no key for 23 s) | The demo; any key stops it |
 
 ### Viewer keys
 | Key | Action |
@@ -149,6 +151,6 @@ The file formats are described in [WAR_Analysis/README.md](../WAR_Analysis/READM
 3. Strategic rules: movement, terrain, food and supply lines, villages and forts, visibility, spies, flags, Detach, Join and Formation (done)
 4. Battles: the fight screen, formations, archers, knights and barbarians (battles on the map and the battle screen done)
 5. Opponent AI for the 8 generals, ported from the original program (done)
-6. Menus, options, saved games and the battle report (done)
+6. Menus, options, saved games, the battle report and the demo (done)
 7. Campaign editor and formation editor
 8. Sound: PC speaker and Tandy sound

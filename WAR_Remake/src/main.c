@@ -9,6 +9,8 @@
  *
  * Menus: -/+ (or the arrows) change, Enter selects, Esc backs up, Space
  *        changes a rule or an option. F12 opens the asset viewer.
+ *        Left alone on the title page for 23 seconds, the game plays a demo
+ *        until a key is pressed (as the original does).
  *
  * Viewer keys:  Left/Right  previous/next screen     Tab   CGA / VGA
  *        Up/Down, -/+, mouse wheel   scroll a campaign map
@@ -66,6 +68,7 @@ typedef struct {
     Campaign      game;          /* the campaign being played (with its chosen rules and opponent) */
     Play          play;
     bool          in_battle;     /* Zoom: the battle screen */
+    int           demo_extra;    /* the demo: extra scrolling turns owed, in halves */
     Battle        battle;
     int           tapped;        /* cursor key pressed since the last frame */
     Uint32        ev_folder;     /* custom event: folder chosen in the dialog */
@@ -446,6 +449,27 @@ static void begin_game(App *app, const Campaign *c, uint32_t seed)
     app->tapped = 0;
 }
 
+static void begin_demo(App *app, const Campaign *c, uint32_t seed)
+{
+    app->game = *c;
+    play_start_demo(&app->play, &app->game, &app->ga, seed);
+    if (app->menu) app->play.fight_delay = menu_options(app->menu)->fight_delay;
+    app->playing = true;
+    app->in_menu = false;
+    app->in_battle = false;
+    app->tapped = 0;
+}
+
+/* The demo is over (a key, a battle, the end of its game): the title page,
+ * as game_init shows it again (main rt:00BC, battle_report ovl1:53B4). */
+static void end_demo(App *app)
+{
+    app->playing = false;
+    app->in_battle = false;
+    app->in_menu = app->menu != NULL;
+    if (app->menu) menu_title(app->menu);
+}
+
 static void start_play(App *app)
 {
     const Campaign *c = &app->campaigns[app->index - SCREEN_MAP_FIRST];
@@ -484,12 +508,21 @@ static bool menu_step(App *app)
         app->playing = true;
         app->in_menu = false;
         break;
+    case MENU_DEMO:
+        begin_demo(app, menu_game(app->menu), menu_seed(app->menu));
+        break;
     case MENU_QUIT:
         return false;
     default:
         break;
     }
     return true;
+}
+
+static bool demo_scrolling(const Play *p)
+{
+    return p->demo == 1 && p->result == PLAY_RUNNING && p->zoom_squad < 0 &&
+           (p->demo_key == PK_KP_MINUS || p->demo_key == PK_KP_PLUS);
 }
 
 /* One iteration of the campaign; false when it has ended. */
@@ -501,6 +534,7 @@ static bool play_step(App *app)
         if (app->battle.done) {
             battle_finish(&app->battle);
             app->in_battle = false;
+            if (app->play.demo) { end_demo(app); return false; }   /* rt:00BC: back to game_init */
         }
         return true;
     }
@@ -510,11 +544,23 @@ static bool play_step(App *app)
             return true;
         }
         app->play.zoom_squad = -1;     /* no O6/O7/F files */
+        if (app->play.demo) { end_demo(app); return false; }
     }
     int held = held_cursor_key();
     if (!held && app->tapped) held = app->tapped;
     app->tapped = 0;
     play_frame(&app->play, held);
+    /* The demo's scrolling turns of the loop skip the game's work, and ran about
+     * 50 a second on the PCs of the day (DOSBox at 1500 cycles): 5 per 2 frames. */
+    if (demo_scrolling(&app->play)) {
+        app->demo_extra += 3;
+        while (app->demo_extra >= 2 && demo_scrolling(&app->play)) {
+            app->demo_extra -= 2;
+            play_frame(&app->play, 0);
+        }
+    } else {
+        app->demo_extra = 0;
+    }
     if (app->play.result != PLAY_RUNNING) {
         PlayResult r = app->play.result;
         to_menu(app);
@@ -642,7 +688,9 @@ int main(int argc, char **argv)
                 }
                 else if (app.playing) {
                     if (e.key.repeat) continue;
-                    if (k == SDLK_TAB) {
+                    bool own = k == SDLK_TAB || k == SDLK_F2;   /* the remake's own keys */
+                    if (app.play.demo && !own) { end_demo(&app); update_title(&app); }   /* a key ends the demo */
+                    else if (k == SDLK_TAB) {
                         GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
                         if (app.ga.set[next].loaded) app.mode = next;
                     } else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;

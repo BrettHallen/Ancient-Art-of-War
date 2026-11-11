@@ -18,8 +18,16 @@
 
 enum {
     MS_PRESENTED, MS_TITLE, MS_ASK_SAVED, MS_TITLES, MS_STORY, MS_RULES, MS_OPPONENT, MS_QUOTE,
-    MS_REPORT, MS_CAMPAIGN_MENU, MS_SHOPPE, MS_SAVE_WARN, MS_SAVED, MS_MESSAGE,
+    MS_REPORT, MS_CAMPAIGN_MENU, MS_SHOPPE, MS_SAVE_WARN, MS_SAVED, MS_MESSAGE, MS_DEMO,
 };
+
+/* The demo starts when the title page has been left alone for 189 turns of
+ * its loop (ovl1:42C4). Each turn is two calibrated delays, which run about
+ * 0.12 s at the speed of the PCs of the day (DOSBox at 1500 cycles: 23 s in
+ * all); a faster PC makes the delays, and so the wait, longer. */
+#define DEMO_IDLE_FRAMES (23 * MENU_HZ)
+#define DEMO_MOMENT 10            /* then "One moment, please" while the files load, */
+#define DEMO_LOAD_FRAMES 30       /* then the map: 1 1/2 s in all, as in DOSBox */
 
 #define SCROLL_LINES 400
 #define VIEW_LINES   184          /* scroll window: the screen above the two text rows */
@@ -70,6 +78,7 @@ struct Menu {
     /* title page */
     int         title_item;
     bool        box_inverted;
+    int         idle;             /* frames with no key ([bp-6] of ovl1_4161 counts turns) */
 
     /* scrolls */
     uint8_t     sbuf[SCREEN_W * SCROLL_LINES];
@@ -479,6 +488,28 @@ static void title_box(Menu *m)
     if (m->box_inverted) xor_box(m, 17, 54, 25, 5);   /* the buffer is blitted again: back to normal */
     m->box_inverted = false;
     small_caps(m, 19, 58, O3S(m, TITLE_ITEMS[m->title_item]));
+    m->frame = 0;
+    m->idle = 0;
+}
+
+/* ovl1:42CC: nobody has pressed a key for a while: "demo" in the box, and one
+ * of the campaigns T3-TA, against the first opponent, every squad seen. */
+static void demo_start(Menu *m)
+{
+    int n = 3 + (rnd(m) & 7);
+    char name[3] = { 'T', (char)(n < 10 ? '0' + n : 'A' + n - 10), 0 };
+    int idx = -1;
+    for (int c = 0; c < NUM_CAMPAIGNS; c++)
+        if (m->camps[c].loaded && SDL_strcasecmp(m->camps[c].file, name) == 0) idx = c;
+    if (idx < 0 || !m->ga->have_battle) { m->idle = 0; return; }   /* not on this WAR disk: keep waiting */
+    small_caps(m, 19, 58, O3S(m, 0x96B));       /* "    quit    " */
+    small_caps(m, 27, 58, O3S(m, 0xE54));       /* "demo " over "quit" */
+    clear_row(m, 24);
+    m->game = m->camps[idx];
+    m->game.opponent = 0;                       /* A67C = 0, its values from O2 */
+    m->game.rules[RULE_ENEMY_SEEN] = 80;        /* A70F: every squad is seen */
+    m->seed = (uint32_t)SDL_GetTicksNS();
+    m->state = MS_DEMO;                         /* the picture stays while the files load */
     m->frame = 0;
 }
 
@@ -1066,6 +1097,9 @@ void menu_key(Menu *m, int k)
     case MS_QUOTE:
         m->action = MENU_START_GAME;
         break;
+    case MS_DEMO:                          /* a key while the demo loads ends it at once */
+        menu_title(m);
+        break;
     case MS_REPORT:
         menu_title(m);
         break;
@@ -1146,7 +1180,18 @@ void menu_frame(Menu *m)
         break;
     case MS_TITLE:                         /* the box blinks (ovl1_4206): measured in DOSBox, */
         if (m->frame % 28 == 15) { xor_box(m, 17, 54, 25, 5); m->box_inverted = true; }    /* 0.75 s plain, */
-        if (m->frame % 28 == 0 && m->box_inverted) { xor_box(m, 17, 54, 25, 5); m->box_inverted = false; }   /* 0.65 s inverted */
+        if (m->frame % 28 == 0 && m->box_inverted) {                                       /* 0.65 s inverted */
+            xor_box(m, 17, 54, 25, 5);
+            m->box_inverted = false;
+        }
+        if (++m->idle >= DEMO_IDLE_FRAMES) {
+            if (m->box_inverted) { xor_box(m, 17, 54, 25, 5); m->box_inverted = false; }
+            demo_start(m);
+        }
+        break;
+    case MS_DEMO:
+        if (m->frame == DEMO_MOMENT) { clear_row(m, 24); print_at(m, 10, 24, DSS(m, 0x26)); }   /* rt:06C1 */
+        if (m->frame >= DEMO_LOAD_FRAMES) { m->action = MENU_DEMO; m->state = MS_TITLE; m->drawn = false; }
         break;
     case MS_TITLES: case MS_STORY: case MS_RULES:
         if (m->anim && scroll_anim(m)) go(m, m->next_state);

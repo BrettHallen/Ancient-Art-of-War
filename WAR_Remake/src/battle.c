@@ -528,7 +528,8 @@ static void begin_attack(Battle *b)    /* the attack starts: ovl7:52BE, 6554 */
     show_groups(b);
     b->start = 7;
     b->asking = false;
-    for (int t = 0; t < 3; t++) b->order[t] = 0;
+    if (!b->p->demo)                           /* ovl7:52CE: in the demo your men keep attacking */
+        for (int t = 0; t < 3; t++) b->order[t] = 0;
     if (b->bg == 3) b->order[ARCHER] = 1;      /* archers on the wall shoot at once */
 }
 
@@ -762,6 +763,7 @@ bool battle_start(Battle *b, Play *p, int sel)
     }
     b->start = 20;
     for (int k = 0; k < 10; k++) sort_pass(b);
+    for (int t = 0; t < 3; t++) b->order[t] = b->p->demo ? 1 : 0;   /* ovl7:3FEA: the demo attacks */
     b->target = -1;
     alive_types(b);
     tclear(b, 23);
@@ -782,6 +784,7 @@ static void battle_input(Battle *b)   /* ovl7:652F */
 {
     int k = b->key;
     if (!k) return;
+    if (b->p->demo) return;            /* ovl7:6541: a key ends the demo (main.c) */
     if (b->asking) {
         if (k == PK_A) begin_attack(b);
     } else if (b->menu == 1) {

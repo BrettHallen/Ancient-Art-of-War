@@ -194,8 +194,8 @@ static void print_where(Play *p, int x, int y)   /* ovl6:5D42: " IN THE NORTH" *
 {
     print(p, O5(p, 0x29D));
     bool ns = false;
-    if (y < 60)       { print(p, DS(p, 0x1E9)); ns = true; }
-    else if (y > 140) { print(p, DS(p, 0x1EF)); ns = true; }
+    if (y < 60)       { print(p, DS(p, 0x1E9)); ns = true; if (p->demo) p->demo_key = PK_KP_MINUS; }   /* the demo */
+    else if (y > 140) { print(p, DS(p, 0x1EF)); ns = true; if (p->demo) p->demo_key = PK_KP_PLUS; }    /* scrolls to it */
     if (x < 30)       print(p, DS(p, 0x1F5));
     else if (x > 50)  print(p, DS(p, 0x1FA));
     else if (!ns)     print(p, O5(p, 0x2A6));
@@ -650,6 +650,7 @@ static void encounters(Play *p)
                 a->foe = j;
                 b->foe = i;
                 alert_battle(p, i, O5(p, 0x100), "");   /* WARNING - ENCOUNTER */
+                if (p->demo) { p->demo = 2; p->sel = i; }   /* ovl6:5AAD: the demo zooms to it */
                 a->clock = b->clock = 1;
                 a->moving = b->moving = 0;
                 break;
@@ -1579,7 +1580,7 @@ static void cursor_input(Play *p, int key)
 
     int delta = 0;
     if (up) {
-        if (p->view_top < 2) return;
+        if (p->view_top < 2) { if (p->demo) p->demo_key = 0; return; }   /* ovl6:3EF8 */
         if (p->jump && p->mode != PM_TRACE) {
             p->view_top = 0; p->cx = 0x26; p->cy = 0x2D; delta = 1;
         } else {
@@ -1587,7 +1588,7 @@ static void cursor_input(Play *p, int key)
             if (p->view_top + VIEW_MARGIN < p->cy) { p->cy -= 2; delta = -160; }
         }
     } else if (down) {
-        if (p->view_top >= VIEW_TOP_MAX - 1) return;
+        if (p->view_top >= VIEW_TOP_MAX - 1) { if (p->demo) p->demo_key = 0; return; }   /* ovl6:3F8E */
         if (p->jump && p->mode != PM_TRACE) {
             p->view_top = VIEW_TOP_MAX; p->cx = 0x26; p->cy = 0x91; delta = 1;
         } else {
@@ -1747,9 +1748,10 @@ void play_resume(Play *p)
     check_over(p, 0);
 }
 
-void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
+static void start_game(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed, bool demo)
 {
     SDL_memset(p, 0, sizeof *p);
+    p->demo = demo;
     p->c = c;
     p->ga = ga;
     p->rnd = (uint16_t)(seed & 0xFF);   /* rt:2096: BIOS tick count */
@@ -1798,7 +1800,7 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
     p->view_top = VIEW_TOP_MAX;         /* ovl1:32B8 */
     p->cx = 0x26;
     p->cy = 0x91;
-    p->time_div = 64;                   /* slow */
+    p->time_div = demo ? 1 : 64;        /* slow; the demo runs faster (ovl1:33C9) */
     p->text_rows = 2;
     p->sel = -1;
     p->result = PLAY_RUNNING;
@@ -1813,6 +1815,17 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
         OPP(p, 0xA4FA) = rule(p, RULE_MOUNTAIN);
         OPP(p, 0xA4FC) = rule(p, RULE_FOREST);
     }
+    if (demo) OPP(p, 0xA4FE) = 3;       /* ovl1:4382 */
+
+    /* game_init (ovl1:32E5): when every squad is seen, spies are no use and
+     * become barbarians; the opponent guards its flag with at most half its squads */
+    int enemies = 0;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        if (rule(p, RULE_ENEMY_SEEN) >= RULE_SEEN_ALL) { q->barbarians += q->spies; q->spies = 0; }
+        if (!q->friendly && q->used) enemies++;
+    }
+    if (OPP(p, 0xA4E8) > enemies >> 1) OPP(p, 0xA4E8) = (int16_t)(enemies >> 1);
     /* game_init (ovl1:3417): a side without a flag gets one */
     int white = 0, black = 0;
     for (int f = 0; f < MAX_FLAGS; f++)
@@ -1835,7 +1848,18 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
     cmd_normal(p);
     if (check_victory(p, -1, -1)) { check_over(p, 0); return; }
     ai_start(p);                        /* a new game: the enemy's first orders */
+    if (demo) p->demo_key = PK_KP_MINUS;   /* ovl6:3197: the demo scrolls up the map first */
     check_over(p, 0);
+}
+
+void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
+{
+    start_game(p, c, ga, seed, false);
+}
+
+void play_start_demo(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
+{
+    start_game(p, c, ga, seed, true);
 }
 
 void play_key(Play *p, int key, bool shift)
@@ -2015,6 +2039,14 @@ static void formation_key(Play *p, int key)
 
 static void handle_key(Play *p, int key)       /* ovl6:3B87 */
 {
+    if (p->demo == 2) {                 /* ovl6:3B98: the demo zooms to an encounter */
+        p->demo_key = key = PK_Z;
+        p->mode = PM_SQUAD;
+    }
+    if (p->mode == PM_PROMPT && p->demo) {   /* ovl6:3BBD: a question, or the end of the game, */
+        if (!p->ended || ++p->demo_wait > 3 * PLAY_HZ) p->result = PLAY_QUIT;   /* ends the demo */
+        return;
+    }
     if (p->mode == PM_PROMPT) {
         if (p->ended) {                 /* the map can still be scrolled */
             if (key == PK_ENTER || key == PK_SPACE) p->result = p->outcome;
@@ -2130,6 +2162,12 @@ void play_frame(Play *p, int held)
     if (p->result != PLAY_RUNNING) return;
     int key = p->key ? p->key : held;
     p->key = 0;
+    if (p->demo) {
+        if (key) { p->result = PLAY_QUIT; return; }   /* ovl6:3231: a key ends the demo */
+        /* poll_input (ovl6:4241): the demo holds its key, now and then -/+ instead */
+        if (rnd(p) <= 3) p->demo_key = p->rnd > 1 ? PK_KP_MINUS : PK_KP_PLUS;
+        key = p->demo_key;
+    }
     p->tick_count++;
     bool frozen = p->mode == PM_TRACE || p->mode == PM_PROMPT || p->mode == PM_SIZE ||
                   p->mode == PM_INFO || p->mode == PM_VIEW || p->mode == PM_GROUP || p->mode == PM_FORMATION;
@@ -2150,9 +2188,10 @@ void play_frame(Play *p, int held)
             forts_train(p);
         }
     }
-    if (key == 0 && p->mode != PM_PROMPT && p->mode != PM_SIZE && p->mode != PM_INFO && p->mode != PM_VIEW &&
-        p->mode != PM_GROUP && p->mode != PM_FORMATION)
-        battles(p);                             /* campaign_play: every iteration */
+    if (p->demo) key = p->demo_key;             /* the demo may scroll to a message */
+    if ((key == 0 || p->demo) && p->mode != PM_PROMPT && p->mode != PM_SIZE && p->mode != PM_INFO &&
+        p->mode != PM_VIEW && p->mode != PM_GROUP && p->mode != PM_FORMATION)
+        battles(p);                             /* campaign_play: every iteration no key is down */
     handle_key(p, key);
 }
 
