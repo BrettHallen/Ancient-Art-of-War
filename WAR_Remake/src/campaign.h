@@ -55,6 +55,7 @@ typedef struct {
     char     file[4];          /* "T0" ... "TA" */
     char     title[48];
     char     story[841];       /* with the 0x01 markers removed */
+    uint8_t  story_raw[840];   /* as in the T file: 26 rows of 32, 0x01 after each capital */
     uint8_t  map[MAP_H][MAP_W];
     uint8_t  armies[400];
     Squad    squads[MAX_SQUADS];
@@ -68,6 +69,8 @@ extern const char *const OPPONENT_NAMES[8];
 
 /* Load T0-TA and the titles. Returns the number of campaigns loaded. */
 int  campaigns_load(Campaign out[NUM_CAMPAIGNS], const char *dir);
+/* One T file (T0-TB) from a folder: the WAR disk, or the data disk's campaigns. */
+bool campaign_load_file(Campaign *c, const char *dir, const char *name);
 
 /* Draw just the map tiles: view_h lines from scroll_px down the map. */
 void campaign_draw_tiles(Screen *s, const GameAssets *ga, GfxMode mode, const Campaign *c, int scroll_px, int view_h);

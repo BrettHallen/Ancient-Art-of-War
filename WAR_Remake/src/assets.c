@@ -14,6 +14,8 @@
 #include <SDL3/SDL.h>
 #include <string.h>
 
+const RGB CGA_PALETTE_0[4] = { { 0, 0, 0 }, { 85, 255, 85 }, { 255, 85, 85 }, { 255, 255, 85 } };
+
 const RGB CGA_PALETTE[4] = {
     { 0x00, 0x00, 0x00 }, { 0x55, 0xFF, 0xFF }, { 0xFF, 0x55, 0xFF }, { 0xFF, 0xFF, 0xFF }
 };
@@ -424,7 +426,40 @@ static void load_o5(GameAssets *ga)
     for (int k = 0; ga->have_o2 && k < 8; k++)
         for (int w = 0; w < OPP_PARAMS; w++)
             ga->opponent[k][w] = (int16_t)rd16(d + 0x277 + (k * OPP_PARAMS + w) * 2);
+    if (ga->have_o2) SDL_memcpy(ga->o2, d, SDL_min(size, sizeof ga->o2 - 1));
     SDL_free(d);
+
+    /* O3, O4 and TITLES: the title pages, scrolls and menus (overlay 1) */
+    size_t s3 = 0, s4 = 0, st = 0;
+    uint8_t *o3 = assets_load_file(ga->dir, "O3", &s3), *o4 = assets_load_file(ga->dir, "O4", &s4),
+            *t = assets_load_file(ga->dir, "TITLES", &st);
+    ga->have_menus = ga->have_o2 && o3 && o4 && t && s3 >= 0xF00 && s4 >= 0x1EF && st >= 876;
+    if (ga->have_menus) {
+        SDL_memcpy(ga->o3, o3, SDL_min(s3, sizeof ga->o3 - 1));
+        SDL_memcpy(ga->o4, o4, SDL_min(s4, sizeof ga->o4 - 1));
+        SDL_memcpy(ga->titles, t, sizeof ga->titles);
+    }
+    SDL_free(o3); SDL_free(o4); SDL_free(t);
+}
+
+const char *assets_buf_string(const uint8_t *buf, size_t size, unsigned offset)
+{
+    for (size_t i = offset; i < size; i++)
+        if (buf[i] == 0) return (const char *)buf + offset;
+    return "";
+}
+
+int assets_bitmap_px(const uint8_t *buf, size_t size, unsigned offset, int x, int y, int *w, int *h)
+{
+    if (offset + 4 > size) { if (w) *w = 0; if (h) *h = 0; return 0; }
+    int ww = rd16(buf + offset) * 8, hh = rd16(buf + offset + 2) * 2;
+    if (ww > 320 || hh > 400) ww = hh = 0;
+    if (w) *w = ww;
+    if (h) *h = hh;
+    if (x < 0 || y < 0 || x >= ww || y >= hh) return 0;
+    size_t at = offset + 4 + (size_t)(y * (ww / 4) + x / 4);
+    if (at >= size) return 0;
+    return (buf[at] >> (6 - 2 * (x & 3))) & 3;
 }
 
 const char *assets_ds_string(const GameAssets *ga, unsigned offset)

@@ -27,6 +27,8 @@ enum {
     PK_V = 0x2F, PK_N = 0x31, PK_M = 0x32, PK_HOME = 0x47, PK_UP = 0x48, PK_PGUP = 0x49,
     PK_KP_MINUS = 0x4A, PK_LEFT = 0x4B, PK_KP_5 = 0x4C, PK_RIGHT = 0x4D, PK_KP_PLUS = 0x4E,
     PK_END = 0x4F, PK_DOWN = 0x50, PK_PGDN = 0x51,
+    PK_Q = 0x10, PK_L = 0x26, PK_TAB = 0x0F, PK_CTRL = 0x1D,
+    PK_ALT_S = 0x11F,          /* Alt+S: save the game (ovl6:3BDA) */
 };
 
 typedef enum {               /* DS:A92F */
@@ -35,11 +37,13 @@ typedef enum {               /* DS:A92F */
     PM_TRACE  = 2,           /* tracing a path: cursor is an open box, time stops */
     PM_SIZE   = 3,           /* Size: the men in the squad */
     PM_INFO   = 4,           /* Info: orders, condition and food */
+    PM_GROUP  = 5,           /* Detach or Join: moving men between two squads */
+    PM_FORMATION = 50,       /* Formation: choosing the squad's formation */
     PM_VIEW   = 98,          /* View: who holds which part of the map (remake's own number) */
     PM_PROMPT = 99,          /* a question, or the game is over: time stops */
 } PlayMode;
 
-typedef enum { PLAY_RUNNING, PLAY_WON, PLAY_LOST, PLAY_QUIT } PlayResult;
+typedef enum { PLAY_RUNNING, PLAY_WON, PLAY_LOST, PLAY_QUIT, PLAY_SAVE } PlayResult;
 
 typedef struct {
     bool used;               /* 9EB0 != 9999 */
@@ -125,6 +129,12 @@ typedef struct {
     bool     enter_icon;         /* "You Won ... [Enter] to continue." */
     PlayResult outcome;          /* result once Enter is pressed */
     PlayResult result;           /* not PLAY_RUNNING once play is over */
+    int        result_code;      /* A6F7: 0 won (flags), 1 they surrendered, 2 won (attrition),
+                                    10 lost (flags), 11 you surrendered, 12 lost (attrition) */
+    bool       prompt_quit;      /* Esc: "Quit to the title page?" */
+    int        partner;          /* A508: the other squad for Detach and Join */
+    bool       g_join;           /* A5C4: men go to the selected squad (Join) or from it (Detach) */
+    int        g_top;            /* A5C6: first row of the Detach/Join table */
 
     /* the enemy commander (step 5) */
     int16_t  cell_cost[MAP_W * MAP_H];    /* 8B8C: cost of crossing each cell */
@@ -158,6 +168,7 @@ int  play_edge(const Play *p, int i, int j);     /* battle_edge (rt:08EF) */
 int  play_tile_under(const Play *p, int i);      /* map tile under squad i */
 void play_clear_path(Play *p, int i);
 void play_after_battle(Play *p, int a, int b);   /* back on the map after Zoom */
-void play_enemy_beaten(Play *p, int en);         /* ovl7:6EB8: the enemy may give up its target */
+void play_enemy_beaten(Play *p, int en);
+void play_resume(Play *p);                       /* back to play after saving (campaign_play again) */         /* ovl7:6EB8: the enemy may give up its target */
 
 #endif

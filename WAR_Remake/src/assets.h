@@ -83,12 +83,19 @@ typedef struct {
     bool     have_battle;
     int16_t  opponent[8][OPP_PARAMS];  /* each commander's values (O2 + 277h), loaded to DS:A4DC */
     bool     have_o2;
+    /* the title pages and menus (overlay 1): texts, the scroll font and icons */
+    uint8_t  o2[0x1400];               /* O2: opponents, quotes, battle report, Options Shoppe */
+    uint8_t  o3[0xF16];                /* O3: scroll font, pointer, icons, title and story texts */
+    uint8_t  o4[0x200];                /* O4: the campaign menu */
+    uint8_t  titles[876];              /* TITLES: 12 file names, then 26 rows of 32 characters */
+    bool     have_menus;
     uint8_t  squad_sprite[POSE_COUNT][SPRITE_H][SPRITE_W];   /* 1 = figure */
     uint8_t  flag_sprite[SPRITE_H][SPRITE_W];
     AssetSet set[MODE_COUNT];
 } GameAssets;
 
 extern const RGB CGA_PALETTE[4];       /* palette 1, high intensity */
+extern const RGB CGA_PALETTE_0[4];     /* palette 0, high intensity: the scrolls */
 
 const char *picture_name(PictureId id);
 const char *mode_name(GfxMode mode);
@@ -110,6 +117,12 @@ const char *assets_o5_string(const GameAssets *ga, unsigned offset);
  * (in words), a height word (in line pairs), then the rows. Returns the pixel
  * value (0-3) at x,y, or 0 outside. */
 int assets_ds_bitmap_px(const GameAssets *ga, unsigned offset, int x, int y, int *w, int *h);
+
+/* The same for a bitmap in any buffer (O3's font, pointer and icons). */
+int assets_bitmap_px(const uint8_t *buf, size_t size, unsigned offset, int x, int y, int *w, int *h);
+
+/* A zero-terminated string from a loaded file buffer ("" if out of range). */
+const char *assets_buf_string(const uint8_t *buf, size_t size, unsigned offset);
 
 /* True if dir looks like it holds the original game (has WAR.EXE). */
 bool assets_dir_ok(const char *dir);

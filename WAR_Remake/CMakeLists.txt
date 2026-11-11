@@ -13,6 +13,7 @@ add_executable(AncientArtOfWar MACOSX_BUNDLE
     src/campaign.c
     src/play.c
     src/battle.c
+    src/menu.c
 )
 target_link_libraries(AncientArtOfWar PRIVATE SDL3::SDL3)
 

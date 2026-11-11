@@ -307,6 +307,8 @@ static void ai_start(Play *p);
 static void ai_all_out(Play *p);
 static int  count_flags(Play *p);
 static void enemy_split_in_fort(Play *p, int i);
+static void new_squad_from(Play *p, int i, int k);
+static void cmd_squad(Play *p);
 
 /* rt:0C44 clear_squad_path: clear the squad's path, its route (enemy), and
  * stop it */
@@ -450,8 +452,8 @@ static bool check_victory(Play *p, int a, int b)
     }
     if (theirs / 2 < OPP(p, 0xA4E8)) OPP(p, 0xA4E8)--;
     if (mine < 3 || theirs / 4 > mine || theirs < 3) ai_all_out(p);   /* the end is near: all out */
-    if (mine == 0)   { game_over(p, false); return true; }
-    if (theirs == 0) { game_over(p, true); return true; }
+    if (mine == 0)   { game_over(p, false); p->result_code = 12; return true; }
+    if (theirs == 0) { game_over(p, true); p->result_code = 2; return true; }
     if (their_men > 0 && my_men / their_men >= OPP(p, 0xA4EA) && my_men > 20) {
         OPP(p, 0xA4EA) = 500;               /* only offered once */
         p->mode = PM_PROMPT;
@@ -1725,6 +1727,23 @@ void play_after_battle(Play *p, int a, int b)
     ai_cell_costs(p);                   /* campaign_play starts again (ovl6:3144) */
     supply_map(p);
     if (check_victory(p, a, b)) return;
+    ai_cell_values(p);
+    check_over(p, 0);
+}
+
+void play_resume(Play *p)
+{
+    p->result = PLAY_RUNNING;
+    p->key = 0;
+    squads_update(p);
+    p->mode = PM_NORMAL;
+    p->over_squad = false;
+    text_reset(p);
+    cmd_normal(p);
+    ai_cell_costs(p);
+    supply_map(p);
+    if (check_victory(p, -1, -1)) return;
+    ai_cell_values(p);
     check_over(p, 0);
 }
 
@@ -1822,8 +1841,176 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
 void play_key(Play *p, int key, bool shift)
 {
     p->jump = shift;
-    if (key == PK_ESC) { p->result = PLAY_QUIT; return; }
     p->key = key;
+}
+
+/* ------------------------------------------------------------------ Detach, Join, Formation */
+
+/* The four kinds of men, in the order the Detach/Join table lists them
+ * (archers, knights, barbarians, spies; labels O5 via DS:B2E). */
+static int *men_of(PSquad *q, int k)
+{
+    return k == 0 ? &q->archers : k == 1 ? &q->knights : k == 2 ? &q->barbarians : &q->spies;
+}
+static const unsigned GROUP_LABEL[4] = { 0x18D, 0x16F, 0x17E, 0x19C };   /* -- ARCHERS --- ... */
+
+static void group_show(Play *p)        /* ovl6:64E2: the table, the arrow and the keys */
+{
+    PSquad *a = &p->sq[p->sel], *b = &p->sq[p->partner];
+    count_men(p);
+    if (a->men >= 14 && p->g_join) p->g_join = false;       /* ovl6:69BF: it can't take more */
+    if (b->men >= 14 && !p->g_join) p->g_join = true;
+    tpos(p, p->g_top - 1, 17);
+    print(p, DS(p, p->g_join ? 0x1FF : 0x203));             /* <-- or --> */
+    int row = p->g_top;
+    for (int k = 0; k < 4; k++) {
+        int na = *men_of(a, k), nb = *men_of(b, k);
+        if (!na && !nb) continue;
+        tpos(p, row, 8);
+        if (na < 10) print(p, " ");
+        print_num(p, na);
+        tpos(p, row, 28);
+        if (nb < 10) print(p, " ");
+        print_num(p, nb);
+        row++;
+    }
+    clear_row(p, 23);
+    print(p, O5(p, 0x1E7));                                 /* Select from the above types to */
+    print(p, O5(p, p->g_join ? 0x2AF : 0x2B7));             /* Join / Detach */
+    clear_row(p, 24);
+    print(p, DS(p, 0x207));                                 /* End */
+    static const int ORDER[4] = { 1, 2, 0, 3 };             /* Knight, Barb., Archer, Spy */
+    static const unsigned KEYS[4] = { 0x20C, 0x214, 0x21B, 0x223 };
+    for (int n = 0; n < 4; n++) {
+        int k = ORDER[n];
+        if ((*men_of(a, k) && !p->g_join) || (*men_of(b, k) && p->g_join)) print(p, DS(p, KEYS[n]));
+    }
+    spaces(p, 2);
+    if (p->g_join) { if (a->men > 0 && b->men < 14) print(p, O5(p, 0x2B7)); }   /* Detach */
+    else if (b->men > 0 && a->men < 14) print(p, O5(p, 0x2AF));                 /* Join */
+}
+
+/* ovl6:62A7: Detach (men go to a new squad) or Join (men come from a squad nearby) */
+static void group_start(Play *p, bool join)
+{
+    PSquad *a = &p->sq[p->sel], *b = &p->sq[p->partner];
+    count_men(p);
+    p->g_top = 22;
+    for (int k = 0; k < 4; k++) if (*men_of(a, k) || *men_of(b, k)) p->g_top--;
+    text_reset(p);
+    text_rows_add(p, 24 - p->g_top);
+    int row = p->g_top;
+    for (int k = 0; k < 4; k++) {
+        if (!*men_of(a, k) && !*men_of(b, k)) continue;
+        tpos(p, row++, 12);
+        print(p, O5(p, GROUP_LABEL[k]));
+    }
+    tpos(p, p->g_top - 1, 4);
+    if (!join) {
+        print(p, O5(p, 0x1AB));                             /* OLD GROUP            NEW GROUP */
+        new_squad_from(p, p->sel, p->partner);
+    } else {
+        print(p, O5(p, 0x1CA));                             /* GROUP 1              GROUP 2 */
+    }
+    int total = a->men + b->men;                            /* food and condition are shared out */
+    if (total > 0) {
+        int food = (b->men * b->food + a->men * a->food) / total;
+        int cond = (b->men * b->condition + a->men * a->condition) / total;
+        a->food = b->food = food;
+        a->condition = b->condition = cond;
+    }
+    p->g_join = join;
+    p->mode = PM_GROUP;
+    group_show(p);
+}
+
+static void group_key(Play *p, int key)
+{
+    PSquad *a = &p->sq[p->sel], *b = &p->sq[p->partner];
+    int k = key == PK_K ? 1 : key == PK_B ? 2 : key == PK_A ? 0 : key == PK_S ? 3 : -1;
+    if (k >= 0) {
+        int *from = men_of(p->g_join ? b : a, k), *to = men_of(p->g_join ? a : b, k);
+        if (!*from) return;
+        (*from)--;
+        (*to)++;
+    } else if (key == PK_J) {
+        if (b->men == 0 || p->g_join) return;
+        p->g_join = true;
+    } else if (key == PK_D) {
+        if (a->men == 0 || !p->g_join) return;
+        p->g_join = false;
+    } else if (key == PK_E) {                               /* End */
+        text_reset(p);
+        squads_update(p);
+        p->over_squad = false;
+        if (a->used) cmd_squad(p);
+        else cmd_normal(p);
+        return;
+    } else {
+        return;
+    }
+    group_show(p);
+}
+
+/* rt:09D3 place_formation, for the preview: who stands where */
+static int formation_places(const Play *p, int i, int type[14], int x[14], int y[14])
+{
+    const PSquad *q = &p->sq[i];
+    const uint8_t *F = p->ga->formations;
+    int form = SDL_clamp(q->formation, 0, 9), n = 0;
+    int ar = q->archers, ba = q->barbarians, kn = q->knights;
+    for (int k = 0; k < 14; k++) {
+        int t = F[form * 14 + k];
+        if (t == 2 && ar) ar--;
+        else if (t == 1 && ba) ba--;
+        else if (t == 0 && kn) kn--;
+        else if (kn) { kn--; t = 0; }
+        else if (ba) { ba--; t = 1; }
+        else if (ar) { ar--; t = 2; }
+        else break;
+        type[n] = t;
+        x[n] = F[140 + form * 14 + k] - (t == 2 ? 2 : 0);
+        y[n] = F[280 + form * 14 + k];
+        n++;
+    }
+    return n;
+}
+
+static void formation_text(Play *p)    /* rt:0EB9: Formation: N */
+{
+    tpos(p, 23, 21);
+    print(p, DS(p, 57));
+    print_num(p, p->sq[p->sel].formation);
+    print(p, " ");
+}
+
+/* ovl6:462B: Formation: + and - choose one of the 9 formations */
+static void formation_start(Play *p)
+{
+    PSquad *q = &p->sq[p->sel];
+    if (q->formation == 0) q->formation = 1;
+    p->mode = PM_FORMATION;
+    text_reset(p);
+    text_rows_add(p, 1);
+    clear_row(p, 24);
+    tpos(p, 24, 7);
+    print(p, DS(p, 0x1D6));                                 /* End */
+    formation_text(p);
+}
+
+static void formation_key(Play *p, int key)
+{
+    PSquad *q = &p->sq[p->sel];
+    if (key == PK_EQUALS || key == PK_KP_PLUS) {
+        if (++q->formation > 9) q->formation = 1;
+        formation_text(p);
+    } else if (key == PK_MINUS || key == PK_KP_MINUS) {
+        if (--q->formation < 1) q->formation = 9;
+        formation_text(p);
+    } else if (key == PK_E || (key >= PK_HOME && key <= PK_PGDN)) {   /* E, or a cursor key */
+        p->over_squad = false;
+        cmd_squad(p);
+    }
 }
 
 static void handle_key(Play *p, int key)       /* ovl6:3B87 */
@@ -1839,8 +2026,18 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
                 print(p, O5(p, 0x47));  /* Your opponent accepts your surrender */
                 p->ended = true;
                 p->outcome = PLAY_LOST;
+                p->result_code = 11;
             } else if (key == PK_N) {
                 p->prompt_surrender = false;
+                p->mode = PM_NORMAL;
+                cmd_normal(p);
+            }
+        } else if (p->prompt_quit) {    /* the remake's Esc */
+            if (key == PK_Y) {
+                p->prompt_quit = false;
+                p->result = PLAY_QUIT;
+            } else if (key == PK_N || key == PK_ESC) {
+                p->prompt_quit = false;
                 p->mode = PM_NORMAL;
                 cmd_normal(p);
             }
@@ -1849,6 +2046,7 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
                 print(p, DS(p, 0x1CF)); /* Yes */
                 p->ended = true;
                 p->outcome = PLAY_WON;
+                p->result_code = 1;
             } else if (key == PK_N) {
                 print(p, DS(p, 0x1D3)); /* No */
                 ai_all_out(p);          /* ovl6:37F2: refused, the enemy attacks all out */
@@ -1863,6 +2061,8 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         if (key) cmd_normal(p);
         return;
     }
+    if (p->mode == PM_GROUP) { group_key(p, key); return; }
+    if (p->mode == PM_FORMATION) { formation_key(p, key); return; }
     if (p->mode == PM_SIZE) {
         if (key) cmd_squad(p);
         return;
@@ -1873,6 +2073,16 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         return;
     }
     if (p->mode == PM_NORMAL) {
+        if (key == PK_ALT_S) { p->result = PLAY_SAVE; return; }   /* save the game (ovl6:3BE5) */
+        if (key == PK_ESC) {            /* the remake: leave the game */
+            clear_row(p, 23);
+            clear_row(p, 24);
+            tpos(p, 24, 0);
+            print(p, "Quit to the title page? (Y or N)");
+            p->mode = PM_PROMPT;
+            p->prompt_quit = true;
+            return;
+        }
         if (key == PK_S) {              /* Surrender */
             clear_row(p, 23);
             clear_row(p, 24);
@@ -1898,6 +2108,16 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         if (key == PK_Z && q->fighting && q->clock > 0) { p->zoom_squad = p->sel; return; }   /* Zoom (ovl6:3D97) */
         if (key == PK_S) { show_size(p); return; }
         if (key == PK_M && q->friendly && !q->fighting) { trace_start(p); return; }
+        if (key == PK_D && p->free_slot > -1 && q->friendly && !q->fighting) {   /* Detach (ovl6:3C99) */
+            p->partner = p->free_slot;
+            group_start(p, false);
+            return;
+        }
+        if (key == PK_F && !q->small && q->friendly && !q->fighting) { formation_start(p); return; }   /* ovl6:3CD5 */
+        if (key == PK_J && q->friendly) {                                  /* Join (ovl6:3D40) */
+            p->partner = join_partner(p, p->sel) - 1;
+            if (p->partner > -1 && (p->sq[p->partner].men < 14 || q->men < 14)) { group_start(p, true); return; }
+        }
     } else if (p->mode == PM_TRACE) {
         if (key == PK_C) { trace_cancel(p); return; }
         if (key == PK_M) { trace_confirm(p); return; }
@@ -1912,12 +2132,12 @@ void play_frame(Play *p, int held)
     p->key = 0;
     p->tick_count++;
     bool frozen = p->mode == PM_TRACE || p->mode == PM_PROMPT || p->mode == PM_SIZE ||
-                  p->mode == PM_INFO || p->mode == PM_VIEW;
+                  p->mode == PM_INFO || p->mode == PM_VIEW || p->mode == PM_GROUP || p->mode == PM_FORMATION;
     if (key == 0 && !frozen && p->tick_count >= p->time_div) {   /* campaign_play: one tick */
         p->tick_count = 0;
         p->ticks++;
         int r = flags_check(p);
-        if (r) { game_over(p, r == 2); return; }
+        if (r) { game_over(p, r == 2); p->result_code = r == 1 ? 10 : 0; return; }
         encounters(p);
         if (p->mode != PM_TRACE) ai_tick(p);    /* the enemy's orders */
         move_squads(p);
@@ -1930,7 +2150,8 @@ void play_frame(Play *p, int held)
             forts_train(p);
         }
     }
-    if (key == 0 && p->mode != PM_PROMPT && p->mode != PM_SIZE && p->mode != PM_INFO && p->mode != PM_VIEW)
+    if (key == 0 && p->mode != PM_PROMPT && p->mode != PM_SIZE && p->mode != PM_INFO && p->mode != PM_VIEW &&
+        p->mode != PM_GROUP && p->mode != PM_FORMATION)
         battles(p);                             /* campaign_play: every iteration */
     handle_key(p, key);
 }
@@ -2071,6 +2292,34 @@ static void info_graphics(const Play *p, Screen *s, const uint8_t col[4])   /* o
     if (p->food_mark) { m[0] = p->food_mark; screen_text(s, p->ga, (q->food / 2 + 15) * 8, 0xA8, m, white, black); }
 }
 
+/* rt:0D3F: the formation in a box at the bottom left, the men as A, B and K */
+static void formation_graphics(const Play *p, Screen *s, const uint8_t col[4])
+{
+    for (int y = 86; y < 190; y++) {                       /* rt:1D68 */
+        for (int x = 0; x < 68; x++) s->px[y * SCREEN_W + x] = col[x < 2 ? 3 : 0];
+    }
+    vline(s, 17, 86, 104, col);
+    screen_fill(s, 0, 86, 72, 1, col[3]);
+    screen_fill(s, 0, 190, 72, 1, col[3]);
+    int type[14], x[14], y[14];
+    int n = formation_places(p, p->sel, type, x, y);
+    for (int k = 0; k < n; k++) {
+        int xb = (((x[k] + (type[k] == 2 ? 2 : 0)) >> 1) - 22), line = y[k] + 16;
+        xb = SDL_clamp(xb, 1, 15);
+        line = SDL_clamp(line, 44, 92) * 2;
+        unsigned off = type[k] == 0 ? 0x3DC : type[k] == 1 ? 0x3D0 : 0x3C4;   /* K, B, A */
+        for (int r = 0; r < 6; r++) {                      /* draw_icon_8x6 */
+            unsigned at = off + r * 2;
+            if (at + 1 >= DS_SIZE) break;
+            int word = (p->ga->ds[at] << 8) | p->ga->ds[at + 1];
+            for (int b = 0; b < 8; b++)
+                if (line + r < SCREEN_H) s->px[(line + r) * SCREEN_W + xb * 4 + b] = col[(word >> (14 - 2 * b)) & 3];
+        }
+    }
+    draw_ds_bitmap(s, p->ga, 0x448, 0, 192, col);           /* [+] */
+    draw_ds_bitmap(s, p->ga, 0x46C, 6 * 4, 192, col);       /* [-] */
+}
+
 void play_draw(const Play *p, Screen *s, GfxMode mode)
 {
     const AssetSet *set = &p->ga->set[mode];
@@ -2111,6 +2360,7 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
     if (p->enter_icon)
         draw_ds_bitmap(s, p->ga, 0x424, 0x1D * 4, 0xC0, v.col);                        /* the [Enter] key */
     if (p->mode == PM_INFO) info_graphics(p, s, v.col);
+    if (p->mode == PM_FORMATION) formation_graphics(p, s, v.col);
     if (p->mode == PM_VIEW) view_graphics(p, s, v.col);
     if (p->prompt_offer) {              /* ovl6:3740: a box at the top of the screen */
         for (int r = 3; r <= 6; r++) screen_text(s, p->ga, 0, r * 8, p->text[r], white, black);

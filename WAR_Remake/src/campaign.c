@@ -110,27 +110,32 @@ static void load_titles(Campaign *c, const char *dir)
     }
 }
 
+/* ovl1_7870 load_campaign_file: story, map, armies, opponent and rules */
+bool campaign_load_file(Campaign *c, const char *dir, const char *name)
+{
+    SDL_memset(c, 0, sizeof *c);
+    SDL_strlcpy(c->file, name, sizeof c->file);
+    SDL_snprintf(c->title, sizeof c->title, "Campaign %s", name);
+    size_t size = 0;
+    uint8_t *d = assets_load_file(dir, name, &size);
+    if (!d || size < T_FILE_SIZE) { SDL_free(d); return false; }
+    clean_text(c->story, sizeof c->story, d, 840);
+    SDL_memcpy(c->story_raw, d, 840);
+    SDL_memcpy(c->map, d + 0x348, sizeof c->map);
+    SDL_memcpy(c->armies, d + 0x410, sizeof c->armies);
+    decode_armies(c);
+    c->opponent = rd16(d + 0x5A0) & 7;
+    for (int r = 0; r < RULE_COUNT; r++) c->rules[r] = rd16(d + 0x5A2 + 2 * r);
+    c->loaded = true;
+    SDL_free(d);
+    return true;
+}
+
 int campaigns_load(Campaign out[NUM_CAMPAIGNS], const char *dir)
 {
     int loaded = 0;
-    SDL_memset(out, 0, sizeof(Campaign) * NUM_CAMPAIGNS);
-    for (int i = 0; i < NUM_CAMPAIGNS; i++) {
-        Campaign *c = &out[i];
-        SDL_strlcpy(c->file, T_FILES[i], sizeof c->file);
-        SDL_snprintf(c->title, sizeof c->title, "Campaign %s", T_FILES[i]);
-        size_t size = 0;
-        uint8_t *d = assets_load_file(dir, T_FILES[i], &size);
-        if (!d || size < T_FILE_SIZE) { SDL_free(d); continue; }
-        clean_text(c->story, sizeof c->story, d, 840);
-        SDL_memcpy(c->map, d + 0x348, sizeof c->map);
-        SDL_memcpy(c->armies, d + 0x410, sizeof c->armies);
-        decode_armies(c);
-        c->opponent = rd16(d + 0x5A0) & 7;
-        for (int r = 0; r < RULE_COUNT; r++) c->rules[r] = rd16(d + 0x5A2 + 2 * r);
-        c->loaded = true;
-        loaded++;
-        SDL_free(d);
-    }
+    for (int i = 0; i < NUM_CAMPAIGNS; i++)
+        if (campaign_load_file(&out[i], dir, T_FILES[i])) loaded++;
     load_titles(out, dir);
     return loaded;
 }

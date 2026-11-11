@@ -1,26 +1,30 @@
 /*
  * The Ancient Art of War - remake
- * main.c: the asset viewer (step 1), campaign play (step 3) and battles (step 4).
+ * main.c: the title pages and menus (step 6), campaign play (step 3), battles
+ * (step 4), and the asset viewer (step 1).
  *
- * Shows every picture, the map tiles, the font and the 11 campaign maps from
- * the player's own copy of the original game, in CGA or VGA colours. Press
- * Enter on a campaign map to play it.
+ * The game starts as the original does: "presented by", the title page, the
+ * scrolls (titles, story, rules), the opponents and the quote. Everything is
+ * drawn from the player's own copy of the original game, in CGA or VGA colours.
+ *
+ * Menus: -/+ (or the arrows) change, Enter selects, Esc backs up, Space
+ *        changes a rule or an option. F12 opens the asset viewer.
  *
  * Viewer keys:  Left/Right  previous/next screen     Tab   CGA / VGA
  *        Up/Down, -/+, mouse wheel   scroll a campaign map
  *        Shift+-/+, Home/End         top / bottom of the map
  *        Enter       play the campaign shown
  *        A           4:3 or square pixels     H     show/hide caption
- *        F, Alt+Enter, Cmd+Enter  full screen Esc   quit
+ *        F, Alt+Enter, Cmd+Enter  full screen Esc   back to the title page
  *
  * Playing: the original keys (arrows or keypad move the cursor, M Move,
  *        I Info, S Size/Surrender/Speed, T Time, C Clear/Cancel, V View,
- *        E End, Z Zoom, -/+ scroll, Enter at the end), plus Tab CGA/VGA, F2 aspect,
- *        Alt/Cmd+Enter full screen, Esc back to the viewer.
+ *        E End, Z Zoom, -/+ scroll, Alt+S save, Enter at the end), plus Tab CGA/VGA,
+ *        F2 aspect, Alt/Cmd+Enter full screen, Esc leave the game.
  * Battle (Zoom): A Attack, R Retreat; then A Archers, B Barbarians, K Knights,
  *        S Squad and A Attack, F Forward, B Backoff, S Stop, Backspace back.
  *
- * Usage: AncientArtOfWar [game-folder]
+ * Usage: AncientArtOfWar [--viewer] [game-folder]
  *        AncientArtOfWar --screenshots OUTDIR [game-folder]   (write BMPs, no window)
  */
 #include <SDL3/SDL.h>
@@ -31,6 +35,7 @@
 #include "gfx.h"
 #include "play.h"
 #include "battle.h"
+#include "menu.h"
 
 #define APP_ORG  "AncientArtOfWar"
 #define APP_NAME "Remake"
@@ -56,6 +61,9 @@ typedef struct {
     SDL_Texture  *up;            /* integer-upscaled copy for sharp 4:3 scaling */
     int           up_scale;
     bool          playing;
+    bool          in_menu;       /* the title pages and menus */
+    Menu         *menu;
+    Campaign      game;          /* the campaign being played (with its chosen rules and opponent) */
     Play          play;
     bool          in_battle;     /* Zoom: the battle screen */
     Battle        battle;
@@ -84,19 +92,37 @@ static void scroll_map(App *app, int delta)
     *sc = SDL_clamp(*sc + delta, 0, SCROLL_BOTTOM);
 }
 
+/* Options Shoppe: "display is black/white" */
+static void apply_display(App *app, Screen *s)
+{
+    if (!app->menu || menu_options(app->menu)->display != 0) return;
+    for (int i = 0; i < 16; i++) {
+        int g = (s->pal[i].r * 30 + s->pal[i].g * 59 + s->pal[i].b * 11) / 100;
+        s->pal[i] = (RGB){ (uint8_t)g, (uint8_t)g, (uint8_t)g };
+    }
+}
+
 static void draw_screen(App *app)
 {
     Screen *s = &app->screen;
     const AssetSet *set = &app->ga.set[app->mode];
     int ncolors = app->mode == MODE_VGA ? 16 : 4;
 
+    if (app->in_menu && app->menu) {
+        menu_draw(app->menu, s, app->mode);
+        apply_display(app, s);
+        screen_to_xrgb(s, app->rgb);
+        return;
+    }
     if (app->playing && app->in_battle) {
         battle_draw(&app->battle, s, app->mode);
+        apply_display(app, s);
         screen_to_xrgb(s, app->rgb);
         return;
     }
     if (app->playing) {
         play_draw(&app->play, s, app->mode);
+        apply_display(app, s);
         screen_to_xrgb(s, app->rgb);
         return;
     }
@@ -371,6 +397,7 @@ static int play_keycode(SDL_Keycode k)
     case SDLK_C: return PK_C;   case SDLK_V: return PK_V;   case SDLK_N: return PK_N;
     case SDLK_M: return PK_M;   case SDLK_A: return PK_A;   case SDLK_B: return PK_B;
     case SDLK_K: return PK_K;   case SDLK_R: return PK_R;   case SDLK_BACKSPACE: return PK_BACKSPACE;
+    case SDLK_Q: return PK_Q;   case SDLK_L: return PK_L;
     case SDLK_RETURN: case SDLK_KP_ENTER: return PK_ENTER;
     case SDLK_SPACE: return PK_SPACE;
     case SDLK_MINUS: return PK_MINUS;
@@ -408,14 +435,61 @@ static int held_cursor_key(void)
     return PK_NONE;
 }
 
+static void begin_game(App *app, const Campaign *c, uint32_t seed)
+{
+    app->game = *c;
+    play_start(&app->play, &app->game, &app->ga, seed);
+    if (app->menu) app->play.fight_delay = menu_options(app->menu)->fight_delay;   /* [A6E3] */
+    app->playing = true;
+    app->in_menu = false;
+    app->in_battle = false;
+    app->tapped = 0;
+}
+
 static void start_play(App *app)
 {
     const Campaign *c = &app->campaigns[app->index - SCREEN_MAP_FIRST];
     if (!c->loaded) return;
-    play_start(&app->play, c, &app->ga, (uint32_t)(SDL_GetTicks() / 55));   /* like the BIOS tick count */
-    app->playing = true;
+    begin_game(app, c, (uint32_t)(SDL_GetTicks() / 55));   /* like the BIOS tick count */
+}
+
+static void to_menu(App *app)
+{
+    app->playing = false;
     app->in_battle = false;
-    app->tapped = 0;
+    app->in_menu = app->menu != NULL;
+}
+
+/* What the menus asked for */
+static bool menu_step(App *app)
+{
+    menu_frame(app->menu);
+    switch (menu_action(app->menu)) {
+    case MENU_START_GAME:
+        begin_game(app, menu_game(app->menu), menu_seed(app->menu));
+        break;
+    case MENU_RESUME_GAME:
+        if (menu_load_saved_game(app->menu, &app->play, &app->game)) {
+            app->play.fight_delay = menu_options(app->menu)->fight_delay;
+            play_resume(&app->play);
+            app->playing = true;
+            app->in_menu = false;
+            app->in_battle = false;
+        } else {
+            menu_title(app->menu);
+        }
+        break;
+    case MENU_CONTINUE:
+        play_resume(&app->play);
+        app->playing = true;
+        app->in_menu = false;
+        break;
+    case MENU_QUIT:
+        return false;
+    default:
+        break;
+    }
+    return true;
 }
 
 /* One iteration of the campaign; false when it has ended. */
@@ -442,7 +516,13 @@ static bool play_step(App *app)
     app->tapped = 0;
     play_frame(&app->play, held);
     if (app->play.result != PLAY_RUNNING) {
-        app->playing = false;
+        PlayResult r = app->play.result;
+        to_menu(app);
+        if (app->menu) {
+            if (r == PLAY_SAVE) menu_save(app->menu, &app->play);               /* thunk 4 */
+            else if (r == PLAY_WON || r == PLAY_LOST) menu_report(app->menu, &app->play);   /* thunk 5 */
+            else menu_title(app->menu);
+        }
         return false;
     }
     return true;
@@ -460,8 +540,10 @@ int main(int argc, char **argv)
 {
     static App app;   /* large: keep off the stack */
     const char *dir_arg = NULL, *shots = NULL;
+    bool viewer = false;
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--screenshots") == 0 && i + 1 < argc) shots = argv[++i];
+        else if (SDL_strcmp(argv[i], "--viewer") == 0) viewer = true;
         else if (argv[i][0] != '-') dir_arg = argv[i];
     }
     app.aspect_43 = true;
@@ -498,20 +580,27 @@ int main(int argc, char **argv)
 
     if (found) load_from(&app, dir, dir_arg == NULL ? false : true);
     if (!app.have_assets) ask_for_folder(&app);
+    else if (!viewer && app.ga.have_menus) {
+        char *pref = SDL_GetPrefPath(APP_ORG, APP_NAME);   /* the data disk */
+        app.menu = menu_create(&app.ga, app.campaigns, pref);
+        SDL_free(pref);
+        if (app.menu) { menu_start(app.menu); app.in_menu = true; }
+    }
     update_title(&app);
 
     bool running = true;
     Uint64 next_frame = SDL_GetTicksNS();
     while (running) {
-        const Uint64 frame_ns = SDL_NS_PER_SECOND / (app.in_battle ? BATTLE_HZ : PLAY_HZ);
+        const Uint64 frame_ns = SDL_NS_PER_SECOND / (app.in_battle ? BATTLE_HZ : app.in_menu ? MENU_HZ : PLAY_HZ);
         SDL_Event e;
         bool dirty = false;
         bool got;
-        if (app.playing) {
+        if (app.playing || app.in_menu) {
             Uint64 now = SDL_GetTicksNS();
             if (now >= next_frame) {
                 next_frame = (now - next_frame > frame_ns * 4) ? now + frame_ns : next_frame + frame_ns;
-                if (!play_step(&app)) update_title(&app);
+                if (app.in_menu) { if (!menu_step(&app)) running = false; }
+                else if (!play_step(&app)) update_title(&app);
                 render(&app);
                 continue;
             }
@@ -525,18 +614,35 @@ int main(int argc, char **argv)
             if (e.type == SDL_EVENT_QUIT) {
                 running = false;
             } else if (e.type == app.ev_folder) {
-                if (load_from(&app, app.chosen, true)) app.index = 0;
-                else ask_for_folder(&app);
+                if (load_from(&app, app.chosen, true)) {
+                    app.index = 0;
+                    if (!app.menu && !viewer && app.ga.have_menus) {
+                        char *pref = SDL_GetPrefPath(APP_ORG, APP_NAME);
+                        app.menu = menu_create(&app.ga, app.campaigns, pref);
+                        SDL_free(pref);
+                        if (app.menu) { menu_start(app.menu); app.in_menu = true; }
+                    }
+                } else ask_for_folder(&app);
                 dirty = true;
             } else if (e.type == SDL_EVENT_KEY_DOWN) {
                 SDL_Keycode k = e.key.key;
                 bool mod = (e.key.mod & (SDL_KMOD_ALT | SDL_KMOD_GUI)) != 0;
                 if (k == SDLK_Q && (e.key.mod & SDL_KMOD_GUI)) running = false;
                 else if (k == SDLK_RETURN && mod) toggle_fullscreen(&app);
+                else if (app.in_menu) {
+                    if (k == SDLK_TAB) {
+                        GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
+                        if (app.ga.set[next].loaded) app.mode = next;
+                    } else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
+                    else if (k == SDLK_F12) { app.in_menu = false; app.index = 0; }
+                    else {
+                        int pk = k == SDLK_ESCAPE ? PK_ESC : play_keycode(k);
+                        if (pk) menu_key(app.menu, pk);
+                    }
+                }
                 else if (app.playing) {
                     if (e.key.repeat) continue;
-                    if (k == SDLK_ESCAPE) { app.playing = false; update_title(&app); }
-                    else if (k == SDLK_TAB) {
+                    if (k == SDLK_TAB) {
                         GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
                         if (app.ga.set[next].loaded) app.mode = next;
                     } else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
@@ -544,12 +650,13 @@ int main(int argc, char **argv)
                         int pk = play_keycode(k);
                         if (pk) battle_key(&app.battle, pk);
                     } else {
-                        int pk = play_keycode(k);
+                        int pk = k == SDLK_ESCAPE ? PK_ESC : play_keycode(k);
+                        if (pk == PK_S && (e.key.mod & SDL_KMOD_ALT)) pk = PK_ALT_S;   /* Alt+S: save */
                         if (is_cursor_pk(pk)) app.tapped = pk;
                         else if (pk) play_key(&app.play, pk, (e.key.mod & SDL_KMOD_SHIFT) != 0);
                     }
                 }
-                else if (k == SDLK_ESCAPE) running = false;
+                else if (k == SDLK_ESCAPE) { if (app.menu) { menu_title(app.menu); app.in_menu = true; } else running = false; }
                 else if (k == SDLK_F) toggle_fullscreen(&app);
                 else if (!app.have_assets && k == SDLK_O) ask_for_folder(&app);
                 else if (app.have_assets) {
@@ -584,6 +691,7 @@ int main(int argc, char **argv)
         }
     }
 
+    menu_destroy(app.menu);
     if (app.have_assets) assets_free(&app.ga);
     SDL_DestroyTexture(app.up);
     SDL_DestroyTexture(app.tex);

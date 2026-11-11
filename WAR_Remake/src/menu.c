@@ -1,0 +1,1231 @@
+/*
+ * The Ancient Art of War - remake
+ * menu.c: step 6, the title pages, scrolls, menus, Options Shoppe, saved
+ * games and the battle report, following overlay 1 of WAR.EXE.
+ *
+ * Overlay 1 draws straight into video memory: pictures, XOR boxes, an
+ * AND-drawn pointer, text rows and icons. The menu keeps its own canvas the
+ * same way, so what is left on the screen from one page shows until the next
+ * covers it (as when a scroll unrolls over the title page). In CGA mode the
+ * canvas keeps the 2-bit colour values, so a palette change recolours it as
+ * on real hardware; in VGA mode it is remapped to the nearest colours.
+ *
+ * Each function names the WAR.EXE routine it follows.
+ */
+#include "menu.h"
+
+#include <SDL3/SDL.h>
+
+enum {
+    MS_PRESENTED, MS_TITLE, MS_ASK_SAVED, MS_TITLES, MS_STORY, MS_RULES, MS_OPPONENT, MS_QUOTE,
+    MS_REPORT, MS_CAMPAIGN_MENU, MS_SHOPPE, MS_SAVE_WARN, MS_SAVED, MS_MESSAGE,
+};
+
+#define SCROLL_LINES 400
+#define VIEW_LINES   184          /* scroll window: the screen above the two text rows */
+#define TEXT_TOP     52           /* first text row on the scroll (BUF + 826h) */
+#define TEXT_LEFT    24
+#define ROW_STEP     12           /* 1E0h: 6 line pairs */
+
+/* O3 (loaded where overlay 1 calls it O7, DS:A6D0) */
+#define F_UPPER   0x000           /* 'A'-'Z': 16 x 10, 44 bytes each */
+#define F_LOWER   0x478           /* 'a'-'z': 8 x 8, 20 bytes each (small capitals) */
+#define F_QUEST   0x680
+#define F_EXCL    0x694
+#define F_SPACE   0x6A8           /* 8 x 10 of parchment: clears a cell */
+#define F_COMMA   0x6C0
+#define F_QUOTES  0x6CC
+#define F_PERIOD  0x6D8
+#define F_DIGITS  0x6E0           /* '0'-'9': 24 bytes each */
+#define F_POINTER 0x8B4           /* the sword pointer, AND-drawn */
+#define F_COLON   0xCF2
+#define F_RPAREN  0xD06
+#define F_LPAREN  0xD1A
+#define F_DASH    0xD2E
+#define F_SLASH   0xD42
+#define F_UNDER   0xD56
+#define F_BAR     0xD6E
+#define I_ESC     0xCBE           /* key icons in O3 */
+#define I_SPACEBAR 0xC36
+#define I_ENTER   0x424           /* key icons in WAR.EXE's data segment */
+#define I_PLUS    0x448
+#define I_MINUS   0x46C
+
+struct Menu {
+    GameAssets *ga;
+    Campaign   *camps;
+    char        data_dir[1024];
+    GfxMode     mode;
+    bool        drawn;            /* canvas holds the current page in this mode */
+    Screen      cv;               /* the canvas */
+    int         npal;
+    bool        pal0;             /* CGA palette 0 (the scrolls) */
+    uint8_t     c4[4];            /* canvas index for each CGA colour value */
+    uint8_t     inv[16];          /* XOR 0xFF of each canvas index */
+    int         state, frame, step;
+    MenuAction  action;
+    uint32_t    seed;
+    uint32_t    rnd;
+
+    /* title page */
+    int         title_item;
+    bool        box_inverted;
+
+    /* scrolls */
+    uint8_t     sbuf[SCREEN_W * SCROLL_LINES];
+    int         a692;             /* which scroll (WAR.EXE's [A692]) */
+    int         view;             /* top line of the window */
+    int         row;              /* [A8C5]: text row of the pointer */
+    uint8_t     text[840];        /* DS:9782: 26 rows of 32, 0x01 after capitals */
+    int         anim;             /* 1 unrolling, 2 rolling up */
+    int         anim_y;
+    int         next_state;
+    int         sel, count;       /* [A694], [A8CD] */
+    bool        data_list;        /* the titles of the data folder */
+    uint8_t     data_titles[876];
+    int         rule;
+    Campaign    game;
+
+    /* opponents and the campaign menu */
+    int         opp;
+    int         opp_phase;
+    int         sweep;            /* position of the sweeping box, -1 none */
+    bool        frame_on;
+    int         menu_item;
+    bool        menu_first;
+
+    /* Options Shoppe */
+    MenuOptions opt;
+    int         shoppe_item;
+    bool        opt_changed;
+
+    /* battle report */
+    int         report_code, rep[6], rep_opp;
+
+    /* saving */
+    const Play *save_from;
+    char        message[2][41];
+    int         message_back;
+};
+
+/* ------------------------------------------------------------------ canvas */
+
+static int rnd(Menu *m) { m->rnd = m->rnd * 1103515245u + 12345u; return (int)((m->rnd >> 16) & 0x7F); }
+
+static uint8_t nearest(const RGB *pal, int n, RGB c)
+{
+    int best = 0, bd = 1 << 30;
+    for (int i = 0; i < n; i++) {
+        int dr = pal[i].r - c.r, dg = pal[i].g - c.g, db = pal[i].b - c.b, d = dr * dr + dg * dg + db * db;
+        if (d < bd) { bd = d; best = i; }
+    }
+    return (uint8_t)best;
+}
+
+/* set_cga_palette / a picture's palette. VGA: the canvas is remapped. */
+static void set_palette(Menu *m, const RGB *pal, int n, bool pal0)
+{
+    if (m->mode == MODE_VGA && m->npal > 0) {
+        uint8_t map[16];
+        for (int i = 0; i < 16; i++) map[i] = nearest(pal, n, m->cv.pal[i < m->npal ? i : 0]);
+        for (int i = 0; i < SCREEN_W * SCREEN_H; i++) m->cv.px[i] = map[m->cv.px[i] & 15];
+    }
+    for (int i = 0; i < 16; i++) m->cv.pal[i] = pal[i < n ? i : 0];
+    m->npal = n;
+    m->pal0 = pal0;
+    const RGB *cga = pal0 ? CGA_PALETTE_0 : CGA_PALETTE;
+    for (int i = 0; i < 4; i++) m->c4[i] = m->mode == MODE_CGA ? (uint8_t)i : nearest(pal, n, cga[i]);
+    for (int i = 0; i < 16; i++) {
+        if (m->mode == MODE_CGA) m->inv[i] = (uint8_t)(i ^ 3);
+        else { RGB c = m->cv.pal[i]; RGB x = { (uint8_t)(255 - c.r), (uint8_t)(255 - c.g), (uint8_t)(255 - c.b) }; m->inv[i] = nearest(pal, n, x); }
+    }
+}
+
+static const Image *picture(const Menu *m, PictureId id)
+{
+    const AssetSet *set = &m->ga->set[m->mode];
+    if (!set->loaded || !set->pictures[id].px) set = &m->ga->set[MODE_CGA];
+    return &set->pictures[id];
+}
+
+/* load_picture_rle8 + blit_buffer_to_cga */
+static void show_picture(Menu *m, PictureId id, bool pal0)
+{
+    const Image *img = picture(m, id);
+    if (m->mode == MODE_CGA) set_palette(m, pal0 ? CGA_PALETTE_0 : CGA_PALETTE, 4, pal0);
+    else set_palette(m, img->pal, img->ncolors, pal0);
+    screen_blit(&m->cv, img, 0, 0);
+}
+
+static void put(Menu *m, int x, int y, uint8_t v)
+{
+    if (x >= 0 && y >= 0 && x < SCREEN_W && y < SCREEN_H) m->cv.px[y * SCREEN_W + x] = v;
+}
+
+/* clear_text_row */
+static void clear_row(Menu *m, int row) { screen_fill(&m->cv, 0, row * 8, SCREEN_W, 8, m->c4[0]); }
+
+/* print_string at a text position; \n goes down a row, \r to column 0 */
+static void print_at(Menu *m, int col, int row, const char *s)
+{
+    char one[2] = { 0, 0 };
+    for (; *s; s++) {
+        if (*s == '\n') { row++; continue; }
+        if (*s == '\r') { col = 0; continue; }
+        if ((unsigned char)*s < 0x20) continue;
+        if (col >= 40) { col = 0; row++; }
+        if (row > 24) break;
+        one[0] = *s;
+        screen_text(&m->cv, m->ga, col * 8, row * 8, one, m->c4[3], m->c4[0]);
+        col++;
+    }
+}
+
+static const char *O2S(const Menu *m, unsigned off) { return assets_buf_string(m->ga->o2, sizeof m->ga->o2, off); }
+static const char *O3S(const Menu *m, unsigned off) { return assets_buf_string(m->ga->o3, sizeof m->ga->o3, off); }
+static const char *O4S(const Menu *m, unsigned off) { return assets_buf_string(m->ga->o4, sizeof m->ga->o4, off); }
+static const char *DSS(const Menu *m, unsigned off) { return assets_ds_string(m->ga, off); }
+
+/* draw_bitmap: an icon from the data segment (ds) or O3, x in bytes */
+static void icon(Menu *m, bool ds, unsigned off, int xb, int y)
+{
+    int w = 0, h = 0;
+    const uint8_t *buf = ds ? m->ga->ds : m->ga->o3;
+    size_t size = ds ? DS_SIZE : sizeof m->ga->o3;
+    assets_bitmap_px(buf, size, off, 0, 0, &w, &h);
+    for (int yy = 0; yy < h; yy++)
+        for (int xx = 0; xx < w; xx++)
+            put(m, xb * 4 + xx, y + yy, m->c4[assets_bitmap_px(buf, size, off, xx, yy, NULL, NULL)]);
+}
+
+/* ovl1_7ffc: an O3 glyph copied into the canvas or the scroll (x in pixels) */
+static void glyph(Menu *m, uint8_t *dst, int lines, unsigned off, int x, int y)
+{
+    int w = 0, h = 0;
+    const uint8_t *o3 = m->ga->o3;
+    assets_bitmap_px(o3, sizeof m->ga->o3, off, 0, 0, &w, &h);
+    for (int yy = 0; yy < h; yy++) {
+        if (y + yy < 0 || y + yy >= lines) continue;
+        for (int xx = 0; xx < w; xx++) {
+            if (x + xx < 0 || x + xx >= SCREEN_W) continue;
+            dst[(y + yy) * SCREEN_W + x + xx] = m->c4[assets_bitmap_px(o3, sizeof m->ga->o3, off, xx, yy, NULL, NULL)];
+        }
+    }
+}
+
+/* ovl1_8037: the pointer, ANDed onto the screen (x in bytes) */
+static void pointer(Menu *m, int xb, int y)
+{
+    int w = 0, h = 0;
+    assets_bitmap_px(m->ga->o3, sizeof m->ga->o3, F_POINTER, 0, 0, &w, &h);
+    for (int yy = 0; yy < h; yy++)
+        for (int xx = 0; xx < w; xx++) {
+            int v = assets_bitmap_px(m->ga->o3, sizeof m->ga->o3, F_POINTER, xx, yy, NULL, NULL);
+            int px = xb * 4 + xx, py = y + yy;
+            if (px < 0 || py < 0 || px >= SCREEN_W || py >= VIEW_LINES) continue;
+            uint8_t *d = &m->cv.px[py * SCREEN_W + px];
+            if (m->mode == MODE_CGA) *d = (uint8_t)(*d & v);
+            else if (v != 3) *d = m->c4[v];
+        }
+}
+
+/* ovl1_8070: XOR a box with rounded corners (x, w in bytes; h in line pairs) */
+static void xor_box(Menu *m, int xb, int y, int wb, int h)
+{
+    int x0 = xb * 4, x1 = (xb + wb + 2) * 4;            /* first and last bytes take part */
+    int lines = 2 + 2 * h + 2;
+    for (int l = 0; l < lines; l++) {
+        int inset = (l == 0 || l == lines - 1) ? 2 : (l == 1 || l == lines - 2) ? 1 : 0;
+        for (int x = x0 + inset; x < x1 - inset; x++) {
+            int py = y + l;
+            if (x < 0 || x >= SCREEN_W || py < 0 || py >= SCREEN_H) continue;
+            m->cv.px[py * SCREEN_W + x] = m->inv[m->cv.px[py * SCREEN_W + x] & 15];
+        }
+    }
+}
+
+/* ovl1_810B: XOR a frame 4 pixels wide around a picture (x, w in bytes; h in line pairs) */
+static void xor_frame(Menu *m, int xb, int y, int wb, int h)
+{
+    int x0 = xb * 4, w = wb * 4, lines = 4 + 2 * h + 4;
+    for (int l = 0; l < lines; l++)
+        for (int x = 0; x < w; x++) {
+            bool edge = l < 4 || l >= lines - 4 || x < 4 || x >= w - 4;
+            int px = x0 + x, py = y + l;
+            if (!edge || px >= SCREEN_W || py >= SCREEN_H) continue;
+            m->cv.px[py * SCREEN_W + px] = m->inv[m->cv.px[py * SCREEN_W + px] & 15];
+        }
+}
+
+/* ovl1_6DE4: a lowercase string in the small capitals, on a picture (x in bytes) */
+static void small_caps(Menu *m, int xb, int y, const char *s)
+{
+    for (; *s; s++, xb += 2) {
+        glyph(m, m->cv.px, SCREEN_H, F_SPACE, xb * 4, y);
+        int c = (unsigned char)*s;
+        if (c == ' ') continue;
+        unsigned off = c == '/' ? F_SLASH : c == ':' ? F_COLON : (c >= 'a' && c <= 'z') ? F_LOWER + (c - 'a') * 20 : F_SPACE;
+        glyph(m, m->cv.px, SCREEN_H, off, xb * 4, y);
+    }
+}
+
+/* ovl1_76DA + 4D08 and friends: the key help on rows 23 and 24 */
+static void help_change_select(Menu *m, const char *change, int enter_x, int tail_col, const char *tail)
+{
+    clear_row(m, 24);
+    icon(m, true, I_PLUS, 0, 192);
+    print_at(m, 3, 24, DSS(m, 0x11C));          /* or */
+    icon(m, true, I_MINUS, 12, 192);
+    print_at(m, 9, 24, change);
+    icon(m, true, I_ENTER, enter_x, 192);
+    print_at(m, tail_col, 24, tail);
+}
+
+/* ------------------------------------------------------------------ the scroll */
+
+static bool is_upper(int c) { return c >= 'A' && c <= 'Z'; }
+
+/* ovl1_70C7: one character cell of the scroll text */
+static void scroll_char(Menu *m, int col, int row, int c, bool old_upper)
+{
+    int x = TEXT_LEFT + col * 8, y = TEXT_TOP + row * ROW_STEP;
+    glyph(m, m->sbuf, SCROLL_LINES, F_SPACE, x, y);
+    if (old_upper) glyph(m, m->sbuf, SCROLL_LINES, F_SPACE, x + 8, y);
+    unsigned off = F_SPACE;
+    int dy = 0;
+    if (is_upper(c))              off = F_UPPER + (c - 'A') * 44;
+    else if (c >= 'a' && c <= 'z') { off = F_LOWER + (c - 'a') * 20; dy = 2; }
+    else if (c >= '0' && c <= '9') off = F_DIGITS + (c - '0') * 24;
+    else if (c == '|')            off = F_BAR;
+    else if (c == '_')            off = F_UNDER;
+    else if (c == '?')            { off = F_QUEST; dy = 2; }
+    else if (c == '!')            { off = F_EXCL; dy = 2; }
+    else if (c == '.')            { off = F_PERIOD; dy = 8; }
+    else if (c == ',')            { off = F_COMMA; dy = 6; }
+    else if (c == '\'')           off = F_COMMA;
+    else if (c == '"')            off = F_QUOTES;
+    else if (c == ':' || c == ';') { off = F_COLON; dy = 2; }
+    else if (c == '(' || c == '[' || c == '{') { off = F_LPAREN; dy = 2; }
+    else if (c == ')' || c == ']' || c == '}') { off = F_RPAREN; dy = 2; }
+    else if (c == '-')            { off = F_DASH; dy = 2; }
+    else if (c == '/')            { off = F_SLASH; dy = 2; }
+    glyph(m, m->sbuf, SCROLL_LINES, off, x, y + dy);
+}
+
+/* ovl1_74D1: write the whole text onto the scroll; capitals take two cells */
+static void scroll_text(Menu *m)
+{
+    for (int row = 0; row < 26; row++) {
+        for (int col = 0; col < 31; col++) {
+            int c = m->text[row * 32 + col];
+            if (c == 1) continue;               /* the second cell of a capital */
+            scroll_char(m, col, row, c, is_upper(c));
+        }
+    }
+}
+
+/* PE above PF: the parchment, 320 x 400 */
+static void scroll_build(Menu *m)
+{
+    const Image *pe = picture(m, PIC_SCROLL_1), *pf = picture(m, PIC_SCROLL_2);
+    uint8_t map[16];
+    for (int i = 0; i < 16; i++) map[i] = (uint8_t)i;
+    if (m->mode == MODE_VGA)
+        for (int i = 0; i < pf->ncolors; i++) map[i] = nearest(m->cv.pal, m->npal, pf->pal[i]);
+    for (int y = 0; y < 200; y++)
+        for (int x = 0; x < SCREEN_W; x++) {
+            m->sbuf[y * SCREEN_W + x] = (y < pe->h && x < pe->w) ? pe->px[y * pe->w + x] : m->c4[3];
+            m->sbuf[(200 + y) * SCREEN_W + x] = (y < pf->h && x < pf->w) ? map[pf->px[y * pf->w + x] & 15] : m->c4[3];
+        }
+    scroll_text(m);
+}
+
+/* ovl1_7FBD: copy lines of the scroll to the screen */
+static void scroll_copy(Menu *m, int from, int to, int lines)
+{
+    for (int l = 0; l < lines; l++) {
+        if (to + l < 0 || to + l >= VIEW_LINES || from + l < 0 || from + l >= SCROLL_LINES) continue;
+        SDL_memcpy(m->cv.px + (to + l) * SCREEN_W, m->sbuf + (from + l) * SCREEN_W, SCREEN_W);
+    }
+}
+
+static void scroll_show(Menu *m)    /* blit_buffer_to_cga, and the pointer */
+{
+    scroll_copy(m, m->view, 0, VIEW_LINES);
+    if (m->a692 == 1 || m->a692 == 2)
+        pointer(m, 3, (m->row + 4) * ROW_STEP + 4 - m->view);
+}
+
+/* ovl1_7499: palette 0, then the top and the bottom curl of the scroll */
+static void scroll_open(Menu *m)
+{
+    const Image *pe = picture(m, PIC_SCROLL_1);
+    if (m->mode == MODE_CGA) set_palette(m, CGA_PALETTE_0, 4, true);
+    else set_palette(m, pe->pal, pe->ncolors, true);
+    m->view = 0;
+    scroll_build(m);
+    scroll_copy(m, 0, 0, 36);
+    scroll_copy(m, 370, 36, 28);
+    m->anim = 1;                        /* ovl1_75C5: unroll */
+    m->anim_y = 36;
+}
+
+/* one step of unrolling (ovl1_75C5) or rolling up (ovl1_7659) */
+static bool scroll_anim(Menu *m)
+{
+    for (int k = 0; k < 4 && m->anim; k++) {
+        if (m->anim == 1) {
+            scroll_copy(m, m->anim_y, m->anim_y, 2);
+            int h = SDL_min((182 - m->anim_y) >> 1, 14) * 2;
+            scroll_copy(m, 370, m->anim_y + 2, h);
+            m->anim_y += 2;
+            if (m->anim_y >= 180) { m->anim = 0; scroll_show(m); }
+        } else {
+            int h = SDL_min((182 - m->anim_y) >> 1, 14) * 2;
+            scroll_copy(m, 370, m->anim_y + 2, h);
+            m->anim_y -= 2;
+            if (m->anim_y <= 32) { m->anim = 0; scroll_copy(m, 0, 0, 36); return true; }
+        }
+    }
+    return false;
+}
+
+static void scroll_close(Menu *m, int next)
+{
+    m->anim = 2;
+    m->anim_y = 180;
+    m->next_state = next;
+    clear_row(m, 22);
+}
+
+/* ovl1_6D7E-like: write a string (with its 0x01 markers) into the text */
+static void text_put(Menu *m, int col, int row, const char *s)
+{
+    for (; *s && col < 32; s++, col++) {
+        m->text[row * 32 + col] = (uint8_t)*s;
+        if (is_upper((unsigned char)*s) && col < 31) m->text[row * 32 + ++col] = 1;   /* a capital takes two cells */
+    }
+}
+
+/* ovl1_5030: the rules, as sentences (5073: "Villages don't supply food", ...) */
+static void rules_text(Menu *m)
+{
+    const uint16_t *r = m->game.rules;
+    SDL_memset(m->text, ' ', sizeof m->text);
+    char line[64];
+    text_put(m, 10, 0, O3S(m, 0xA09));                                     /* RULES */
+    SDL_snprintf(line, sizeof line, "%s%s%s", O3S(m, 0xA0F), r[RULE_VILLAGES_SUPPLY_FOOD] ? "" : O3S(m, 0xA86), O3S(m, 0xA8D));
+    text_put(m, 2, 3, line);
+    SDL_snprintf(line, sizeof line, "%s%s%s", O3S(m, 0xA19), r[RULE_FORTS_SUPPLY_FOOD] ? "" : O3S(m, 0xA86), O3S(m, 0xA8D));
+    text_put(m, 2, 5, line);
+    int v = r[RULE_SUPPLY_LINE_RANGE];
+    SDL_snprintf(line, sizeof line, "%s%s", O3S(m, 0xA20), O3S(m, v == 1 ? 0xAA0 : v == 2 ? 0xAA6 : 0xAAD));
+    text_put(m, 2, 7, line);
+    v = r[RULE_FORTS_TRAIN_MEN];
+    SDL_snprintf(line, sizeof line, "%s%s", O3S(m, 0xA36), O3S(m, v == 30 ? 0xAB4 : v == 60 ? 0xABF : 0xAC6));
+    text_put(m, 2, 9, line);
+    v = r[RULE_MEN_SHAPE];
+    SDL_snprintf(line, sizeof line, "%s%s%s", O3S(m, 0xA47), O3S(m, v == 4 ? 0xAD1 : v == 2 ? 0xAD8 : 0xAE0), O3S(m, 0xAE9));
+    text_put(m, 2, 11, line);
+    v = r[RULE_ENEMY_SEEN];
+    SDL_snprintf(line, sizeof line, "%s%s", O3S(m, 0xA55), O3S(m, v == 20 ? 0xAF0 : v == 40 ? 0xAFB : 0xB06));
+    text_put(m, 2, 13, line);
+    v = r[RULE_WATER];
+    SDL_snprintf(line, sizeof line, "%s%s", O3S(m, 0xA64), O3S(m, v == 10 ? 0xB0F : v == 20 ? 0xB22 : 0xB33));
+    text_put(m, 2, 15, line);
+    v = r[RULE_MOUNTAIN];
+    SDL_snprintf(line, sizeof line, "%s%s", O3S(m, 0xA6E), O3S(m, v == 4 ? 0xB46 : v == 8 ? 0xB55 : 0xB63));
+    text_put(m, 2, 17, line);
+    v = r[RULE_FOREST];
+    SDL_snprintf(line, sizeof line, "%s%s", O3S(m, 0xA7B), O3S(m, v == 3 ? 0xB72 : 0xB79));
+    text_put(m, 2, 19, line);
+}
+
+/* ovl1_6663: space changes the rule under the pointer */
+static void rule_change(Menu *m, int k)
+{
+    uint16_t *r = m->game.rules;
+    switch (k) {
+    case 0: r[RULE_VILLAGES_SUPPLY_FOOD] = r[RULE_VILLAGES_SUPPLY_FOOD] ? 0 : 1; break;
+    case 1: r[RULE_FORTS_SUPPLY_FOOD] = r[RULE_FORTS_SUPPLY_FOOD] ? 0 : 1; break;
+    case 2: r[2] = (r[2] && (r[2] << 1) <= 4) ? r[2] << 1 : 1; break;
+    case 3: r[3] = (r[3] && (r[3] << 1) <= 120) ? r[3] << 1 : 30; break;
+    case 4: r[4] = (r[4] <= 4 && (r[4] >> 1)) ? r[4] >> 1 : 4; break;
+    case 5: r[5] = (r[5] && (r[5] << 1) <= 80) ? r[5] << 1 : 20; break;
+    case 6: r[6] = (r[6] && (r[6] << 1) <= 40) ? r[6] << 1 : 10; break;
+    case 7: r[7] = (r[7] && (r[7] << 1) <= 16) ? r[7] << 1 : 4; break;
+    default: r[8] = (r[8] && (r[8] << 1) <= 6) ? r[8] << 1 : 3; break;
+    }
+}
+
+/* ------------------------------------------------------------------ pages */
+
+static void page_title(Menu *m);
+static void page_titles(Menu *m, bool unroll);
+static void page_story(Menu *m);
+static void page_rules(Menu *m);
+static void page_opponent(Menu *m);
+static void page_campaign_menu(Menu *m);
+static void page_shoppe(Menu *m);
+static void page_report(Menu *m);
+
+static void go(Menu *m, int state) { m->state = state; m->frame = 0; m->step = 0; m->drawn = false; }
+
+/* ovl1_4161 show_title_barbarian: the item box on PI */
+static const unsigned TITLE_ITEMS[3] = { 0x951, 0x95E, 0x96B };    /* go to war, make changes, quit */
+
+static void title_box(Menu *m)
+{
+    if (m->box_inverted) xor_box(m, 17, 54, 25, 5);   /* the buffer is blitted again: back to normal */
+    m->box_inverted = false;
+    small_caps(m, 19, 58, O3S(m, TITLE_ITEMS[m->title_item]));
+    m->frame = 0;
+}
+
+static void page_title(Menu *m)
+{
+    show_picture(m, PIC_TITLE_BARBARIAN, false);
+    for (int r = 23; r < 25; r++) clear_row(m, r);
+    help_change_select(m, O3S(m, 0x991), 40, 23, O3S(m, 0xBF6));
+    m->box_inverted = false;            /* a fresh picture */
+    title_box(m);
+}
+
+/* ovl1_30F0 startup: "presented by" */
+static void page_presented(Menu *m)
+{
+    show_picture(m, PIC_TITLE, false);
+    print_at(m, 13, 12, DSS(m, 0x4C));
+}
+
+/* the TITLES scroll (ovl1_62FA) */
+static void titles_count(Menu *m)
+{
+    m->count = 0;                                /* ovl1_74D1: rows after the heading with text at column 2 */
+    for (int r = 2; r < 26; r++) {
+        const uint8_t *t = &m->text[r * 32 + 2];
+        if (t[0] != ' ' || t[1] != ' ') m->count++;
+    }
+    m->count--;
+}
+
+static void page_titles(Menu *m, bool unroll)
+{
+    const uint8_t *src = m->data_list ? m->data_titles : m->ga->titles;
+    SDL_memcpy(m->text, src + 36, 840);
+    m->a692 = 1;
+    titles_count(m);
+    m->row = 3 + 2 * m->sel;
+    m->view = 0;
+    while (TEXT_TOP + m->row * ROW_STEP - m->view > 142) m->view += ROW_STEP;
+    for (int r = 23; r < 25; r++) clear_row(m, r);
+    /* ovl1_655A: Select a campaign title.  [Esc] to back up / [+] or [-] to change, [Enter] to select. */
+    icon(m, false, I_ESC, 52, 184);
+    print_at(m, 30, 23, DSS(m, 0x10A));
+    print_at(m, 0, 23, O3S(m, 0xBDD));
+    help_change_select(m, O3S(m, 0x991), 40, 23, O3S(m, 0xBF6));
+    if (unroll) scroll_open(m);
+    else {
+        const Image *pe = picture(m, PIC_SCROLL_1);
+        if (m->mode == MODE_CGA) set_palette(m, CGA_PALETTE_0, 4, true);
+        else set_palette(m, pe->pal, pe->ncolors, true);
+        scroll_build(m);
+        scroll_show(m);
+    }
+}
+
+static void page_story(Menu *m)
+{
+    SDL_memcpy(m->text, m->game.story_raw, 840);
+    m->a692 = 4;
+    for (int r = 23; r < 25; r++) clear_row(m, r);
+    print_at(m, 0, 23, O3S(m, 0x90A));                 /* This is the story of this campaign. */
+    clear_row(m, 24);
+    icon(m, true, I_PLUS, 0, 192);
+    print_at(m, 3, 24, DSS(m, 0x11C));
+    icon(m, true, I_MINUS, 12, 192);
+    print_at(m, 9, 24, O3S(m, 0x92E));                 /* to scroll, */
+    icon(m, true, I_ENTER, 39, 192);
+    print_at(m, 23, 24, O3S(m, 0x939));                /* when done. */
+    scroll_open(m);
+}
+
+static void page_rules(Menu *m)
+{
+    m->a692 = 2;
+    rules_text(m);
+    m->rule = 0;
+    m->row = 3;
+    for (int r = 23; r < 25; r++) clear_row(m, r);
+    icon(m, true, I_PLUS, 0, 184);
+    print_at(m, 3, 23, DSS(m, 0x115));
+    icon(m, true, I_MINUS, 12, 184);
+    print_at(m, 9, 23, DSS(m, 0x118));
+    print_at(m, 12, 23, O3S(m, 0xC01));                /* look at the rules. */
+    icon(m, false, I_SPACEBAR, 0, 192);
+    print_at(m, 7, 24, O3S(m, 0x991));                 /* to change, */
+    icon(m, true, I_ENTER, 37, 192);
+    print_at(m, 22, 24, O3S(m, 0x939));                /* when done. */
+    scroll_open(m);
+}
+
+/* choose_opponent (ovl1_4808): PJ */
+static int o2w(const Menu *m, unsigned off) { return (int16_t)(m->ga->o2[off] | (m->ga->o2[off + 1] << 8)); }
+
+static void opponent_frame(Menu *m)
+{
+    int pos = o2w(m, 0x247 + 2 * m->opp);
+    xor_frame(m, pos % 80, (pos / 80) * 2, o2w(m, 0x257 + 2 * m->opp), o2w(m, 0x267 + 2 * m->opp));
+    m->frame_on = !m->frame_on;
+}
+
+static void opponent_text(Menu *m)
+{
+    static const unsigned DESC[8] = { 0, 68, 144, 222, 0x121, 0x169, 0x1B7, 0x200 };   /* DS:A682 */
+    clear_row(m, 0);
+    clear_row(m, 1);
+    print_at(m, 0, 0, O2S(m, DESC[m->opp]));
+}
+
+static void page_opponent(Menu *m)
+{
+    show_picture(m, PIC_OPPONENTS, false);
+    m->frame_on = false;
+    m->sweep = -1;
+    opponent_text(m);
+    clear_row(m, 24);
+    if (m->opp_phase == 0) {
+        print_at(m, 0, 24, O2S(m, 0x3DF));             /* [+]to change the opponent, [Enter]to continue */
+        icon(m, true, I_PLUS, 0, 192);
+        icon(m, true, I_ENTER, 51, 192);
+    } else {
+        help_change_select(m, O3S(m, 0x991), 40, 23, O3S(m, 0xBF6));
+    }
+}
+
+/* the quote before the war (show_title_barbarian, ovl1_447B) */
+static void page_quote(Menu *m)
+{
+    clear_row(m, 24);
+    print_at(m, 11, 24, O3S(m, 0x978));                /* PREPARE FOR WAR! */
+    int k;
+    do k = rnd(m); while (k > 38);
+    clear_row(m, 12);
+    clear_row(m, 11);
+    print_at(m, 0, 11, O2S(m, (unsigned)o2w(m, 0x4CD + 2 * k)));
+    clear_row(m, 10);
+    clear_row(m, 13);
+    screen_fill(&m->cv, 0, 80, SCREEN_W, 1, m->c4[3]);
+    screen_fill(&m->cv, 0, 112, SCREEN_W, 1, m->c4[3]);
+}
+
+/* campaign_menu (ovl1_3D1E): PG and O4 */
+static int o4w(const Menu *m, unsigned off) { return (int16_t)(m->ga->o4[off] | (m->ga->o4[off + 1] << 8)); }
+
+static void menu_frame_box(Menu *m)
+{
+    int k = m->menu_item, pos = o4w(m, 0x19B + 2 * k);
+    xor_frame(m, pos % 80, (pos / 80) * 2, o4w(m, 0x1A7 + 2 * k), o4w(m, 0x1B3 + 2 * k));
+    m->frame_on = !m->frame_on;
+}
+
+static void page_campaign_menu(Menu *m)
+{
+    show_picture(m, PIC_SCENES_1, false);
+    m->frame_on = false;
+    m->sweep = -1;
+    clear_row(m, 0);
+    print_at(m, 15, 0, O4S(m, (unsigned)o4w(m, 0x1E3 + 2 * m->menu_item)));
+    for (int r = 23; r < 25; r++) clear_row(m, r);
+    help_change_select(m, O3S(m, 0xD86), 50, 28, O3S(m, 0xBF6));   /* to move marker, [Enter] to select. */
+}
+
+/* options_shoppe (ovl1_5782): PK */
+static const int SHOPPE_Y[6] = { 10, 22, 34, 46, 58, 70 };   /* 19Ch, 37Ch, 55Ch, 73Ch, 91Ch, AFCh */
+
+static void shoppe_line(Menu *m, int k)
+{
+    char s[48];
+    const MenuOptions *o = &m->opt;
+    switch (k) {
+    case 0: SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x1375), O2S(m, o->display == 0 ? 0x1381 : o->display == 1 ? 0x138E : 0x139B)); break;
+    case 1: SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13DE), O3S(m, o->fight_delay == 200 ? 0xAA0 : o->fight_delay == 400 ? 0xAA6 : 0xAAD)); break;
+    case 2: SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x1353), DSS(m, o->data_drive ? 0xCC : 0xC9)); break;
+    case 3:
+        if (o->sounds == 0)      SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13A8), O2S(m, 0x13B8));
+        else if (o->sounds == 1) SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x13C0));
+        else if (o->sounds == 2) SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13A8), O2S(m, 0x13BC));
+        else                     SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x10D9));
+        break;
+    case 4: SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x1363)); break;
+    default:
+        if (o->joystick) SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13EE), O2S(m, 0xEB4));
+        else             SDL_snprintf(s, sizeof s, "%s%s", O3S(m, 0xE5E), O2S(m, 0x13EE));
+        break;
+    }
+    small_caps(m, 12, SHOPPE_Y[k], s);
+}
+
+static void page_shoppe(Menu *m)
+{
+    show_picture(m, PIC_OPTIONS_SHOPPE, false);
+    for (int k = 0; k < 6; k++) shoppe_line(m, k);
+    for (int r = 23; r < 25; r++) clear_row(m, r);
+    icon(m, true, I_PLUS, 0, 184);
+    print_at(m, 3, 23, DSS(m, 0xCF));
+    icon(m, true, I_MINUS, 12, 184);
+    print_at(m, 9, 23, O2S(m, 0x407));                  /* to select an option to change. */
+    icon(m, false, I_SPACEBAR, 0, 192);
+    print_at(m, 7, 24, O2S(m, 0x426));                  /* to change, */
+    icon(m, true, I_ENTER, 37, 192);
+    print_at(m, 22, 24, O2S(m, 0x431));                 /* when done. */
+}
+
+/* battle_report (ovl1_53AE): PN or PO, and the numbers (ovl1_5706) */
+static void report_number(Menu *m, int xb, int y, int v)
+{
+    if (v < 0 || v > 999) v = 999;
+    char s[4];
+    SDL_snprintf(s, sizeof s, "%3d", v);
+    for (int i = 0; i < 3; i++, xb += 2) {
+        glyph(m, m->cv.px, SCREEN_H, F_SPACE, xb * 4, y);
+        if (s[i] != ' ') glyph(m, m->cv.px, SCREEN_H, F_DIGITS + (s[i] - '0') * 24, xb * 4, y);
+    }
+}
+
+static void page_report(Menu *m)
+{
+    bool won = m->report_code < 10;
+    show_picture(m, won ? PIC_REPORT_WIN : PIC_REPORT_LOSE, false);
+    report_number(m, 41, 40, m->rep[0]);     /* 669h: captured, yours */
+    report_number(m, 52, 40, m->rep[1]);     /* 674h */
+    report_number(m, 41, 52, m->rep[2]);     /* 849h: casualties */
+    report_number(m, 52, 52, m->rep[3]);
+    report_number(m, 41, 66, m->rep[4]);     /* A79h: flags taken */
+    report_number(m, 52, 66, m->rep[5]);
+    if (won) {
+        print_at(m, 6, 1, O2S(m, 0xF86));                         /* Victory was yours */
+        int c = m->report_code;
+        print_at(m, 6, 2, O2S(m, c == 0 ? 0xF98 : c == 1 ? 0xFAF : 0x10A8));
+    } else {
+        print_at(m, 6, 1, O2S(m, (unsigned)o2w(m, 0x10FD + 2 * m->rep_opp)));
+        int c = m->report_code;
+        print_at(m, 6, 2, O2S(m, c == 10 ? 0x107B : c == 11 ? 0x1093 : 0x10A8));
+    }
+    clear_row(m, 24);
+    print_at(m, 6, 24, O2S(m, 0x10BE));                           /* Press any key to continue. */
+}
+
+/* a black page with text (save_game) */
+static void page_message(Menu *m)
+{
+    set_palette(m, m->mode == MODE_CGA ? CGA_PALETTE : CGA_PALETTE, 4, false);
+    screen_fill(&m->cv, 0, 0, SCREEN_W, SCREEN_H, m->c4[0]);
+    for (int r = 0; r < 2; r++) print_at(m, 0, 10 + r, m->message[r]);
+}
+
+/* the page for the current state, from scratch (after a mode change) */
+static void redraw(Menu *m)
+{
+    m->npal = 0;
+    switch (m->state) {
+    case MS_PRESENTED: page_presented(m); break;
+    case MS_TITLE: page_title(m); break;
+    case MS_TITLES: case MS_ASK_SAVED:
+        page_titles(m, false);
+        if (m->state == MS_ASK_SAVED) {
+            clear_row(m, 23); clear_row(m, 24);
+            print_at(m, 0, 24, O3S(m, 0xE23));
+        }
+        break;
+    case MS_STORY: case MS_RULES: {
+        int keep_view = m->view, keep_rule = m->rule;
+        if (m->state == MS_STORY) page_story(m); else page_rules(m);
+        m->anim = 0;
+        m->view = keep_view;
+        m->rule = keep_rule;
+        m->row = 3 + 2 * m->rule;
+        scroll_show(m);
+        break;
+    }
+    case MS_OPPONENT: page_opponent(m); break;
+    case MS_QUOTE: page_opponent(m); page_quote(m); break;
+    case MS_REPORT: page_report(m); break;
+    case MS_CAMPAIGN_MENU: page_campaign_menu(m); break;
+    case MS_SHOPPE: page_shoppe(m); pointer(m, 3, SHOPPE_Y[m->shoppe_item]); break;
+    default: page_message(m); break;
+    }
+    m->drawn = true;
+}
+
+/* ------------------------------------------------------------------ files */
+
+static void data_path(const Menu *m, const char *name, char *out, size_t n)
+{
+    SDL_snprintf(out, n, "%s%s", m->data_dir, name);
+}
+
+static void options_from_raw(MenuOptions *o)
+{
+    o->display = o->raw[1];
+    o->sounds = o->raw[3] | (o->raw[4] << 8);
+    o->fight_delay = o->raw[5] | (o->raw[6] << 8);
+    o->joystick = o->raw[9] | (o->raw[10] << 8);
+    o->data_drive = o->raw[23] | (o->raw[24] << 8);
+    if (o->display > 2) o->display = 2;
+    if (o->sounds < 0 || o->sounds > 3) o->sounds = 2;
+    if (o->fight_delay != 200 && o->fight_delay != 400 && o->fight_delay != 800) o->fight_delay = 400;
+}
+
+static void options_to_raw(MenuOptions *o)
+{
+    o->raw[1] = (uint8_t)o->display;
+    o->raw[3] = (uint8_t)o->sounds; o->raw[4] = (uint8_t)(o->sounds >> 8);
+    o->raw[5] = (uint8_t)o->fight_delay; o->raw[6] = (uint8_t)(o->fight_delay >> 8);
+    o->raw[9] = (uint8_t)o->joystick; o->raw[10] = (uint8_t)(o->joystick >> 8);
+    o->raw[23] = (uint8_t)o->data_drive; o->raw[24] = (uint8_t)(o->data_drive >> 8);
+}
+
+/* ovl1_30F0: CNF; the remake keeps its own copy in the data folder (save_options) */
+static void options_load(Menu *m)
+{
+    MenuOptions *o = &m->opt;
+    SDL_memset(o, 0, sizeof *o);
+    o->raw[1] = 2;                                  /* rgb */
+    o->raw[3] = 2;                                  /* sounds on */
+    o->raw[5] = 0x90; o->raw[6] = 0x01;             /* 400 */
+    char path[1100];
+    data_path(m, "CNF", path, sizeof path);
+    size_t size = 0;
+    uint8_t *d = SDL_LoadFile(path, &size);
+    if (!d) d = assets_load_file(m->ga->dir, "CNF", &size);
+    if (d && size >= 25) SDL_memcpy(o->raw, d, 25);
+    SDL_free(d);
+    options_from_raw(o);
+}
+
+static void options_save(Menu *m)
+{
+    options_to_raw(&m->opt);
+    char path[1100];
+    data_path(m, "CNF", path, sizeof path);
+    SDL_SaveFile(path, m->opt.raw, 25);
+}
+
+/* The data folder plays the data disk: TITLES there lists its campaigns
+ * (made from DTITLES), and S holds the saved game. */
+static bool data_titles_load(Menu *m)
+{
+    char path[1100];
+    data_path(m, "TITLES", path, sizeof path);
+    size_t size = 0;
+    uint8_t *d = SDL_LoadFile(path, &size);
+    if (!d || size < 876) {
+        SDL_free(d);
+        d = assets_load_file(m->ga->dir, "DTITLES", &size);   /* a new data disk */
+        if (!d || size < 876) { SDL_free(d); return false; }
+        SDL_SaveFile(path, d, 876);
+    }
+    SDL_memcpy(m->data_titles, d, 876);
+    SDL_free(d);
+    return true;
+}
+
+#define SAVE_MAGIC "WARREMAKE-S1"
+
+bool menu_has_saved_game(const Menu *m)
+{
+    char path[1100];
+    data_path(m, "S", path, sizeof path);
+    return SDL_GetPathInfo(path, NULL);
+}
+
+static bool save_write(Menu *m, const Play *p)
+{
+    char path[1100];
+    data_path(m, "S", path, sizeof path);
+    size_t n = 12 + 8 + sizeof(Campaign) + sizeof(Play);
+    uint8_t *buf = SDL_malloc(n);
+    if (!buf) return false;
+    SDL_memcpy(buf, SAVE_MAGIC, 12);
+    uint32_t sc = (uint32_t)sizeof(Campaign), sp = (uint32_t)sizeof(Play);
+    SDL_memcpy(buf + 12, &sc, 4);
+    SDL_memcpy(buf + 16, &sp, 4);
+    SDL_memcpy(buf + 20, p->c, sizeof(Campaign));
+    SDL_memcpy(buf + 20 + sizeof(Campaign), p, sizeof(Play));
+    bool ok = SDL_SaveFile(path, buf, n);
+    SDL_free(buf);
+    return ok;
+}
+
+bool menu_load_saved_game(Menu *m, Play *p, Campaign *c)
+{
+    char path[1100];
+    data_path(m, "S", path, sizeof path);
+    size_t size = 0;
+    uint8_t *d = SDL_LoadFile(path, &size);
+    bool ok = d && size == 20 + sizeof(Campaign) + sizeof(Play) && SDL_memcmp(d, SAVE_MAGIC, 12) == 0;
+    if (ok) {
+        uint32_t sc, sp;
+        SDL_memcpy(&sc, d + 12, 4);
+        SDL_memcpy(&sp, d + 16, 4);
+        ok = sc == sizeof(Campaign) && sp == sizeof(Play);
+    }
+    if (ok) {
+        SDL_memcpy(c, d + 20, sizeof(Campaign));
+        SDL_memcpy(p, d + 20 + sizeof(Campaign), sizeof(Play));
+        p->c = c;
+        p->ga = m->ga;
+    }
+    SDL_free(d);
+    return ok;
+}
+
+/* ------------------------------------------------------------------ public */
+
+Menu *menu_create(GameAssets *ga, Campaign *camps, const char *data_dir)
+{
+    Menu *m = SDL_calloc(1, sizeof *m);
+    if (!m) return NULL;
+    m->ga = ga;
+    m->camps = camps;
+    SDL_strlcpy(m->data_dir, data_dir ? data_dir : "", sizeof m->data_dir);
+    m->rnd = (uint32_t)SDL_GetTicksNS();
+    options_load(m);
+    return m;
+}
+
+void menu_destroy(Menu *m) { SDL_free(m); }
+
+void menu_start(Menu *m) { go(m, MS_PRESENTED); }
+void menu_title(Menu *m) { m->title_item = 0; go(m, MS_TITLE); }
+
+void menu_report(Menu *m, const Play *p)
+{
+    m->report_code = p->result_code;
+    m->rep[0] = p->captured_mine;  m->rep[1] = p->captured_theirs;    /* A6F9, A6FB */
+    m->rep[2] = p->lost_mine;      m->rep[3] = p->lost_theirs;        /* A6FD, A6FF */
+    m->rep[4] = p->flags_taken;    m->rep[5] = p->flags_captured;     /* A703, A701 */
+    m->rep_opp = p->c ? p->c->opponent : 0;
+    go(m, MS_REPORT);
+}
+
+/* save_game (ovl1_35C4) */
+void menu_save(Menu *m, const Play *p)
+{
+    m->save_from = p;
+    SDL_memset(m->message, 0, sizeof m->message);
+    if (menu_has_saved_game(m)) {
+        SDL_strlcpy(m->message[0], O2S(m, 0xF07), sizeof m->message[0]);   /* WARNING: Any previously saved game on */
+        SDL_strlcpy(m->message[1], O2S(m, 0xF30), sizeof m->message[1]);   /* your data disk will be erased. */
+        go(m, MS_SAVE_WARN);
+    } else {
+        m->step = 0;
+        go(m, MS_SAVED);
+    }
+}
+
+MenuAction menu_action(Menu *m) { MenuAction a = m->action; m->action = MENU_NONE; return a; }
+const Campaign *menu_game(const Menu *m) { return &m->game; }
+const MenuOptions *menu_options(const Menu *m) { return &m->opt; }
+uint32_t menu_seed(const Menu *m) { return m->seed; }
+
+static bool key_down(int k) { return k == PK_EQUALS || k == PK_KP_PLUS || k == PK_CTRL || k == PK_DOWN || k == PK_RIGHT; }
+static bool key_up(int k)   { return k == PK_MINUS || k == PK_KP_MINUS || k == PK_TAB || k == PK_UP || k == PK_LEFT; }
+
+static void choose_campaign(Menu *m)
+{
+    /* select_campaign / ovl1_7870: the T file of the chosen title */
+    const uint8_t *src = m->data_list ? m->data_titles : m->ga->titles;
+    char name[4] = { (char)src[m->sel * 3], (char)src[m->sel * 3 + 1], 0, 0 };
+    int idx = -1;
+    for (int c = 0; c < NUM_CAMPAIGNS; c++)
+        if (m->camps[c].loaded && SDL_strcasecmp(m->camps[c].file, name) == 0) idx = c;
+    if (m->data_list) {                   /* a campaign on the data disk: its T file is in the data folder */
+        if (!campaign_load_file(&m->game, m->data_dir, name)) return;
+    } else {
+        if (idx < 0) return;
+        m->game = m->camps[idx];
+    }
+    m->opp = m->game.opponent;
+    scroll_close(m, MS_STORY);
+}
+
+void menu_key(Menu *m, int k)
+{
+    if (!k) return;
+    switch (m->state) {
+    case MS_PRESENTED:
+        go(m, MS_TITLE);
+        break;
+    case MS_TITLE:
+        if (key_down(k)) { m->title_item = (m->title_item + 1) % 3; title_box(m); }
+        else if (key_up(k)) { m->title_item = (m->title_item + 2) % 3; title_box(m); }
+        else if (k == PK_ENTER) {
+            if (m->title_item == 0) { m->sel = 0; m->data_list = false; go(m, MS_TITLES); m->step = 1; }
+            else if (m->title_item == 1) { m->menu_item = 0; go(m, MS_CAMPAIGN_MENU); }
+            else m->action = MENU_QUIT;
+        }
+        break;
+    case MS_ASK_SAVED:
+        if (k == PK_S) {                                       /* Saved game */
+            m->action = MENU_RESUME_GAME;
+        } else if (k == PK_N) {                                /* New campaigns */
+            go(m, MS_TITLES);
+        }
+        break;
+    case MS_TITLES:
+        if (m->anim) break;
+        if (k == PK_ESC) { scroll_close(m, MS_TITLE); break; }
+        if (key_up(k) && m->sel > 0) {
+            m->sel--;
+            m->row -= 2;
+            while (TEXT_TOP + m->row * ROW_STEP - m->view < 88 && m->view > 0) m->view -= ROW_STEP;
+            scroll_show(m);
+        } else if (key_down(k) && m->sel < m->count) {
+            m->sel++;
+            m->row += 2;
+            while (TEXT_TOP + m->row * ROW_STEP - m->view > 142) m->view += ROW_STEP;
+            scroll_show(m);
+        } else if (k == PK_ENTER) {
+            if (!m->data_list && m->sel == 11) {              /* ( data disk ) */
+                if (data_titles_load(m)) {
+                    m->data_list = true;
+                    m->sel = 0;
+                    if (menu_has_saved_game(m)) {             /* ovl1_7B3D: Saved game / New campaigns */
+                        page_titles(m, false);
+                        clear_row(m, 23); clear_row(m, 24);
+                        print_at(m, 0, 24, O3S(m, 0xE23));
+                        m->state = MS_ASK_SAVED;
+                    } else page_titles(m, false);
+                }
+            } else if (m->data_list && m->sel == 0) {         /* ( war disk ) */
+                m->data_list = false;
+                m->sel = 0;
+                page_titles(m, false);
+            } else {
+                choose_campaign(m);
+            }
+        }
+        break;
+    case MS_STORY:
+        if (m->anim) break;
+        if (k == PK_ESC) { m->state = MS_TITLES; m->step = 1; m->drawn = false; break; }
+        if (k == PK_ENTER) { scroll_close(m, MS_RULES); break; }
+        if (key_up(k) && m->view > 0) { m->view -= 4; scroll_show(m); }
+        if (key_down(k) && m->view < 216) { m->view += 4; scroll_show(m); }
+        break;
+    case MS_RULES:
+        if (m->anim) break;
+        if (k == PK_ESC) { go(m, MS_STORY); m->step = 1; break; }
+        if (k == PK_ENTER) { scroll_close(m, MS_OPPONENT); m->opp_phase = 0; break; }
+        if (key_up(k) && m->rule > 0) {
+            m->rule--; m->row -= 2;
+            while (TEXT_TOP + m->row * ROW_STEP - m->view < 88 && m->view > 0) m->view -= ROW_STEP;
+            scroll_show(m);
+        } else if (key_down(k) && m->rule < 8) {
+            m->rule++; m->row += 2;
+            while (TEXT_TOP + m->row * ROW_STEP - m->view > 142) m->view += ROW_STEP;
+            scroll_show(m);
+        } else if (k == PK_SPACE) {
+            rule_change(m, m->rule);
+            rules_text(m);
+            scroll_text(m);
+            scroll_show(m);
+        }
+        break;
+    case MS_OPPONENT:
+        if (m->sweep >= 0) break;
+        if (m->frame_on) opponent_frame(m);
+        if (k == PK_ESC) { go(m, MS_RULES); m->step = 1; break; }
+        if (k == PK_ENTER) {
+            m->game.opponent = m->opp;                        /* memcpy(A931[OPPONENT], A4DC, 38) */
+            m->seed = (uint32_t)SDL_GetTicksNS();
+            go(m, MS_QUOTE);
+            m->drawn = true;
+            page_quote(m);
+            break;
+        }
+        if (m->opp_phase == 0) {
+            if (key_down(k)) {
+                m->opp = (m->opp + 1) & 7;
+                m->opp_phase = 1;
+                help_change_select(m, O3S(m, 0x991), 40, 23, O3S(m, 0xBF6));
+                clear_row(m, 0); clear_row(m, 1);
+                m->sweep = 0; m->step = 0;
+                xor_box(m, 0, 0, 18, 6);
+            }
+        } else if (key_down(k) || key_up(k)) {
+            m->opp = key_down(k) ? (m->opp + 1) & 7 : (m->opp + 7) & 7;
+            clear_row(m, 0); clear_row(m, 1);
+            m->sweep = 0; m->step = 0;
+            xor_box(m, 0, 0, 18, 6);
+        }
+        m->frame = 0;
+        break;
+    case MS_QUOTE:
+        m->action = MENU_START_GAME;
+        break;
+    case MS_REPORT:
+        menu_title(m);
+        break;
+    case MS_CAMPAIGN_MENU:
+        if (m->sweep >= 0) break;
+        if (m->frame_on) menu_frame_box(m);
+        if (key_down(k) || key_up(k)) {
+            m->menu_item = key_down(k) ? (m->menu_item + 1) % 6 : (m->menu_item + 5) % 6;
+            clear_row(m, 0); clear_row(m, 1);
+            m->sweep = 0; m->step = 0;
+            xor_box(m, 0, 0, 18, 6);
+        } else if (k == PK_ENTER) {
+            switch (m->menu_item) {
+            case 3: menu_title(m); break;                     /* Return to title page */
+            case 5: m->shoppe_item = 0; m->opt_changed = false; go(m, MS_SHOPPE); break;
+            default:                                           /* the editors: step 7 */
+                clear_row(m, 0); clear_row(m, 1);
+                print_at(m, 0, 0, "The campaign and formation editors come");
+                print_at(m, 0, 1, "in a later step of the remake.");
+                m->message_back = 40;
+                break;
+            }
+        }
+        m->frame = 0;
+        break;
+    case MS_SHOPPE:
+        if (k == PK_ENTER) {
+            if (m->opt_changed) options_save(m);
+            menu_title(m);
+            break;
+        }
+        if (key_up(k) && m->shoppe_item > 0) {
+            m->shoppe_item--;
+            if (m->shoppe_item == 4) m->shoppe_item--;        /* "center the screen" does nothing here */
+            page_shoppe(m);
+            pointer(m, 3, SHOPPE_Y[m->shoppe_item]);
+        } else if (key_down(k) && m->shoppe_item < 5) {
+            m->shoppe_item++;
+            if (m->shoppe_item == 4) m->shoppe_item++;
+            page_shoppe(m);
+            pointer(m, 3, SHOPPE_Y[m->shoppe_item]);
+        } else if (k == PK_SPACE) {
+            MenuOptions *o = &m->opt;
+            switch (m->shoppe_item) {
+            case 0: o->display = o->display >= 2 ? 0 : o->display + 1; break;
+            case 1: o->fight_delay = o->fight_delay >= 800 ? 200 : o->fight_delay << 1; break;
+            case 2: break;                                     /* one drive: always A: */
+            case 3: o->sounds = o->sounds >= 2 ? 0 : o->sounds + 1; break;
+            case 5: o->joystick = !o->joystick; break;
+            default: break;
+            }
+            m->opt_changed = true;
+            page_shoppe(m);
+            pointer(m, 3, SHOPPE_Y[m->shoppe_item]);
+        }
+        break;
+    case MS_SAVE_WARN:                                         /* Continue   Quit */
+        if (k == PK_C) { m->step = 0; go(m, MS_SAVED); }
+        else if (k == PK_Q) m->action = MENU_CONTINUE;
+        break;
+    case MS_SAVED:                                             /* <C>ontinue with game or <Q>uit? */
+        if (m->step < 2) break;
+        if (k == PK_C) m->action = MENU_CONTINUE;
+        else if (k == PK_Q) menu_title(m);
+        break;
+    default:
+        break;
+    }
+}
+
+void menu_frame(Menu *m)
+{
+    if (!m->drawn) return;                 /* menu_draw makes the page first */
+    m->frame++;
+    switch (m->state) {
+    case MS_PRESENTED:
+        if (m->frame > 4 * MENU_HZ) go(m, MS_TITLE);
+        break;
+    case MS_TITLE:                         /* the box blinks (ovl1_4206): measured in DOSBox, */
+        if (m->frame % 28 == 15) { xor_box(m, 17, 54, 25, 5); m->box_inverted = true; }    /* 0.75 s plain, */
+        if (m->frame % 28 == 0 && m->box_inverted) { xor_box(m, 17, 54, 25, 5); m->box_inverted = false; }   /* 0.65 s inverted */
+        break;
+    case MS_TITLES: case MS_STORY: case MS_RULES:
+        if (m->anim && scroll_anim(m)) go(m, m->next_state);
+        break;
+    case MS_OPPONENT: case MS_CAMPAIGN_MENU: {
+        bool opp = m->state == MS_OPPONENT;
+        if (m->message_back && --m->message_back == 0) page_campaign_menu(m);
+        if (m->sweep >= 0) {               /* the box sweeps across the top rows: */
+            xor_box(m, m->sweep, 0, 18, 6);    /* about 0.15 s in all, measured in DOSBox */
+            m->sweep += 20;
+            if (m->sweep < 58) {
+                xor_box(m, m->sweep, 0, 18, 6);
+            } else {
+                m->sweep = -1;
+                if (opp) opponent_text(m);
+                else print_at(m, 15, 0, O4S(m, (unsigned)o4w(m, 0x1E3 + 2 * m->menu_item)));
+                m->frame = 0;
+            }
+            break;
+        }
+        int t = m->frame % 4;              /* the frame flickers: 0.1 s off, 0.1 s on (measured in DOSBox) */
+        if (t == 2 && !m->frame_on) { if (opp) opponent_frame(m); else menu_frame_box(m); }
+        if (t == 0 && m->frame_on) { if (opp) opponent_frame(m); else menu_frame_box(m); }
+        break;
+    }
+    case MS_QUOTE:
+        if (m->frame > 4 * MENU_HZ) m->action = MENU_START_GAME;
+        break;
+    case MS_SAVED:
+        if (m->step == 0) {
+            SDL_memset(m->message, 0, sizeof m->message);
+            SDL_strlcpy(m->message[0], "             Saving Game", sizeof m->message[0]);
+            page_message(m);
+            m->step = 1;
+        } else if (m->step == 1 && m->frame > MENU_HZ / 2) {
+            bool ok = m->save_from && save_write(m, m->save_from);
+            SDL_memset(m->message, 0, sizeof m->message);
+            SDL_snprintf(m->message[0], sizeof m->message[0], "   %s", DSS(m, ok ? 0x74 : 0x64));
+            if (!ok) SDL_snprintf(m->message[1], sizeof m->message[1], "   %s", DSS(m, 0x74));
+            page_message(m);
+            m->step = 2;
+        }
+        break;
+    default:
+        break;
+    }
+}
+
+void menu_draw(Menu *m, Screen *s, GfxMode mode)
+{
+    if (mode != m->mode || !m->drawn) {
+        bool first = !m->drawn;
+        m->mode = mode;
+        if (first && (m->state == MS_TITLES || m->state == MS_STORY || m->state == MS_RULES) && m->step == 1) {
+            /* a scroll page opening from the last page */
+            if (m->state == MS_TITLES) page_titles(m, true);
+            else if (m->state == MS_STORY) page_story(m);
+            else page_rules(m);
+            m->step = 0;
+            m->drawn = true;
+        } else if (first && m->state == MS_STORY) {
+            page_story(m);
+            m->drawn = true;
+        } else if (first && m->state == MS_RULES) {
+            page_rules(m);
+            m->drawn = true;
+        } else if (first && m->state == MS_OPPONENT) {
+            page_opponent(m);
+            m->drawn = true;
+        } else if (first && (m->state == MS_SAVE_WARN)) {
+            page_message(m);
+            clear_row(m, 24);
+            print_at(m, 0, 24, O2S(m, 0xF59));                  /* Continue   Quit */
+            m->drawn = true;
+        } else {
+            redraw(m);
+            if (m->state == MS_SAVE_WARN) { clear_row(m, 24); print_at(m, 0, 24, O2S(m, 0xF59)); }
+        }
+    }
+    SDL_memcpy(s->px, m->cv.px, sizeof s->px);
+    for (int i = 0; i < 16; i++) s->pal[i] = m->cv.pal[i];
+}
