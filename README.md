@@ -1,5 +1,5 @@
 # Ancient-Art-of-War
-Analysis of my favourite MS-DOS game by Broderbund.<br>
+Analysis of my favourite MS-DOS game by Brøderbund Software Inc.<br>
 
 I played two of the games in the series in CGA so this is how I remember them:
 - The Ancient Art of War (1984)
