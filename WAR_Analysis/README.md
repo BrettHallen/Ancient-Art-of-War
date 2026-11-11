@@ -147,6 +147,9 @@ Each file is 1460 bytes.<br>
 
 In the campaign description, a 0x01 byte follows each capital letter. It looks like a marker for drawing a large capital.
 
+### Map
+The map is 10 tiles across and 20 tiles down (320x400 pixels), stored row by row from the top. Each byte is a tile number from 1 to 72: tile number N is tile N-1 in `M` (CGA) or in WARET.DAT record 30 (VGA). The CGA and VGA tile sets are in the same order, so the same map works for both. The game shows 9 rows at a time (180 pixels) with the command line below, and scrolls up and down.
+
 ### Opponents
 | Value | Opponent            |
 |-------|---------------------|
