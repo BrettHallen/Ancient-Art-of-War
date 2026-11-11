@@ -19,6 +19,9 @@ Analysis of the files from the AAoW disk.
 ## [Ancient Art of War Graphics](/WAR_Graphics)
 Graphics decoded from the AAoW disk: the map tiles and full-screen pictures from both the [CGA](/WAR_Graphics/CGA) version and the 16-colour EGA/[VGA](/WAR_Graphics/VGA) version, plus the script that extracts them.
 
+## [Ancient Art of War Remake](/WAR_Remake)
+A modern version of the game for macOS in C and SDL3, using the original CGA or VGA graphics loaded from your own copy of the game. Work in progress.
+
 ## Useful Links
 - [Official developer site](https://www.evryware.com/index.html)
 
