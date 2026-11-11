@@ -1,0 +1,594 @@
+/*
+ * The Ancient Art of War - remake
+ * main.c: the asset viewer (step 1), campaign play (step 3) and battles (step 4).
+ *
+ * Shows every picture, the map tiles, the font and the 11 campaign maps from
+ * the player's own copy of the original game, in CGA or VGA colours. Press
+ * Enter on a campaign map to play it.
+ *
+ * Viewer keys:  Left/Right  previous/next screen     Tab   CGA / VGA
+ *        Up/Down, -/+, mouse wheel   scroll a campaign map
+ *        Shift+-/+, Home/End         top / bottom of the map
+ *        Enter       play the campaign shown
+ *        A           4:3 or square pixels     H     show/hide caption
+ *        F, Alt+Enter, Cmd+Enter  full screen Esc   quit
+ *
+ * Playing: the original keys (arrows or keypad move the cursor, M Move,
+ *        I Info, S Size/Surrender/Speed, T Time, C Clear/Cancel, V View,
+ *        E End, Z Zoom, -/+ scroll, Enter at the end), plus Tab CGA/VGA, F2 aspect,
+ *        Alt/Cmd+Enter full screen, Esc back to the viewer.
+ * Battle (Zoom): A Attack, R Retreat; then A Archers, B Barbarians, K Knights,
+ *        S Squad and A Attack, F Forward, B Backoff, S Stop, Backspace back.
+ *
+ * Usage: AncientArtOfWar [game-folder]
+ *        AncientArtOfWar --screenshots OUTDIR [game-folder]   (write BMPs, no window)
+ */
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_main.h>
+
+#include "assets.h"
+#include "campaign.h"
+#include "gfx.h"
+#include "play.h"
+#include "battle.h"
+
+#define APP_ORG  "AncientArtOfWar"
+#define APP_NAME "Remake"
+
+enum { SCREEN_TILES = PIC_COUNT, SCREEN_FONT, SCREEN_MAP_FIRST, NUM_SCREENS = SCREEN_MAP_FIRST + NUM_CAMPAIGNS };
+
+#define SCROLL_BOTTOM (MAP_PIXEL_H - MAP_VIEW_H)
+
+typedef struct {
+    GameAssets    ga;
+    bool          have_assets;
+    Campaign      campaigns[NUM_CAMPAIGNS];
+    int           scroll[NUM_CAMPAIGNS];   /* pixels from the top of each map */
+    GfxMode       mode;
+    int           index;
+    bool          aspect_43;     /* true: 4:3 like a CRT, false: square pixels */
+    bool          caption;
+    Screen        screen;
+    uint32_t      rgb[SCREEN_W * SCREEN_H];
+    SDL_Window   *win;
+    SDL_Renderer *ren;
+    SDL_Texture  *tex;           /* 320x200 game screen */
+    SDL_Texture  *up;            /* integer-upscaled copy for sharp 4:3 scaling */
+    int           up_scale;
+    bool          playing;
+    Play          play;
+    bool          in_battle;     /* Zoom: the battle screen */
+    Battle        battle;
+    int           tapped;        /* cursor key pressed since the last frame */
+    Uint32        ev_folder;     /* custom event: folder chosen in the dialog */
+    char          chosen[1024];
+    bool          dialog_open;
+} App;
+
+/* ------------------------------------------------------------------ drawing */
+
+static const char *screen_title(const App *app, int index)
+{
+    if (index == SCREEN_TILES) return "Map tiles";
+    if (index == SCREEN_FONT)  return "Font";
+    if (index >= SCREEN_MAP_FIRST) return app->campaigns[index - SCREEN_MAP_FIRST].title;
+    return picture_name((PictureId)index);
+}
+
+static bool is_map(const App *app) { return app->index >= SCREEN_MAP_FIRST; }
+
+static void scroll_map(App *app, int delta)
+{
+    if (!is_map(app)) return;
+    int *sc = &app->scroll[app->index - SCREEN_MAP_FIRST];
+    *sc = SDL_clamp(*sc + delta, 0, SCROLL_BOTTOM);
+}
+
+static void draw_screen(App *app)
+{
+    Screen *s = &app->screen;
+    const AssetSet *set = &app->ga.set[app->mode];
+    int ncolors = app->mode == MODE_VGA ? 16 : 4;
+
+    if (app->playing && app->in_battle) {
+        battle_draw(&app->battle, s, app->mode);
+        screen_to_xrgb(s, app->rgb);
+        return;
+    }
+    if (app->playing) {
+        play_draw(&app->play, s, app->mode);
+        screen_to_xrgb(s, app->rgb);
+        return;
+    }
+    if (app->index < PIC_COUNT) {
+        const Image *img = &set->pictures[app->index];
+        screen_set_palette(s, img->pal, img->ncolors);
+        screen_blit(s, img, 0, 0);
+    } else if (app->index >= SCREEN_MAP_FIRST) {
+        const Campaign *c = &app->campaigns[app->index - SCREEN_MAP_FIRST];
+        campaign_draw_map(s, &app->ga, app->mode, c, app->scroll[app->index - SCREEN_MAP_FIRST]);
+        uint8_t white = screen_nearest(s, ncolors, 255, 255, 255);
+        uint8_t black = screen_nearest(s, ncolors, 0, 0, 0);
+        screen_fill(s, 0, MAP_VIEW_H, SCREEN_W, SCREEN_H - MAP_VIEW_H, black);
+        char line[64];
+        if (c->loaded) SDL_snprintf(line, sizeof line, "%s", c->title);
+        else           SDL_snprintf(line, sizeof line, "%s not found", c->file);
+        line[40] = 0;
+        screen_text(s, &app->ga, 0, MAP_VIEW_H + 1, line, white, black);
+        if (c->loaded) {
+            SDL_snprintf(line, sizeof line, "vs %s", OPPONENT_NAMES[c->opponent]);
+            screen_text(s, &app->ga, 0, MAP_VIEW_H + 11, line, white, black);
+            SDL_snprintf(line, sizeof line, "%2d v %2d", c->num_friendly, c->num_enemy);
+            screen_text(s, &app->ga, SCREEN_W - 7 * 8, MAP_VIEW_H + 11, line, white, black);
+        }
+    } else if (app->index == SCREEN_TILES) {
+        screen_set_palette(s, set->tiles[0].pal, set->tiles[0].ncolors);
+        screen_clear(s, 0);
+        for (int t = 0; t < NUM_TILES; t++)
+            screen_blit(s, &set->tiles[t], (t % 10) * TILE_W, (t / 10) * TILE_H);
+    } else {
+        if (app->mode == MODE_CGA) {
+            screen_set_palette(s, CGA_PALETTE, 4);
+        } else {
+            RGB pal[16] = { { 0, 0, 0 } };
+            pal[15] = (RGB){ 0xFF, 0xFF, 0xFF };
+            screen_set_palette(s, pal, 16);
+        }
+        screen_clear(s, 0);
+        uint8_t white = screen_nearest(s, ncolors, 255, 255, 255);
+        char line[17];
+        for (int row = 0; row < 6; row++) {
+            int n = 0;
+            for (int c = 0; c < 16; c++) {
+                int ch = FONT_FIRST + row * 16 + c;
+                line[n++] = (ch < FONT_FIRST + FONT_COUNT) ? (char)ch : ' ';
+            }
+            line[n] = 0;
+            screen_text(s, &app->ga, 32, 40 + row * 16, line, white, -1);
+        }
+        screen_text(s, &app->ga, 32, 16, "The Ancient Art of War font", white, -1);
+    }
+
+    if (app->caption && app->index < SCREEN_MAP_FIRST) {   /* maps use the bottom lines themselves */
+        uint8_t white = screen_nearest(s, ncolors, 255, 255, 255);
+        uint8_t black = screen_nearest(s, ncolors, 0, 0, 0);
+        char cap[64];
+        SDL_snprintf(cap, sizeof cap, "%s %d/%d: %s", mode_name(app->mode), app->index + 1, NUM_SCREENS,
+                     screen_title(app, app->index));
+        cap[40] = 0;   /* 40 characters per line */
+        screen_fill(s, 0, SCREEN_H - 8, SCREEN_W, 8, black);
+        screen_text(s, &app->ga, 0, SCREEN_H - 8, cap, white, black);
+    }
+    screen_to_xrgb(s, app->rgb);
+}
+
+static void update_title(App *app)
+{
+    char t[256];
+    if (!app->have_assets) {
+        SDL_SetWindowTitle(app->win, "The Ancient Art of War - choose your game folder");
+        return;
+    }
+    if (app->playing) {
+        SDL_snprintf(t, sizeof t, "The Ancient Art of War - %s - %s", app->play.c->title, mode_name(app->mode));
+        SDL_SetWindowTitle(app->win, t);
+        return;
+    }
+    SDL_snprintf(t, sizeof t, "The Ancient Art of War - %s - %s%s", screen_title(app, app->index), mode_name(app->mode),
+                 app->aspect_43 ? "" : " (square pixels)");
+    SDL_SetWindowTitle(app->win, t);
+}
+
+/* Destination rectangle inside the window, keeping the chosen aspect ratio. */
+static SDL_FRect dest_rect(App *app, bool *integer)
+{
+    int ow, oh;
+    SDL_GetRenderOutputSize(app->ren, &ow, &oh);
+    SDL_FRect r;
+    if (!app->aspect_43) {
+        int k = SDL_min(ow / SCREEN_W, oh / SCREEN_H);
+        if (k >= 1) {
+            r.w = (float)(SCREEN_W * k);
+            r.h = (float)(SCREEN_H * k);
+            *integer = true;
+        } else {
+            float f = SDL_min((float)ow / SCREEN_W, (float)oh / SCREEN_H);
+            r.w = SCREEN_W * f;
+            r.h = SCREEN_H * f;
+            *integer = false;
+        }
+    } else {
+        r.h = (float)oh;
+        r.w = r.h * 4.0f / 3.0f;
+        if (r.w > ow) { r.w = (float)ow; r.h = r.w * 3.0f / 4.0f; }
+        *integer = false;
+    }
+    r.x = SDL_floorf((ow - r.w) / 2);
+    r.y = SDL_floorf((oh - r.h) / 2);
+    return r;
+}
+
+static void render(App *app)
+{
+    SDL_SetRenderDrawColor(app->ren, 0, 0, 0, 255);
+    SDL_RenderClear(app->ren);
+    if (app->have_assets) {
+        draw_screen(app);
+        SDL_UpdateTexture(app->tex, NULL, app->rgb, SCREEN_W * 4);
+        bool integer;
+        SDL_FRect dst = dest_rect(app, &integer);
+        if (integer) {
+            SDL_RenderTexture(app->ren, app->tex, NULL, &dst);
+        } else {
+            /* Sharp scaling: nearest-neighbour up to a whole multiple, then smooth down to fit. */
+            int k = (int)SDL_ceilf(SDL_max(dst.w / SCREEN_W, dst.h / SCREEN_H));
+            k = SDL_clamp(k, 1, 8);
+            if (!app->up || app->up_scale != k) {
+                SDL_DestroyTexture(app->up);
+                app->up = SDL_CreateTexture(app->ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_TARGET,
+                                            SCREEN_W * k, SCREEN_H * k);
+                app->up_scale = k;
+                if (app->up) SDL_SetTextureScaleMode(app->up, SDL_SCALEMODE_LINEAR);
+            }
+            if (app->up) {
+                SDL_SetRenderTarget(app->ren, app->up);
+                SDL_RenderTexture(app->ren, app->tex, NULL, NULL);
+                SDL_SetRenderTarget(app->ren, NULL);
+                SDL_RenderTexture(app->ren, app->up, NULL, &dst);
+            } else {
+                SDL_RenderTexture(app->ren, app->tex, NULL, &dst);
+            }
+        }
+    }
+    SDL_RenderPresent(app->ren);
+}
+
+/* ------------------------------------------------------------------ game folder */
+
+static void pref_file(char *out, size_t n)
+{
+    char *pref = SDL_GetPrefPath(APP_ORG, APP_NAME);
+    SDL_snprintf(out, n, "%sgamedir.txt", pref ? pref : "");
+    SDL_free(pref);
+}
+
+static void save_game_dir(const char *dir)
+{
+    char path[1100];
+    pref_file(path, sizeof path);
+    SDL_IOStream *io = SDL_IOFromFile(path, "w");
+    if (io) {
+        SDL_WriteIO(io, dir, SDL_strlen(dir));
+        SDL_CloseIO(io);
+    }
+}
+
+static bool saved_game_dir(char *out, size_t n)
+{
+    char path[1100];
+    size_t len = 0;
+    pref_file(path, sizeof path);
+    char *data = SDL_LoadFile(path, &len);
+    if (!data) return false;
+    while (len > 0 && (data[len - 1] == '\n' || data[len - 1] == '\r')) len--;
+    data[len] = 0;
+    SDL_strlcpy(out, data, n);
+    SDL_free(data);
+    return assets_dir_ok(out);
+}
+
+static bool load_from(App *app, const char *dir, bool remember)
+{
+    char err[256] = "";
+    if (app->have_assets) assets_free(&app->ga);
+    app->have_assets = assets_load(&app->ga, dir, err, sizeof err);
+    if (!app->have_assets) {
+        SDL_Log("Could not load the game from %s: %s", dir, err);
+        if (app->win)
+            SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "The Ancient Art of War",
+                                     "That folder doesn't hold a usable copy of The Ancient Art of War "
+                                     "(WAR.EXE, M, the P files and optionally WARET.DAT).", app->win);
+        return false;
+    }
+    if (!app->ga.set[app->mode].loaded) app->mode = MODE_CGA;
+    int n = campaigns_load(app->campaigns, dir);
+    for (int i = 0; i < NUM_CAMPAIGNS; i++) app->scroll[i] = SCROLL_BOTTOM;   /* start at the bottom, like the game */
+    SDL_Log("Loaded %d campaigns", n);
+    if (remember) save_game_dir(dir);
+    SDL_Log("Loaded game files from %s (VGA graphics: %s)", dir, app->ga.set[MODE_VGA].loaded ? "yes" : "no");
+    return true;
+}
+
+static void SDLCALL folder_chosen(void *userdata, const char *const *list, int filter)
+{
+    (void)filter;
+    App *app = userdata;
+    app->dialog_open = false;
+    if (list && list[0]) {
+        SDL_strlcpy(app->chosen, list[0], sizeof app->chosen);
+        SDL_Event e;
+        SDL_zero(e);
+        e.type = app->ev_folder;
+        SDL_PushEvent(&e);
+    }
+}
+
+static void ask_for_folder(App *app)
+{
+    if (app->dialog_open) return;
+    app->dialog_open = true;
+    SDL_ShowOpenFolderDialog(folder_chosen, app, app->win, NULL, false);
+}
+
+/* Command line, then the remembered folder, then next to the app, then the current folder. */
+static bool find_game_dir(const char *arg, char *out, size_t n)
+{
+    if (arg) { SDL_strlcpy(out, arg, n); return assets_dir_ok(out); }
+    if (saved_game_dir(out, n)) return true;
+    const char *base = SDL_GetBasePath();
+    if (base) {
+        SDL_snprintf(out, n, "%sgame", base);
+        if (assets_dir_ok(out)) return true;
+        SDL_strlcpy(out, base, n);
+        if (assets_dir_ok(out)) return true;
+    }
+    SDL_strlcpy(out, ".", n);
+    return assets_dir_ok(out);
+}
+
+/* ------------------------------------------------------------------ screenshots */
+
+static int write_screenshots(App *app, const char *outdir)
+{
+    int written = 0;
+    for (int m = 0; m < MODE_COUNT; m++) {
+        if (!app->ga.set[m].loaded) continue;
+        app->mode = (GfxMode)m;
+        for (int i = 0; i < NUM_SCREENS; i++) {
+            app->index = i;
+            draw_screen(app);
+            SDL_Surface *surf = SDL_CreateSurfaceFrom(SCREEN_W, SCREEN_H, SDL_PIXELFORMAT_XRGB8888, app->rgb, SCREEN_W * 4);
+            char path[1200];
+            SDL_snprintf(path, sizeof path, "%s/%s_%02d.bmp", outdir, mode_name(app->mode), i + 1);
+            if (surf && SDL_SaveBMP(surf, path)) written++;
+            else SDL_Log("Could not write %s: %s", path, SDL_GetError());
+            SDL_DestroySurface(surf);
+        }
+    }
+    SDL_Log("Wrote %d screenshots to %s", written, outdir);
+    return written > 0 ? 0 : 1;
+}
+
+/* ------------------------------------------------------------------ playing */
+
+/* SDL key to the original's scan code (play.h) */
+static int play_keycode(SDL_Keycode k)
+{
+    switch (k) {
+    case SDLK_E: return PK_E;   case SDLK_T: return PK_T;   case SDLK_Y: return PK_Y;
+    case SDLK_I: return PK_I;   case SDLK_S: return PK_S;   case SDLK_D: return PK_D;
+    case SDLK_F: return PK_F;   case SDLK_J: return PK_J;   case SDLK_Z: return PK_Z;
+    case SDLK_C: return PK_C;   case SDLK_V: return PK_V;   case SDLK_N: return PK_N;
+    case SDLK_M: return PK_M;   case SDLK_A: return PK_A;   case SDLK_B: return PK_B;
+    case SDLK_K: return PK_K;   case SDLK_R: return PK_R;   case SDLK_BACKSPACE: return PK_BACKSPACE;
+    case SDLK_RETURN: case SDLK_KP_ENTER: return PK_ENTER;
+    case SDLK_SPACE: return PK_SPACE;
+    case SDLK_MINUS: return PK_MINUS;
+    case SDLK_EQUALS: case SDLK_PLUS: return PK_EQUALS;
+    case SDLK_KP_MINUS: return PK_KP_MINUS;
+    case SDLK_KP_PLUS: return PK_KP_PLUS;
+    case SDLK_HOME: case SDLK_KP_7: return PK_HOME;
+    case SDLK_UP: case SDLK_KP_8: return PK_UP;
+    case SDLK_PAGEUP: case SDLK_KP_9: return PK_PGUP;
+    case SDLK_LEFT: case SDLK_KP_4: return PK_LEFT;
+    case SDLK_KP_5: return PK_KP_5;
+    case SDLK_RIGHT: case SDLK_KP_6: return PK_RIGHT;
+    case SDLK_END: case SDLK_KP_1: return PK_END;
+    case SDLK_DOWN: case SDLK_KP_2: return PK_DOWN;
+    case SDLK_PAGEDOWN: case SDLK_KP_3: return PK_PGDN;
+    default: return PK_NONE;
+    }
+}
+
+static bool is_cursor_pk(int pk) { return pk >= PK_HOME && pk <= PK_PGDN && pk != PK_KP_MINUS && pk != PK_KP_PLUS; }
+
+/* The cursor key held down: arrows combine into diagonals. */
+static int held_cursor_key(void)
+{
+    const bool *k = SDL_GetKeyboardState(NULL);
+    if (k[SDL_SCANCODE_HOME] || k[SDL_SCANCODE_KP_7]) return PK_HOME;
+    if (k[SDL_SCANCODE_PAGEUP] || k[SDL_SCANCODE_KP_9]) return PK_PGUP;
+    if (k[SDL_SCANCODE_END] || k[SDL_SCANCODE_KP_1]) return PK_END;
+    if (k[SDL_SCANCODE_PAGEDOWN] || k[SDL_SCANCODE_KP_3]) return PK_PGDN;
+    int dx = (k[SDL_SCANCODE_RIGHT] || k[SDL_SCANCODE_KP_6]) - (k[SDL_SCANCODE_LEFT] || k[SDL_SCANCODE_KP_4]);
+    int dy = (k[SDL_SCANCODE_DOWN] || k[SDL_SCANCODE_KP_2]) - (k[SDL_SCANCODE_UP] || k[SDL_SCANCODE_KP_8]);
+    if (dx || dy) return PK_HOME + (dy + 1) * 4 + (dx + 1);
+    if (k[SDL_SCANCODE_KP_MINUS]) return PK_KP_MINUS;   /* keypad -/+ repeat too */
+    if (k[SDL_SCANCODE_KP_PLUS]) return PK_KP_PLUS;
+    return PK_NONE;
+}
+
+static void start_play(App *app)
+{
+    const Campaign *c = &app->campaigns[app->index - SCREEN_MAP_FIRST];
+    if (!c->loaded) return;
+    play_start(&app->play, c, &app->ga, (uint32_t)(SDL_GetTicks() / 55));   /* like the BIOS tick count */
+    app->playing = true;
+    app->in_battle = false;
+    app->tapped = 0;
+}
+
+/* One iteration of the campaign; false when it has ended. */
+static bool play_step(App *app)
+{
+    if (app->in_battle) {
+        app->tapped = 0;
+        battle_frame(&app->battle);
+        if (app->battle.done) {
+            battle_finish(&app->battle);
+            app->in_battle = false;
+        }
+        return true;
+    }
+    if (app->play.zoom_squad >= 0) {   /* Zoom: campaign_play returns 2, main calls battle */
+        if (battle_start(&app->battle, &app->play, app->play.zoom_squad)) {
+            app->in_battle = true;
+            return true;
+        }
+        app->play.zoom_squad = -1;     /* no O6/O7/F files */
+    }
+    int held = held_cursor_key();
+    if (!held && app->tapped) held = app->tapped;
+    app->tapped = 0;
+    play_frame(&app->play, held);
+    if (app->play.result != PLAY_RUNNING) {
+        app->playing = false;
+        return false;
+    }
+    return true;
+}
+
+/* ------------------------------------------------------------------ main */
+
+static void toggle_fullscreen(App *app)
+{
+    bool full = (SDL_GetWindowFlags(app->win) & SDL_WINDOW_FULLSCREEN) != 0;
+    SDL_SetWindowFullscreen(app->win, !full);
+}
+
+int main(int argc, char **argv)
+{
+    static App app;   /* large: keep off the stack */
+    const char *dir_arg = NULL, *shots = NULL;
+    for (int i = 1; i < argc; i++) {
+        if (SDL_strcmp(argv[i], "--screenshots") == 0 && i + 1 < argc) shots = argv[++i];
+        else if (argv[i][0] != '-') dir_arg = argv[i];
+    }
+    app.aspect_43 = true;
+    app.caption = true;
+
+    char dir[1024];
+    bool found = find_game_dir(dir_arg, dir, sizeof dir);
+
+    if (shots) {
+        app.caption = false;
+        if (!found || !load_from(&app, dir, false)) {
+            SDL_Log("Game files not found. Usage: --screenshots OUTDIR GAME-FOLDER");
+            return 1;
+        }
+        int rc = write_screenshots(&app, shots);
+        assets_free(&app.ga);
+        return rc;
+    }
+
+    if (!SDL_Init(SDL_INIT_VIDEO)) {
+        SDL_Log("SDL_Init failed: %s", SDL_GetError());
+        return 1;
+    }
+    if (!SDL_CreateWindowAndRenderer("The Ancient Art of War", 1280, 960,
+                                     SDL_WINDOW_RESIZABLE | SDL_WINDOW_HIGH_PIXEL_DENSITY, &app.win, &app.ren)) {
+        SDL_Log("Could not create window: %s", SDL_GetError());
+        SDL_Quit();
+        return 1;
+    }
+    SDL_SetRenderVSync(app.ren, 1);
+    app.tex = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
+    SDL_SetTextureScaleMode(app.tex, SDL_SCALEMODE_NEAREST);
+    app.ev_folder = SDL_RegisterEvents(1);
+
+    if (found) load_from(&app, dir, dir_arg == NULL ? false : true);
+    if (!app.have_assets) ask_for_folder(&app);
+    update_title(&app);
+
+    bool running = true;
+    Uint64 next_frame = SDL_GetTicksNS();
+    while (running) {
+        const Uint64 frame_ns = SDL_NS_PER_SECOND / (app.in_battle ? BATTLE_HZ : PLAY_HZ);
+        SDL_Event e;
+        bool dirty = false;
+        bool got;
+        if (app.playing) {
+            Uint64 now = SDL_GetTicksNS();
+            if (now >= next_frame) {
+                next_frame = (now - next_frame > frame_ns * 4) ? now + frame_ns : next_frame + frame_ns;
+                if (!play_step(&app)) update_title(&app);
+                render(&app);
+                continue;
+            }
+            got = SDL_WaitEventTimeout(&e, (Sint32)((next_frame - now) / SDL_NS_PER_MS) + 1);
+            if (!got) continue;
+        } else {
+            next_frame = SDL_GetTicksNS();
+            if (!SDL_WaitEventTimeout(&e, 500)) { render(&app); continue; }
+        }
+        do {
+            if (e.type == SDL_EVENT_QUIT) {
+                running = false;
+            } else if (e.type == app.ev_folder) {
+                if (load_from(&app, app.chosen, true)) app.index = 0;
+                else ask_for_folder(&app);
+                dirty = true;
+            } else if (e.type == SDL_EVENT_KEY_DOWN) {
+                SDL_Keycode k = e.key.key;
+                bool mod = (e.key.mod & (SDL_KMOD_ALT | SDL_KMOD_GUI)) != 0;
+                if (k == SDLK_Q && (e.key.mod & SDL_KMOD_GUI)) running = false;
+                else if (k == SDLK_RETURN && mod) toggle_fullscreen(&app);
+                else if (app.playing) {
+                    if (e.key.repeat) continue;
+                    if (k == SDLK_ESCAPE) { app.playing = false; update_title(&app); }
+                    else if (k == SDLK_TAB) {
+                        GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
+                        if (app.ga.set[next].loaded) app.mode = next;
+                    } else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
+                    else if (app.in_battle) {
+                        int pk = play_keycode(k);
+                        if (pk) battle_key(&app.battle, pk);
+                    } else {
+                        int pk = play_keycode(k);
+                        if (is_cursor_pk(pk)) app.tapped = pk;
+                        else if (pk) play_key(&app.play, pk, (e.key.mod & SDL_KMOD_SHIFT) != 0);
+                    }
+                }
+                else if (k == SDLK_ESCAPE) running = false;
+                else if (k == SDLK_F) toggle_fullscreen(&app);
+                else if (!app.have_assets && k == SDLK_O) ask_for_folder(&app);
+                else if (app.have_assets) {
+                    bool shift = (e.key.mod & SDL_KMOD_SHIFT) != 0;
+                    bool up = k == SDLK_UP || k == SDLK_MINUS || k == SDLK_KP_MINUS;
+                    bool down = k == SDLK_DOWN || k == SDLK_EQUALS || k == SDLK_PLUS || k == SDLK_KP_PLUS;
+                    if (is_map(&app) && (k == SDLK_RETURN || k == SDLK_KP_ENTER)) start_play(&app);
+                    else if (is_map(&app) && (up || down)) scroll_map(&app, (shift ? MAP_PIXEL_H : TILE_H) * (up ? -1 : 1));
+                    else if (is_map(&app) && k == SDLK_HOME) scroll_map(&app, -MAP_PIXEL_H);
+                    else if (is_map(&app) && k == SDLK_END) scroll_map(&app, MAP_PIXEL_H);
+                    else if (k == SDLK_RIGHT || k == SDLK_DOWN || k == SDLK_SPACE) app.index = (app.index + 1) % NUM_SCREENS;
+                    else if (k == SDLK_LEFT || k == SDLK_UP) app.index = (app.index + NUM_SCREENS - 1) % NUM_SCREENS;
+                    else if (k == SDLK_HOME) app.index = 0;
+                    else if (k == SDLK_TAB) {
+                        GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
+                        if (app.ga.set[next].loaded) app.mode = next;
+                    } else if (k == SDLK_A) app.aspect_43 = !app.aspect_43;
+                    else if (k == SDLK_H) app.caption = !app.caption;
+                    else if (k == SDLK_O) ask_for_folder(&app);
+                }
+                dirty = true;
+            } else if (e.type == SDL_EVENT_MOUSE_WHEEL && app.have_assets && !app.playing) {
+                scroll_map(&app, (int)SDL_roundf(-e.wheel.y * TILE_H / 2));
+                dirty = true;
+            } else if (e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED || e.type == SDL_EVENT_WINDOW_EXPOSED) {
+                dirty = true;
+            }
+        } while (SDL_PollEvent(&e));
+        if (dirty) {
+            update_title(&app);
+            render(&app);
+        }
+    }
+
+    if (app.have_assets) assets_free(&app.ga);
+    SDL_DestroyTexture(app.up);
+    SDL_DestroyTexture(app.tex);
+    SDL_DestroyRenderer(app.ren);
+    SDL_DestroyWindow(app.win);
+    SDL_Quit();
+    return 0;
+}

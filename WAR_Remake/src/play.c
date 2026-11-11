@@ -1,0 +1,1494 @@
+/*
+ * The Ancient Art of War - remake
+ * play.c: step 3, the strategic game (campaign play, WAR.EXE overlay 6).
+ *
+ * Each function names the WAR.EXE routine it follows (see
+ * WAR_Analysis/WAR.EXE.asm). Encounters stop squads but battles, the enemy's
+ * moves and Formation/Detach/Join/Zoom come in later steps.
+ */
+#include "play.h"
+
+#include <SDL3/SDL.h>
+
+/* Cursor steps for scan codes 47h-51h (DS:04F2, DS:04FD; DS:0508 = dy*80+dx) */
+static const int8_t STEP_DX[11] = { -1, 0, 1, 0, -1, 0, 1, 0, -1, 0, 1 };
+static const int8_t STEP_DY[11] = { -1, -1, -1, 0, 0, 0, 0, 0, 1, 1, 1 };
+
+#define CX_MAX        0x4E     /* cursor bounds; 4Dh and C1h while tracing */
+#define CY_MAX        0xC3
+#define VIEW_MARGIN   0x56     /* cursor may be this far below the view top */
+#define RULE_SEEN_ALL 80       /* "enemy seen" rule at or above this: always seen */
+
+/* map tiles (numbers as stored in the T files) */
+static bool tile_fort(int t)    { return t == 3; }
+static bool tile_village(int t) { return t == 4; }
+static bool tile_hill(int t)    { return t == 5 || t == 6; }                      /* rt:11F8 */
+static bool tile_bridge(int t)  { return t == 9 || t == 10; }                     /* rt:1228 */
+static bool tile_clear(int t)   { return tile_fort(t) || tile_village(t) || tile_hill(t) || tile_bridge(t); }
+static bool tile_water(int t)   { return t == 7 || t == 8 || (t >= 13 && t <= 15) || (t >= 19 && t <= 36); }  /* rt:1258 */
+static bool tile_mountain(int t){ return (t >= 37 && t <= 54) || t == 65 || t == 66 || t == 71 || t == 72; }  /* rt:1048 */
+
+enum { TER_CLEAR = 0x11, TER_OPEN = 0x44, TER_FOREST = 0x55, TER_WATER = 0x66, TER_MOUNTAIN = 0x99 };
+
+/* ------------------------------------------------------------------ helpers */
+
+static int next_slot(int i) { return i + 1 >= PATH_SIZE ? 0 : i + 1; }      /* rt:1369 */
+static int prev_slot(int i) { return i - 1 < 0 ? PATH_SIZE - 1 : i - 1; }
+
+/* random() (rt:20AA): adds successive words of WAR.EXE's own code, 0-127. */
+static int rnd(Play *p)
+{
+    if (++p->rnd_ptr == 0x2328) p->rnd_ptr = 0xBB8;
+    unsigned w = p->ga->code[p->rnd_ptr] | (p->ga->code[p->rnd_ptr + 1] << 8);
+    p->rnd = (uint16_t)((w + p->rnd) & 0x7F);
+    return p->rnd;
+}
+
+static int rule(const Play *p, RuleId r) { return (int16_t)p->c->rules[r]; }
+
+/* the opponent's values, by their WAR.EXE address (A4DC-A500) */
+#define OPP(p, addr) ((p)->opp[((addr) - 0xA4DC) / 2])
+
+static int sar(int v, int n) { return v >= 0 ? v >> n : -((-v - 1) >> n) - 1; }   /* 8086 SAR */
+
+static const char *DS(const Play *p, unsigned off) { return assets_ds_string(p->ga, off); }
+static const char *O5(const Play *p, unsigned off) { return assets_o5_string(p->ga, off); }
+
+/* ------------------------------------------------------------------ text area */
+
+static void tpos(Play *p, int row, int col) { p->trow = row; p->tcol = col; }   /* goto_xy */
+
+static void clear_row(Play *p, int row)    /* clear_text_row */
+{
+    if (row < 0 || row >= 25) return;
+    SDL_memset(p->text[row], ' ', 40);
+    p->text[row][40] = 0;
+    tpos(p, row, 0);
+}
+
+static void print(Play *p, const char *s)  /* print_string / put_char */
+{
+    for (; *s; s++) {
+        if (*s == '\b') { if (p->tcol > 0) p->tcol--; continue; }
+        if (p->trow >= 0 && p->trow < 25 && p->tcol < 40) p->text[p->trow][p->tcol] = *s;
+        if (++p->tcol >= 40) { p->tcol = 0; p->trow++; }
+    }
+}
+
+static void print_num(Play *p, int n)
+{
+    char b[16];
+    SDL_snprintf(b, sizeof b, "%d", n);
+    print(p, b);
+}
+
+static void spaces(Play *p, int n) { while (n-- > 0) print(p, " "); }
+
+/* rt:055B: grow (or shrink) the text area below the map by n rows. */
+static void text_rows_add(Play *p, int n)
+{
+    int old = p->text_rows;
+    p->text_rows = SDL_clamp(p->text_rows + n, 2, 25);
+    if (p->text_rows < 3) p->msg_rows = 0;
+    for (int r = 25 - p->text_rows; r < 25 - old; r++) clear_row(p, r);
+}
+
+/* rt:0F80: back to two text rows, row 23 cleared. */
+static void text_reset(Play *p)
+{
+    if (p->text_rows > 2) text_rows_add(p, 2 - p->text_rows);
+    clear_row(p, 23);
+}
+
+/* ------------------------------------------------------------------ command lines */
+
+static void show_time(Play *p)         /* ovl6:6C0B */
+{
+    tpos(p, 24, 12);
+    print(p, DS(p, p->time_div == 1 ? 0x234 : p->time_div == 4 ? 0x23B : p->time_div == 16 ? 0x240 : 0x247));
+    print(p, DS(p, 0x24C));
+}
+
+static void show_clear(Play *p)        /* ovl6:6C63 */
+{
+    if (p->mode != PM_NORMAL) return;
+    tpos(p, 24, 21);
+    if (p->msg_rows) print(p, DS(p, 0x250));
+    else spaces(p, 5);
+}
+
+static void cmd_normal(Play *p)        /* ovl6:6BAC: View  Time (slow)  Surrender */
+{
+    if (p->mode == PM_PROMPT) return;
+    text_reset(p);
+    clear_row(p, 24);
+    print(p, DS(p, 0x228));
+    p->mode = PM_NORMAL;
+    tpos(p, 24, 6);
+    print(p, DS(p, 0x22D));
+    show_time(p);
+    show_clear(p);
+    tpos(p, 24, 29);
+    print(p, O5(p, 0x2BF));
+}
+
+/* rt:1523: a friendly squad close enough to join (returns index+1, or 0). */
+static int join_partner(const Play *p, int i)
+{
+    const PSquad *a = &p->sq[i];
+    if (a->fighting || a->men >= 14) return 0;
+    for (int j = 0; j < MAX_SQUADS; j++) {
+        const PSquad *b = &p->sq[j];
+        if (j == i || !b->used || b->friendly != a->friendly || b->fighting) continue;
+        if (SDL_abs(b->x - a->x) < 3 && SDL_abs(b->y - a->y) < 7) return j + 1;
+    }
+    return 0;
+}
+
+static void cmd_squad_line(Play *p)    /* ovl6:6CDD: Move Info Size Formation Detach Join */
+{
+    const PSquad *q = &p->sq[p->sel];
+    clear_row(p, 24);
+    bool mine = q->friendly && !q->fighting;
+    if (mine) print(p, DS(p, 0x256));
+    print(p, O5(p, 0x2C9));
+    if (mine) {
+        if (!q->small) print(p, O5(p, 0x2D4));                     /* Formation */
+        if (q->men > 1 && p->free_slot > -1) print(p, O5(p, 0x2B7));   /* Detach */
+        if (join_partner(p, p->sel)) print(p, DS(p, 0x25C));      /* Join */
+    }
+    if (q->fighting && q->clock > 0) print(p, DS(p, 0x262));       /* Zoom, until the fighting starts */
+    p->mode = PM_SQUAD;
+}
+
+static void cmd_squad(Play *p)         /* ovl6:6CA3 */
+{
+    text_reset(p);
+    p->free_slot = -1;
+    for (int i = MAX_SQUADS - 1; i >= 0; i--)
+        if (!p->sq[i].used) { p->free_slot = i; break; }
+    cmd_squad_line(p);
+}
+
+/* ------------------------------------------------------------------ messages */
+
+static void message(Play *p)           /* ovl6:5CC5: a new message row */
+{
+    if (p->msg_rows < 2) {
+        text_rows_add(p, 1);
+        p->msg_rows++;
+    } else {                            /* scroll_text_area: row 21 moves down to 22 */
+        SDL_memcpy(p->text[22], p->text[21], sizeof p->text[22]);
+        clear_row(p, 21);
+    }
+    tpos(p, 25 - p->text_rows, 1);
+}
+
+static int where_code(int x, int y)    /* ovl6:5D00 */
+{
+    int w = y < 60 ? -1 : y > 140 ? 1 : 0;
+    return w + (x < 30 ? -2 : x > 50 ? 2 : 0);
+}
+
+static void print_where(Play *p, int x, int y)   /* ovl6:5D42: " IN THE NORTH" */
+{
+    print(p, O5(p, 0x29D));
+    bool ns = false;
+    if (y < 60)       { print(p, DS(p, 0x1E9)); ns = true; }
+    else if (y > 140) { print(p, DS(p, 0x1EF)); ns = true; }
+    if (x < 30)       print(p, DS(p, 0x1F5));
+    else if (x > 50)  print(p, DS(p, 0x1FA));
+    else if (!ns)     print(p, O5(p, 0x2A6));
+    int r = p->trow, c = p->tcol;
+    show_clear(p);
+    tpos(p, r, c);
+}
+
+static void alert_sighted(Play *p, int j)        /* ovl6:59FC */
+{
+    int w = where_code(p->sq[j].x, p->sq[j].y) + 5;
+    if (w == p->alert_where) return;
+    p->alert_where = w;
+    p->alert_timer = 10;
+    message(p);
+    print(p, O5(p, 0xEA));
+    print_where(p, p->sq[j].x, p->sq[j].y);
+}
+
+static void cmd_squad_line(Play *p);
+
+/* ovl6:5A6E, 5AC7, 5B1E, 5B6E: ENCOUNTER, FIGHTING, BATTLE WON/LOST, CAPTURED.
+ * Prints a, then b (each "" to skip), then where squad i is. */
+static void alert_battle(Play *p, int i, const char *a, const char *b)
+{
+    p->alert_where = 0;
+    message(p);
+    print(p, a);
+    print(p, b);
+    print_where(p, p->sq[i].x, p->sq[i].y);
+    if (p->mode == PM_SQUAD) {
+        int r = p->trow, c = p->tcol;
+        cmd_squad_line(p);
+        tpos(p, r, c);
+    }
+}
+
+static void alert_lost(Play *p, int i, int terrain)   /* ovl6:59A5 */
+{
+    p->alert_where = 0;
+    message(p);
+    print(p, O5(p, 0xC4));
+    if (terrain == TER_MOUNTAIN) {
+        print(p, O5(p, 0xD4));
+    } else {
+        print(p, O5(p, 0x28B));
+        print_where(p, p->sq[i].x, p->sq[i].y);
+    }
+}
+
+/* ------------------------------------------------------------------ terrain */
+
+static int cell_of(const PSquad *q) { return ((q->y + 5) / 10) * 10 + ((q->x + 1) >> 3); }   /* rt:1330 */
+
+static int tile_at_cell(const Play *p, int cell)
+{
+    if (cell < 0 || cell >= MAP_W * MAP_H) return 0;
+    return p->c->map[cell / MAP_W][cell % MAP_W];
+}
+
+/* rt:1D2E: does one of the four pixel pairs in bytes x, x+1 of a map line
+ * make the 2bpp nibble code? */
+static bool line_has(const Play *p, int x, int line, int code)
+{
+    if (line < 0 || line >= MAP_PIXEL_H) return false;
+    for (int k = 0; k < 4; k++) {
+        int px = x * 4 + k * 2;
+        if (px < 0 || px + 1 >= SCREEN_W) continue;
+        int nib = (p->terrain[line][px] << 2) | p->terrain[line][px + 1];
+        if (nib == (code & 0xF)) return true;
+    }
+    return false;
+}
+
+/* ovl6:603E: the ground under a squad's feet, read from the CGA map pixels. */
+static int terrain_of(const Play *p, int i)
+{
+    const PSquad *q = &p->sq[i];
+    int t = tile_at_cell(p, cell_of(q));
+    if (tile_clear(t)) return TER_OPEN;
+    int line = 2 * q->y + 10;
+    for (int pass = 0; pass < 2; pass++, line = 2 * q->y + 8) {
+        if (line_has(p, q->x, line, 0x55)) return TER_FOREST;
+        if (line_has(p, q->x, line, 0x44)) return TER_OPEN;
+        if (line_has(p, q->x, line, 0x66) && tile_water(t)) {
+            if (pass) return TER_WATER;
+            continue;
+        }
+        if (tile_mountain(t)) {
+            if (line_has(p, q->x, line, 0x99)) return TER_MOUNTAIN;
+            if (line_has(p, q->x, line, 0x00)) {
+                if (pass) return TER_MOUNTAIN;
+                continue;
+            }
+        }
+        return TER_CLEAR;
+    }
+    return TER_CLEAR;
+}
+
+/* ------------------------------------------------------------------ squads */
+
+static void clear_path(Play *p, int i)  /* rt:0C44 */
+{
+    PSquad *q = &p->sq[i];
+    if (q->has_path) {
+        int k = q->path_pos;
+        do {
+            p->path[k] = 0;
+            k = next_slot(k);
+        } while (p->path[k] != 0 && k != q->path_pos);
+        q->marked = false;
+        q->has_path = false;
+    }
+}
+
+static void stop_squad(Play *p, int i)  /* ovl6:47C5 */
+{
+    p->sq[i].moving = 0;
+    p->sq[i].marked = false;
+    clear_path(p, i);
+}
+
+/* ovl6:47F8: start of the longest free run in the path memory, or -1 if
+ * the longest is under 10 steps. */
+static int free_run(const Play *p)
+{
+    int best_len = 0, start = next_slot(p->path_next), best = start, pos = start;
+    for (;;) {
+        int len = 0;
+        while (p->path[pos] == 0 && pos != p->path_next) { len++; pos = next_slot(pos); }
+        if (len > best_len) { best_len = len; best = start; }
+        while (p->path[pos] != 0 && pos != p->path_next) pos = next_slot(pos);
+        start = pos;
+        if (pos == p->path_next) break;
+    }
+    return best_len < 10 ? -1 : best;
+}
+
+/* ovl6:50D9: a squad loses a man (attacker == defender for terrain losses).
+ * men is left without the spies until the next count_men. */
+static void lose_man(Play *p, int att, int def)
+{
+    PSquad *a = &p->sq[att], *d = &p->sq[def];
+    if (!d->knights && !d->barbarians && !d->archers) { d->men = 0; d->spies = 0; return; }
+    bool killed = false;
+    if (rnd(p) < 64) {
+        bool pa = a->archers && d->knights;       /* archers beat knights */
+        bool pk = a->knights && d->barbarians;    /* knights beat barbarians */
+        bool pb = a->barbarians && d->archers;    /* barbarians beat archers */
+        while (!killed && (pa || pk || pb)) {
+            int r = rnd(p);
+            if (r < 42)      { if (pa) { d->knights--; killed = true; } }
+            else if (r < 84) { if (pk) { d->barbarians--; killed = true; } }
+            else             { if (pb) { d->archers--; killed = true; } }
+        }
+    }
+    if (rnd(p) < 32) {
+        while (!killed) {
+            int r = rnd(p);
+            if (r < 42)      { if (d->archers) { d->archers--; killed = true; } }
+            else if (r < 84) { if (d->knights) { d->knights--; killed = true; } }
+            else             { if (d->barbarians) { d->barbarians--; killed = true; } }
+        }
+    }
+    d->men = d->archers + d->knights + d->barbarians;
+    if (killed) {
+        if (d->friendly) p->lost_mine++;
+        else p->lost_theirs++;
+    }
+}
+
+/* rt:0BD5: men = archers + knights + barbarians + spies */
+static void count_men(Play *p)
+{
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        q->men = q->archers + q->knights + q->barbarians + q->spies;
+        if (q->men < 0) { q->spies = 0; q->men = 0; }
+    }
+}
+
+/* rt:0B27: recount the men, mark squads of spies only, remove empty squads. */
+static void squads_update(Play *p)
+{
+    count_men(p);
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        q->small = q->spies && !q->archers && !q->knights && !q->barbarians;
+        if (q->men == 0 && q->used) {
+            clear_path(p, i);
+            q->used = false;
+            q->moving = 0;
+            if (p->sel == i && p->mode == PM_SQUAD) { p->over_squad = false; cmd_normal(p); }
+        }
+    }
+}
+
+/* ovl6:380F: the game is over; every squad is shown and Enter ends it. */
+static void game_over(Play *p, bool won)
+{
+    p->reveal = true;
+    p->mode = PM_PROMPT;
+    p->ended = true;
+    p->enter_icon = true;
+    p->outcome = won ? PLAY_WON : PLAY_LOST;
+    text_reset(p);
+    clear_row(p, 24);
+    tpos(p, 24, won ? 3 : 2);
+    print(p, O5(p, won ? 0x282 : 0x278));   /* You Won / You Lost */
+    print(p, O5(p, 0xB1));                  /* ...  [Enter]  to continue. */
+}
+
+/* ovl6:3589: has one side no squads left, or will the opponent surrender?
+ * Returns true if play has stopped. */
+static bool check_victory(Play *p, int a, int b)
+{
+    int mine = 0, theirs = 0, my_men = 0, their_men = 0;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        if ((i == a || i == b) && q->has_path) q->moving = q->speed;   /* carry on after a battle */
+        if (!q->used) continue;
+        if (q->friendly) { mine++; my_men += q->men; }
+        else             { theirs++; their_men += q->men; }
+    }
+    if (theirs / 2 < OPP(p, 0xA4E8)) OPP(p, 0xA4E8)--;
+    if (mine == 0)   { game_over(p, false); return true; }
+    if (theirs == 0) { game_over(p, true); return true; }
+    if (their_men > 0 && my_men / their_men >= OPP(p, 0xA4EA) && my_men > 20) {
+        OPP(p, 0xA4EA) = 500;               /* only offered once */
+        p->mode = PM_PROMPT;
+        p->prompt_offer = true;
+        for (int r = 3; r <= 6; r++) clear_row(p, r);
+        tpos(p, 4, 0);
+        print(p, O5(p, 0x6E));              /* Your opponent offers to surrender. */
+        tpos(p, 5, 0);
+        print(p, O5(p, 0x94));              /* Do you accept? (Y or N) */
+        return true;
+    }
+    return false;
+}
+
+/* ovl6:57EA: ticks per step for every squad, from its speed and the ground;
+ * hazards in deep water and high mountains. Returns true if the game ended. */
+static bool update_delays(Play *p, bool hazards)
+{
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        if (!q->used) continue;
+        /* enemy squads use their commander's values for forest and mountains */
+        int forest = q->friendly ? rule(p, RULE_FOREST) : OPP(p, 0xA4FC);
+        int mountain = q->friendly ? rule(p, RULE_MOUNTAIN) : OPP(p, 0xA4FA);
+        int water = rule(p, RULE_WATER);
+        q->delay = q->moving;
+        int t = terrain_of(p, i);
+        if (t == TER_FOREST) q->delay *= forest;
+        else if (t == TER_MOUNTAIN) q->delay *= mountain;
+        else if (t == TER_WATER) q->delay *= water;
+        if (q->knights) q->delay += q->moving;      /* horses are slow in rough ground */
+        if (!hazards || !q->moving) continue;
+
+        bool lose = false;
+        if ((t == TER_MOUNTAIN && mountain >= 16) || (t == TER_WATER && water >= 20)) lose = rnd(p) < 2;
+        if (!lose && t == TER_WATER && water >= 40) lose = rnd(p) < 4;
+        if (!lose || q->fighting) continue;
+        lose_man(p, i, i);
+        if (q->men > 0) continue;
+        if (q->friendly) alert_lost(p, i, t);
+        squads_update(p);
+        if (check_victory(p, i, i)) return true;
+    }
+    return false;
+}
+
+/* ovl6:5DF2: squads take their next steps. */
+static void move_squads(Play *p)
+{
+    if (update_delays(p, true)) return;
+    bool friendly_moved = false;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        if (!q->used || !q->has_path || !q->moving || q->fighting) continue;
+        if (--q->countdown > 0) continue;
+        if (q->friendly) friendly_moved = true;
+        q->countdown = q->delay;
+        int step = p->path[q->path_pos];
+        p->path[q->path_pos] = 0;
+        if (step == PATH_END) {
+            q->marked = false;
+            q->moving = 0;
+            q->has_path = false;
+            continue;
+        }
+        if (step > 78)       { q->y++; step -= 80; }
+        else if (step < -78) { q->y--; step += 80; }
+        q->x += step;
+        q->path_pos = next_slot(q->path_pos);
+        if (p->mode != PM_NORMAL && p->mode != PM_TRACE && p->sel == i &&
+            (rule(p, RULE_ENEMY_SEEN) >= RULE_SEEN_ALL || q->friendly || q->seen)) {
+            p->cx = q->x + 1;    /* the cursor follows the squad */
+            p->cy = q->y;
+        }
+    }
+    if (friendly_moved && p->mode == PM_SQUAD) cmd_squad_line(p);
+}
+
+/* rt:08EF: -30..30, how much better placed squad i is than j: condition,
+ * hills, and water or spies-only squads at a great disadvantage */
+static int edge(const Play *p, int i, int j)
+{
+    const PSquad *a = &p->sq[i], *b = &p->sq[j];
+    int ti = tile_at_cell(p, cell_of(a)), tj = tile_at_cell(p, cell_of(b));
+    int d = a->condition - b->condition;
+    if (tile_hill(ti)) d += 15;
+    if (tile_hill(tj)) d -= 15;
+    if (tile_water(ti) || a->small) d = -30;
+    if (tile_water(tj) || b->small) d = 30;
+    return SDL_clamp(d, -30, 30);
+}
+
+/* rt:0859: strength of squad i against j (over 50 or under -50: a walkover) */
+static int strength(const Play *p, int i, int j)
+{
+    const PSquad *a = &p->sq[i], *b = &p->sq[j];
+    if (a->small && b->small) return 0;
+    if (a->small) return -67;
+    if (b->small) return 67;
+    return sar(edge(p, i, j), 1) + (a->men - b->men) * 4;
+}
+
+static void check_over(Play *p, int key);
+
+/* ovl6:4C5F: squad k is captured without a fight */
+static void capture(Play *p, int k, int i, int j)
+{
+    PSquad *q = &p->sq[k];
+    if (q->friendly) { p->captured_mine += q->men; alert_battle(p, k, O5(p, 0x13C), O5(p, 0x293)); }   /* YOUR SQUAD CAPTURED */
+    else             { p->captured_theirs += q->men; alert_battle(p, k, DS(p, 0x1E3), O5(p, 0x293)); } /* ENEMY CAPTURED */
+    q->archers = q->knights = q->barbarians = q->spies = 0;
+    p->sq[i].fighting = p->sq[j].fighting = false;
+    squads_update(p);
+    if (check_victory(p, i, j)) return;
+    check_over(p, 0);
+}
+
+/* ovl6:4E26: every iteration, encounters count down to a fight, and squads
+ * fighting on the map (blinking) kill each other's men until one is gone. */
+static void battles(Play *p)
+{
+    p->blink = !p->blink;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        if (!q->used || !q->fighting || !q->clock) continue;
+        PSquad *e = &p->sq[q->foe];
+        if (q->clock > 0 && q->clock < p->fight_delay) {
+            q->clock++;
+            if (p->time_div == 1 && q->clock < p->fight_delay - 1) q->clock += 2;
+            continue;
+        }
+        if (q->clock == p->fight_delay) {      /* too late to Zoom: they fight it out */
+            q->clock = FIGHT_ON;
+            q->kill = edge(p, i, q->foe) * 2 + 60;
+            if (tile_fort(tile_at_cell(p, cell_of(q))) && q->archers) q->kill *= 2;
+            if (q->friendly) alert_battle(p, i, O5(p, 0x114), "");   /* A L E R T - FIGHTING */
+            continue;
+        }
+        if (rnd(p) >= q->kill || rnd(p) >= 25) continue;
+        lose_man(p, i, q->foe);
+        if (e->men > 0) continue;
+        int f = q->foe;                         /* the other squad is beaten */
+        e->spies = 0;
+        q->condition = SDL_max(q->condition >> 1, 1);
+        alert_battle(p, f, O5(p, 0x12A), DS(p, q->friendly ? 0x1DA : 0x1DE));   /* NOTICE - BATTLE WON/LOST */
+        q->fighting = e->fighting = false;
+        q->clock = e->clock = 0;
+        squads_update(p);
+        if (check_victory(p, i, f)) return;
+        check_over(p, 0);
+    }
+}
+
+/* ovl6:49B6: sighting, and squads meeting. */
+static void encounters(Play *p)
+{
+    bool seen[MAX_SQUADS] = { false };
+    int seen_rule = rule(p, RULE_ENEMY_SEEN);
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *a = &p->sq[i];
+        if (!a->used || !a->friendly || a->fighting) continue;
+        int ci = cell_of(a), ti = tile_at_cell(p, ci);
+        for (int j = 0; j < MAX_SQUADS; j++) {
+            PSquad *b = &p->sq[j];
+            if (!b->used || b->friendly || b->fighting) continue;
+            int cj = cell_of(b), tj = tile_at_cell(p, cj);
+            /* in a fort, or a hill (unless the other is in a fort), a squad
+             * counts as being at the middle of the tile */
+            int xi = a->x, yi = a->y, xj = b->x, yj = b->y;
+            if (tile_fort(ti) || (tile_hill(ti) && !tile_fort(tj))) { xi = (ci % 10) * 8 + 4; yi = (ci / 10) * 10; }
+            if (tile_fort(tj) || (tile_hill(tj) && !tile_fort(ti))) { xj = (cj % 10) * 8 + 4; yj = (cj / 10) * 10; }
+            int dx = SDL_abs(xi - xj), dy = SDL_abs(yi - yj);
+            if (tile_fort(ti) || tile_fort(tj) || tile_hill(ti) || tile_hill(tj)) {
+                dx = SDL_max(dx - 3, 0);
+                dy = SDL_max(dy - 3, 0);
+            }
+            int d = 2 * dx + dy;
+            if (a->spies) d >>= 1;
+            if (dx < 3 && dy < 5) {
+                if (a->small && b->small) continue;      /* spies slip past each other */
+                /* a fort keeps out squads without archers */
+                if (tile_fort(ti) && !tile_fort(tj) && !a->archers) continue;
+                if (!tile_fort(ti) && tile_fort(tj) && !b->archers) continue;
+                int r = strength(p, i, j);
+                if ((r < -50 && !tile_fort(ti)) || (r > 50 && !tile_fort(tj))) {
+                    capture(p, r < -50 ? i : j, i, j);   /* one side gives up without a fight */
+                    if (p->mode == PM_PROMPT) return;
+                    break;
+                }
+                seen[i] = seen[j] = true;               /* ovl6:4D01: the squads stop and face off */
+                a->fighting = b->fighting = true;
+                a->foe = j;
+                b->foe = i;
+                alert_battle(p, i, O5(p, 0x100), "");   /* WARNING - ENCOUNTER */
+                a->clock = b->clock = 1;
+                a->moving = b->moving = 0;
+                break;
+            }
+            if ((d < seen_rule && seen_rule < RULE_SEEN_ALL) || (seen_rule >= RULE_SEEN_ALL && d < 20)) {
+                seen[i] = seen[j] = true;
+                if (!b->seen) alert_sighted(p, j);
+            }
+        }
+    }
+    for (int k = 0; k < MAX_SQUADS; k++) p->sq[k].seen = seen[k] || p->sq[k].fighting;
+}
+
+
+/* ------------------------------------------------------------------ supply, food, training, flags */
+
+static int cell_x(int c) { return (c % 10) * 8 + 4; }      /* ovl6:7588: middle of a cell */
+static int cell_y(int c) { return (c / 10) * 10; }         /* ovl6:75A4: top of a cell */
+
+/* ovl6:75BB: steps from one place to another, moving diagonally */
+static int step_distance(int x, int y, int tx, int ty) { return SDL_max(SDL_abs(tx - x), SDL_abs(ty - y)); }
+
+/* ovl6:873A: how strongly each side holds each map cell. Each squad counts
+ * 4 per man (minus for yours): nothing in water, a quarter in the mountains,
+ * double in a fort or on a hill, half if worn out. This spreads twice to the
+ * neighbouring cells, an eighth at a time (a quarter of that into mountains);
+ * water cells hold nothing. */
+static void supply_map(Play *p)
+{
+    static const int8_t NB[9] = { 0, 1, 11, 10, 9, -1, -11, -10, -9 };   /* O5 words 1-8 */
+    int str[MAP_W * MAP_H] = { 0 };
+    count_men(p);
+    SDL_memset(p->supply, 0, sizeof p->supply);
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        const PSquad *q = &p->sq[i];
+        if (!q->used) continue;
+        int v = q->men * 4;
+        if (q->friendly) v = -v;
+        int c = cell_of(q), t = tile_at_cell(p, c);
+        if (c < 0 || c >= MAP_W * MAP_H) continue;
+        if (tile_water(t)) v = 0;
+        else if (tile_mountain(t)) v = sar(v, 2);
+        else if (tile_fort(t) || tile_hill(t)) v *= 2;
+        if (q->condition < 10) v = sar(v, 1);
+        str[c] += v;
+    }
+    for (int pass = 0; pass < 2; pass++) {
+        for (int c = 0; c < MAP_W * MAP_H; c++) {
+            int t = tile_at_cell(p, c);
+            if (tile_water(t)) continue;
+            int col = c % 10;
+            bool mtn = tile_mountain(t);
+            for (int k = 1; k <= 8; k++) {
+                if (c < 10 && k > 5) continue;                          /* top row */
+                if (c > 189 && k > 1 && k < 5) continue;               /* bottom row */
+                if (col == 0 && k > 3 && k < 7) continue;              /* left column */
+                if (col == 9 && (k == 8 || k == 1 || k == 2)) continue; /* right column */
+                int v = sar(str[c + NB[k]], 3);
+                if (mtn) v = sar(v, 2);
+                p->supply[c] = (int16_t)(p->supply[c] + v);
+            }
+            p->supply[c] = (int16_t)(p->supply[c] + str[c]);
+        }
+        if (pass == 0) {
+            for (int c = 0; c < MAP_W * MAP_H; c++) str[c] = p->supply[c];
+            SDL_memset(p->supply, 0, sizeof p->supply);
+        }
+    }
+}
+
+/* ovl6:6A21: steps to the nearest village or fort that feeds this squad
+ * (one its side holds, if the rules let it supply food), divided by the
+ * supply line range. */
+static int supply_distance(const Play *p, int i)
+{
+    const PSquad *q = &p->sq[i];
+    int best = 999;
+    for (int c = 0; c < MAP_W * MAP_H; c++) {
+        int t = tile_at_cell(p, c);
+        if (!((tile_village(t) && rule(p, RULE_VILLAGES_SUPPLY_FOOD)) || (tile_fort(t) && rule(p, RULE_FORTS_SUPPLY_FOOD))))
+            continue;
+        if (q->friendly ? p->supply[c] >= -1 : p->supply[c] <= 1) continue;
+        best = SDL_min(best, step_distance(q->x, q->y, cell_x(c), cell_y(c)));
+    }
+    int range = rule(p, RULE_SUPPLY_LINE_RANGE);
+    return range > 0 ? best / range : best;
+}
+
+/* ovl6:52F8: every 16 ticks, food from the supply lines and condition from
+ * marching, resting and hunger. */
+static void food_and_condition(Play *p)
+{
+    int shape = rule(p, RULE_MEN_SHAPE);
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        if (!q->used) continue;
+        int moving = q->moving;
+        int d = supply_distance(p, i);
+        if (d > 20) q->food--;
+        if (d > 40) q->food--;
+        if (d < 10) {
+            q->food++;
+            if (!q->friendly) q->food++;
+        }
+        int t = tile_at_cell(p, cell_of(q));
+        if ((tile_village(t) && rule(p, RULE_VILLAGES_SUPPLY_FOOD)) || (tile_fort(t) && rule(p, RULE_FORTS_SUPPLY_FOOD)))
+            q->food = 49;
+        q->food = SDL_clamp(q->food, 1, 49);
+        if (q->friendly) {
+            if (moving == 1) q->condition -= 2 * shape;   /* fast march */
+            if (moving == 2) q->condition -= shape;
+            if (moving == 0) q->condition++;
+            if (q->food < 10) q->condition -= 3;
+        } else {
+            if (moving == 1 || moving == 2) q->condition--;
+            if (moving == 0) q->condition++;
+            if (q->food < 10) q->condition -= 2;
+        }
+        if ((tile_village(t) || tile_fort(t)) && q->food > 10) q->condition++;
+        q->condition = SDL_clamp(q->condition, 1, 49);
+        if (moving == 1 && q->condition < 15) q->speed = q->moving = 2;   /* too tired */
+        if (moving == 2 && q->condition < 5) q->speed = q->moving = 3;
+    }
+}
+
+/* ovl6:5526: every 16 ticks, a fort may train a man for a squad in it. */
+static void forts_train(Play *p)
+{
+    for (int c = 0; c < MAP_W * MAP_H; c++) {
+        if (!tile_fort(tile_at_cell(p, c))) continue;
+        for (int i = 0; i < MAX_SQUADS; i++) {
+            PSquad *q = &p->sq[i];
+            if (!q->used || cell_of(q) != c) continue;
+            if (q->men < 14) {
+                if (rnd(p) >= 90) continue;
+                if (rnd(p) < rule(p, RULE_FORTS_TRAIN_MEN)) {
+                    int r = rnd(p);
+                    if (r < 42) q->archers++;
+                    else if (r < 84) q->knights++;
+                    else q->barbarians++;
+                }
+                break;
+            }
+            /* a full enemy squad makes room by splitting (ovl6:5613): later, with the enemy's moves */
+        }
+    }
+    count_men(p);
+}
+
+static void alert_flag(Play *p, int f, bool taken)     /* ovl6:5BE7, ovl6:5C56 */
+{
+    int w = where_code(p->flag[f].x, p->flag[f].y) + 10;
+    if (w == p->alert_where) return;
+    p->alert_where = w;
+    message(p);
+    print(p, O5(p, taken ? 0x147 : 0x15B));    /* URGENT - FLAG TAKEN / ENEMY FLAG CAPTURED */
+    print_where(p, p->flag[f].x, p->flag[f].y);
+}
+
+/* ovl6:392B, ovl6:3ADE: a squad standing on the other side's flag takes it.
+ * Returns 1 if you have no flags left, 2 if the enemy has none. */
+static int flags_check(Play *p)
+{
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        const PSquad *q = &p->sq[i];
+        if (!q->used || q->fighting) continue;
+        for (int f = 0; f < MAX_FLAGS; f++) {
+            PFlag *fl = &p->flag[f];
+            if (!fl->present || fl->white == q->friendly) continue;
+            int dx = q->x - fl->x, dy = q->y - fl->y;
+            if (dx < -1 || dx > 1 || dy < -1 || dy > 2) continue;
+            if (fl->white) { p->flags_taken++; alert_flag(p, f, true); }
+            else           { p->flags_captured++; alert_flag(p, f, false); }
+            fl->white = q->friendly;
+            break;
+        }
+    }
+    int white = 0, black = 0;
+    for (int f = 0; f < MAX_FLAGS; f++) {
+        if (!p->flag[f].present) continue;
+        if (p->flag[f].white) white++;
+        else black++;
+    }
+    return white == 0 ? 1 : black == 0 ? 2 : 0;
+}
+
+/* ovl1:3505: a side with no flag gets one somewhere in the middle of the map. */
+static void place_flag(Play *p, int f, bool white)
+{
+    p->flag[f].present = true;
+    p->flag[f].white = white;
+    p->flag[f].x = rnd(p) / 2 + 8;
+    p->flag[f].y = rnd(p) + 31;
+}
+
+/* ------------------------------------------------------------------ View */
+
+static void show_view(Play *p)         /* ovl6:89A9 */
+{
+    supply_map(p);
+    text_reset(p);
+    clear_row(p, 24);
+    print(p, DS(p, 0x29C));             /* End */
+    int mine = 0, theirs = 0;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        if (!p->sq[i].used) continue;
+        if (p->sq[i].friendly) mine += p->sq[i].men;
+        else theirs += p->sq[i].men;
+    }
+    tpos(p, 23, 20);
+    print(p, DS(p, 0x2A0)); print_num(p, theirs); print(p, DS(p, 0x2AB));   /* Enemy has N men */
+    tpos(p, 24, 20);
+    print(p, DS(p, 0x2B0)); print_num(p, mine); print(p, DS(p, 0x2BA));     /* you have N men */
+    p->mode = PM_VIEW;
+}
+
+/* ------------------------------------------------------------------ cursor and selection */
+
+static bool scroll_up_key(int k)   { return k == PK_MINUS || k == PK_KP_MINUS; }   /* rt:0FA2 (and Tab) */
+static bool scroll_down_key(int k) { return k == PK_EQUALS || k == PK_KP_PLUS; }   /* rt:0FF5 (and Ctrl) */
+static bool cursor_key(int k)      { return k > 0x46 && k < 0x52 && !scroll_up_key(k) && !scroll_down_key(k); }
+
+static bool visible(const Play *p, int i)
+{
+    const PSquad *q = &p->sq[i];
+    return q->used && (q->friendly || p->reveal || rule(p, RULE_ENEMY_SEEN) >= RULE_SEEN_ALL || q->seen);
+}
+
+/* ovl6:6171: is the cursor over a squad? */
+static void check_over(Play *p, int key)
+{
+    if ((scroll_up_key(key) || scroll_down_key(key)) && p->mode != PM_SQUAD) return;
+    if (p->mode == PM_TRACE || p->mode == PM_PROMPT) return;
+    bool found = false;
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        const PSquad *q = &p->sq[i];
+        if (!visible(p, i)) continue;
+        if (p->cx != q->x + 1 || p->cy < q->y - 1 || p->cy > q->y + 3) continue;
+        found = true;
+        p->sel = i;
+        if (!p->over_squad) cmd_squad(p);
+        if (q->fighting) break;
+    }
+    if (!found && p->over_squad) cmd_normal(p);
+    p->over_squad = found;
+}
+
+static void trace_start(Play *p)       /* ovl6:477D, ovl6:6E1A */
+{
+    PSquad *q = &p->sq[p->sel];
+    if (q->has_path) stop_squad(p, p->sel);
+    int start = free_run(p);
+    if (start < 0) return;              /* the path memory is full */
+    p->path_next = start;
+    q->path_pos = start;
+    p->trace_start = start;
+    text_reset(p);
+    tpos(p, 23, 0);
+    print(p, O5(p, 0x209));             /* Trace path to destination and press [M] */
+    clear_row(p, 24);
+    print(p, O5(p, 0x22E));             /* Mark Cancel */
+    p->mode = PM_TRACE;
+    p->cx = q->x;
+    p->cy = q->y;
+}
+
+static void trace_cancel(Play *p)
+{
+    stop_squad(p, p->sel);
+    /* WAR.EXE leaves the cancelled steps in the path memory; free them */
+    for (int k = p->trace_start; k != p->path_next; ) {
+        k = next_slot(k);
+        p->path[k] = 0;
+    }
+    cmd_normal(p);
+}
+
+static void trace_confirm(Play *p)     /* ovl6:48AA */
+{
+    PSquad *q = &p->sq[p->sel];
+    if (q->path_pos == p->path_next) {  /* no steps: same as Cancel */
+        stop_squad(p, p->sel);
+        p->mode = PM_NORMAL;
+        cmd_normal(p);
+        return;
+    }
+    p->cx += 1;
+    p->cy += 3;
+    p->mode = PM_NORMAL;
+    q->has_path = true;
+    q->marked = true;
+    q->mark_x = p->cx;
+    q->mark_y = p->cy + 1;
+    p->path_next = next_slot(p->path_next);
+    if (p->path[p->path_next] != 0) p->path_next = prev_slot(p->path_next);
+    p->path[p->path_next] = PATH_END;
+    p->path_next = next_slot(p->path_next);
+    q->path_pos = next_slot(q->path_pos);
+    q->moving = q->speed;
+    q->countdown = q->speed;
+    cmd_normal(p);
+}
+
+/* ovl6:412B: store one move of the box in the path memory. */
+static void trace_store(Play *p, int delta)
+{
+    for (;;) {
+        p->path_next = next_slot(p->path_next);
+        if (p->path[p->path_next] != 0) {   /* full: mark the destination here */
+            p->path_next = prev_slot(p->path_next);
+            p->path[p->path_next] = 0;
+            p->path_next = prev_slot(p->path_next);
+            trace_confirm(p);
+            return;
+        }
+        if (delta > 120)       { delta -= 80; p->path[p->path_next] = 80; }
+        else if (delta < -120) { delta += 80; p->path[p->path_next] = -80; }
+        else                   { p->path[p->path_next] = (int8_t)delta; return; }
+    }
+}
+
+/* ovl6:3E56-41AC: move the cursor or scroll the view. */
+static void cursor_input(Play *p, int key)
+{
+    int maxx = CX_MAX, maxy = CY_MAX;
+    if (p->mode == PM_TRACE) {
+        p->trace_toggle = !p->trace_toggle;
+        maxx--; maxy -= 2;
+    } else {
+        p->trace_toggle = false;
+    }
+    if (p->trace_toggle) return;        /* the box moves at half speed */
+    bool up = scroll_up_key(key), down = scroll_down_key(key);
+    if (!up && !down && !cursor_key(key)) return;
+
+    int delta = 0;
+    if (up) {
+        if (p->view_top < 2) return;
+        if (p->jump && p->mode != PM_TRACE) {
+            p->view_top = 0; p->cx = 0x26; p->cy = 0x2D; delta = 1;
+        } else {
+            p->view_top -= 2;
+            if (p->view_top + VIEW_MARGIN < p->cy) { p->cy -= 2; delta = -160; }
+        }
+    } else if (down) {
+        if (p->view_top >= VIEW_TOP_MAX - 1) return;
+        if (p->jump && p->mode != PM_TRACE) {
+            p->view_top = VIEW_TOP_MAX; p->cx = 0x26; p->cy = 0x91; delta = 1;
+        } else {
+            p->view_top += 2;
+            if (p->cy < p->view_top) { p->cy += 2; delta = 160; }
+        }
+    } else {
+        if (p->mode == PM_PROMPT) return;
+        int k = key - PK_HOME;
+        p->cx += STEP_DX[k];
+        p->cy += STEP_DY[k];
+        delta = STEP_DY[k] * 80 + STEP_DX[k];
+    }
+    if (p->cx > maxx) { p->cx--; delta--; }
+    if (p->cx < 1)    { p->cx++; delta++; }
+    if (p->cy > maxy) { p->cy--; delta -= 80; }
+    if (p->cy < 0)    { p->cy++; delta += 80; }
+    if (p->cy < p->view_top) p->view_top--;
+    else if (p->view_top + VIEW_MARGIN < p->cy) p->view_top++;
+    p->view_top = SDL_clamp(p->view_top, 0, VIEW_TOP_MAX);
+    if (delta == 0) return;
+    if (p->mode != PM_TRACE) check_over(p, key);
+    else trace_store(p, delta);
+}
+
+/* ------------------------------------------------------------------ Size and Info */
+
+static void show_size(Play *p)         /* ovl6:6EA0 */
+{
+    const PSquad *q = &p->sq[p->sel];
+    text_reset(p);
+    if (q->knights)    { print(p, O5(p, 0x2DF)); print_num(p, q->knights); spaces(p, 1); }
+    if (q->barbarians) { print(p, O5(p, 0x2E8)); print_num(p, q->barbarians); spaces(p, 1); }
+    if (q->archers)    { print(p, O5(p, 0x2F4)); print_num(p, q->archers); spaces(p, 1); }
+    if (q->spies)      { print(p, DS(p, 0x267)); print_num(p, q->spies); }
+    clear_row(p, 24);
+    print(p, DS(p, 0x26C));
+    p->mode = PM_SIZE;
+}
+
+static void info_orders(Play *p)       /* ovl6:7245: row 18 */
+{
+    const PSquad *q = &p->sq[p->sel];
+    clear_row(p, 18);
+    int sp = q->speed;
+    if (q->moving == 0) {
+        if (!q->friendly) {
+            print(p, O5(p, 0x2FD));     /* NOT MOVING */
+        } else {
+            print(p, O5(p, 0x23A));     /* STOPPED - when moving: */
+            print(p, O5(p, sp == 3 ? 0x308 : sp == 2 ? 0x313 : 0x31E));
+        }
+        return;
+    }
+    print(p, O5(p, sp == 3 ? 0x329 : sp == 2 ? 0x334 : 0x33D));
+    print(p, DS(p, 0x27B));             /* " in a " */
+    int ew = 0, ns = 0;
+    for (int k = 0; k < 3; k++) {       /* the direction of the next steps */
+        int v = p->path[(q->path_pos - 1 + k + PATH_SIZE) % PATH_SIZE];
+        if (v > 78 && v < 82)        { ns = 1; v -= 80; }
+        else if (v < -78 && v > -82) { ns = -1; v += 80; }
+        if (v == 1) ew = 1;
+        else if (v == -1) ew = -1;
+    }
+    if (ns < 0) print(p, DS(p, 0x282));
+    else if (ns > 0) print(p, DS(p, 0x288));
+    if (ew < 0) print(p, DS(p, 0x28E));
+    else if (ew > 0) {
+        if (!ns) print(p, DS(p, 0x293));   /* "\bn " = "an" */
+        print(p, DS(p, 0x297));
+    }
+    if (!ns && !ew) print(p, O5(p, 0x348));   /* "\bn unknown" */
+    print(p, O5(p, 0x353));                   /* " direction" */
+}
+
+static void info_condition(Play *p)    /* ovl6:741F: row 20, bar drawn in play_draw */
+{
+    const PSquad *q = &p->sq[p->sel];
+    clear_row(p, 20);
+    print(p, O5(p, 0x252));
+    p->cond_mark = 0;
+    if (q->moving == 1 || q->moving == 2 || q->food < 10) p->cond_mark = '-';
+    else if (q->moving == 0) p->cond_mark = '+';
+}
+
+static void info_food(Play *p)         /* ovl6:750F: row 21 */
+{
+    clear_row(p, 21);
+    print(p, O5(p, 0x261));
+    int d = supply_distance(p, p->sel);
+    p->food_mark = d > 20 ? '-' : d < 10 ? '+' : 0;
+}
+
+static void show_info(Play *p)         /* ovl6:6FAB */
+{
+    text_reset(p);
+    text_rows_add(p, 5);
+    info_orders(p);
+    info_condition(p);
+    info_food(p);
+    p->mode = PM_INFO;
+    clear_row(p, 24);
+    if (p->sq[p->sel].friendly) print(p, DS(p, 0x270));   /* Speed */
+    print(p, DS(p, 0x277));                                /* End */
+}
+
+static void info_speed(Play *p)        /* ovl6:7072: S steps slow, march, fast, stop */
+{
+    PSquad *q = &p->sq[p->sel];
+    if (!(q->has_path && q->moving == 0) && --q->speed < 0) q->speed = 3;
+    if (q->condition < 15 && q->speed == 1) q->speed = 0;   /* too tired to march fast */
+    if (q->condition < 5 && q->speed == 2) q->speed = 0;    /* or to march */
+    if (q->has_path) q->moving = q->speed;                  /* 0 halts a moving squad */
+    if (q->speed == 0) q->speed = 3;
+    info_orders(p);
+    info_condition(p);
+}
+
+/* ------------------------------------------------------------------ public */
+
+int  play_rnd(Play *p) { return rnd(p); }
+int  play_edge(const Play *p, int i, int j) { return edge(p, i, j); }
+int  play_tile_under(const Play *p, int i) { return tile_at_cell(p, cell_of(&p->sq[i])); }
+void play_clear_path(Play *p, int i) { clear_path(p, i); }
+
+/* campaign_play after the battle overlay: squads with no men go, the
+ * battle's squads carry on along their paths (ovl6:3589) */
+void play_after_battle(Play *p, int a, int b)
+{
+    p->zoom_squad = -1;
+    p->sq[a].clock = p->sq[b].clock = 0;
+    p->sq[a].fighting = p->sq[b].fighting = false;
+    squads_update(p);
+    p->mode = PM_NORMAL;
+    p->over_squad = false;
+    cmd_normal(p);
+    if (check_victory(p, a, b)) return;
+    check_over(p, 0);
+}
+
+void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
+{
+    SDL_memset(p, 0, sizeof *p);
+    p->c = c;
+    p->ga = ga;
+    p->rnd = (uint16_t)(seed & 0xFF);   /* rt:2096: BIOS tick count */
+    p->rnd_ptr = 0xBB8;
+
+    const uint8_t *a = c->armies;
+#define W(off, i) ((int16_t)(a[(off) + 2 * (i)] | (a[(off) + 2 * (i) + 1] << 8)))
+    for (int i = 0; i < MAX_SQUADS; i++) {
+        PSquad *q = &p->sq[i];
+        int slot = W(80, i);
+        q->used = slot != 9999;
+        q->moving = q->used ? slot : 0;
+        q->friendly = W(0, i) == -1;
+        q->speed = W(40, i);
+        q->x = W(120, i);
+        q->y = W(160, i);
+        q->formation = a[200 + i];
+        q->condition = a[220 + i];
+        q->food = a[240 + i];
+        q->archers = a[320 + i];
+        q->knights = a[340 + i];
+        q->barbarians = a[360 + i];
+        q->spies = a[380 + i];
+        q->men = q->archers + q->knights + q->barbarians;
+    }
+    for (int i = 0; i < MAX_FLAGS; i++) {
+        p->flag[i].present = W(260, i) >= 0;
+        p->flag[i].x = W(260, i);
+        p->flag[i].y = W(280, i);
+        p->flag[i].white = W(300, i) == -1;
+    }
+#undef W
+
+    /* the CGA map: terrain is read from its pixels, whichever colours are shown */
+    for (int row = 0; row < MAP_H; row++)
+        for (int col = 0; col < MAP_W; col++) {
+            int t = c->map[row][col] - 1;
+            const Image *tile = (t >= 0 && t < NUM_TILES) ? &ga->set[MODE_CGA].tiles[t] : NULL;
+            for (int y = 0; y < TILE_H; y++)
+                for (int x = 0; x < TILE_W; x++)
+                    p->terrain[row * TILE_H + y][col * TILE_W + x] =
+                        (tile && tile->px) ? (tile->px[y * TILE_W + x] & 3) : 0;
+        }
+
+    for (int r = 0; r < 25; r++) clear_row(p, r);
+    p->view_top = VIEW_TOP_MAX;         /* ovl1:32B8 */
+    p->cx = 0x26;
+    p->cy = 0x91;
+    p->time_div = 64;                   /* slow */
+    p->text_rows = 2;
+    p->sel = -1;
+    p->result = PLAY_RUNNING;
+    p->fight_delay = 400;               /* Options Shoppe: medium (ovl1:3114) */
+    p->zoom_squad = -1;
+
+    /* the opponent's values (choose_opponent, ovl1:4CD4) */
+    if (ga->have_o2) {
+        SDL_memcpy(p->opp, ga->opponent[c->opponent & 7], sizeof p->opp);
+    } else {                            /* no O2: no surrender offers, rules for terrain */
+        OPP(p, 0xA4EA) = 500;
+        OPP(p, 0xA4FA) = rule(p, RULE_MOUNTAIN);
+        OPP(p, 0xA4FC) = rule(p, RULE_FOREST);
+    }
+    /* game_init (ovl1:3417): a side without a flag gets one */
+    int white = 0, black = 0;
+    for (int f = 0; f < MAX_FLAGS; f++)
+        if (p->flag[f].present) { if (p->flag[f].white) white++; else black++; }
+    if (!white) {
+        int f = 0;
+        while (f < 9 && p->flag[f].present) f++;
+        place_flag(p, f, true);
+    }
+    if (!black) {
+        int f = 0;
+        while (f < 8 && p->flag[f].present) f++;
+        place_flag(p, f, false);
+    }
+
+    squads_update(p);
+    supply_map(p);                      /* campaign_play: ovl6:3147 */
+    update_delays(p, false);
+    cmd_normal(p);
+    check_victory(p, -1, -1);
+    check_over(p, 0);
+}
+
+void play_key(Play *p, int key, bool shift)
+{
+    p->jump = shift;
+    if (key == PK_ESC) { p->result = PLAY_QUIT; return; }
+    p->key = key;
+}
+
+static void handle_key(Play *p, int key)       /* ovl6:3B87 */
+{
+    if (p->mode == PM_PROMPT) {
+        if (p->ended) {                 /* the map can still be scrolled */
+            if (key == PK_ENTER || key == PK_SPACE) p->result = p->outcome;
+            else cursor_input(p, key);
+        } else if (p->prompt_surrender) {
+            if (key == PK_Y) {
+                p->prompt_surrender = false;
+                clear_row(p, 24);
+                print(p, O5(p, 0x47));  /* Your opponent accepts your surrender */
+                p->ended = true;
+                p->outcome = PLAY_LOST;
+            } else if (key == PK_N) {
+                p->prompt_surrender = false;
+                p->mode = PM_NORMAL;
+                cmd_normal(p);
+            }
+        } else if (p->prompt_offer) {   /* ovl6:37B6 */
+            if (key == PK_Y) {
+                print(p, DS(p, 0x1CF)); /* Yes */
+                p->ended = true;
+                p->outcome = PLAY_WON;
+            } else if (key == PK_N) {
+                print(p, DS(p, 0x1D3)); /* No */
+                p->prompt_offer = false;
+                p->mode = PM_NORMAL;
+                cmd_normal(p);
+            }
+        }
+        return;
+    }
+    if (p->mode == PM_VIEW) {
+        if (key) cmd_normal(p);
+        return;
+    }
+    if (p->mode == PM_SIZE) {
+        if (key) cmd_squad(p);
+        return;
+    }
+    if (p->mode == PM_INFO) {
+        if (key == PK_E) cmd_squad(p);
+        else if (key == PK_S && p->sq[p->sel].friendly) info_speed(p);
+        return;
+    }
+    if (p->mode == PM_NORMAL) {
+        if (key == PK_S) {              /* Surrender */
+            clear_row(p, 23);
+            clear_row(p, 24);
+            print(p, O5(p, 0x22));
+            p->mode = PM_PROMPT;
+            p->prompt_surrender = true;
+            return;
+        }
+        if (key == PK_T) {              /* Time: slow, medium, fast, faster */
+            p->time_div >>= 2;
+            if (p->time_div < 1) p->time_div = 64;
+            show_time(p);
+        } else if (key == PK_C) {       /* Clear the messages */
+            text_reset(p);
+            show_clear(p);
+        } else if (key == PK_V) {       /* View */
+            show_view(p);
+            return;
+        }
+    } else if (p->mode == PM_SQUAD) {
+        const PSquad *q = &p->sq[p->sel];
+        if (key == PK_I) { show_info(p); return; }
+        if (key == PK_Z && q->fighting && q->clock > 0) { p->zoom_squad = p->sel; return; }   /* Zoom (ovl6:3D97) */
+        if (key == PK_S) { show_size(p); return; }
+        if (key == PK_M && q->friendly && !q->fighting) { trace_start(p); return; }
+    } else if (p->mode == PM_TRACE) {
+        if (key == PK_C) { trace_cancel(p); return; }
+        if (key == PK_M) { trace_confirm(p); return; }
+    }
+    cursor_input(p, key);
+}
+
+void play_frame(Play *p, int held)
+{
+    if (p->result != PLAY_RUNNING) return;
+    int key = p->key ? p->key : held;
+    p->key = 0;
+    p->tick_count++;
+    bool frozen = p->mode == PM_TRACE || p->mode == PM_PROMPT || p->mode == PM_SIZE ||
+                  p->mode == PM_INFO || p->mode == PM_VIEW;
+    if (key == 0 && !frozen && p->tick_count >= p->time_div) {   /* campaign_play: one tick */
+        p->tick_count = 0;
+        p->ticks++;
+        int r = flags_check(p);
+        if (r) { game_over(p, r == 2); return; }
+        encounters(p);
+        move_squads(p);
+        if (p->mode == PM_PROMPT) return;       /* lost a squad and the game is over */
+        if (p->ticks > 15) {                    /* every 16 ticks */
+            if (--p->alert_timer < 0) p->alert_where = 0;
+            p->ticks = 0;
+            supply_map(p);
+            food_and_condition(p);
+            forts_train(p);
+        }
+    }
+    if (key == 0 && p->mode != PM_PROMPT && p->mode != PM_SIZE && p->mode != PM_INFO && p->mode != PM_VIEW)
+        battles(p);                             /* campaign_play: every iteration */
+    handle_key(p, key);
+}
+
+/* ------------------------------------------------------------------ drawing */
+
+typedef struct {
+    Screen *s;
+    int     top, h;          /* first map line shown, lines shown */
+    uint8_t col[4];          /* CGA colours 0-3 in the screen palette */
+} View;
+
+static void vpx(const View *v, int x, int line, int c)
+{
+    int sy = line - v->top;
+    if (x < 0 || x >= SCREEN_W || sy < 0 || sy >= v->h) return;
+    v->s->px[sy * SCREEN_W + x] = v->col[c];
+}
+
+/* rt:18A9: the cursor, a cross, or an open box while tracing. */
+static void draw_cursor(const View *v, int cx, int cy, bool box)
+{
+    int x = cx * 4, l = cy * 2;
+    if (box) {
+        for (int k = 0; k <= 12; k += 12)
+            for (int i = 0; i < 8; i++) vpx(v, x + i, l + k, (i >= 2 && i <= 5) ? 3 : 0);
+        static const int side[4] = { 2, 4, 8, 10 };
+        for (int k = 0; k < 4; k++) {
+            vpx(v, x, l + side[k], 3); vpx(v, x + 1, l + side[k], 3);
+            vpx(v, x + 6, l + side[k], 3); vpx(v, x + 7, l + side[k], 3);
+        }
+        return;
+    }
+    static const int arm[6] = { 0, 1, 2, 7, 8, 9 };
+    for (int k = 0; k < 6; k++)
+        for (int i = 0; i < 4; i++) vpx(v, x + i, l + arm[k], i < 2 ? 0 : 3);
+    for (int k = 4; k <= 5; k++) {
+        static const int8_t bar[12] = { 0, 0, 3, 3, 3, -1, -1, 0, 0, 3, 3, 3 };
+        for (int i = 0; i < 12; i++)
+            if (bar[i] >= 0) vpx(v, x - 4 + i, l + k, bar[i]);
+    }
+}
+
+static void draw_mark(const View *v, int mx, int my)   /* rt:1CBC */
+{
+    int x = mx * 4, l = my * 2;
+    for (int k = 0; k < 6; k++)
+        for (int i = 0; i < 4; i++)
+            if ((k == 2 || k == 3) || i == 1 || i == 2) vpx(v, x + i, l + k, 3);
+}
+
+static void draw_ds_icon(Screen *s, const GameAssets *ga, unsigned off, int x, int y, const uint8_t col[4])
+{
+    for (int r = 0; r < 6; r++)          /* draw_icon_8x6 */
+        for (int i = 0; i < 8; i++) {
+            unsigned at = off + 2 * r + i / 4;
+            if (at >= DS_SIZE) continue;
+            int c = (ga->ds[at] >> (6 - 2 * (i & 3))) & 3;
+            if (x + i < SCREEN_W && y + r < SCREEN_H) s->px[(y + r) * SCREEN_W + x + i] = col[c];
+        }
+}
+
+static void vline(Screen *s, int xbyte, int y, int len, const uint8_t col[4])   /* draw_vline: byte 0Fh */
+{
+    for (int j = 0; j < len; j++)
+        for (int i = 0; i < 4; i++)
+            if (y + j < SCREEN_H) s->px[(y + j) * SCREEN_W + xbyte * 4 + i] = col[i < 2 ? 0 : 3];
+}
+
+static void bar(Screen *s, int y, int len, const uint8_t col[4])    /* clear_box */
+{
+    screen_fill(s, 0x1C * 4, y, 50 * 4, 8, col[0]);
+    screen_fill(s, 0x1C * 4, y, SDL_min(len, 50) * 4, 6, col[1]);
+}
+
+static void draw_ds_bitmap(Screen *s, const GameAssets *ga, unsigned off, int x0, int y0, const uint8_t col[4])
+{
+    int w = 0, h = 0;                    /* draw_bitmap */
+    assets_ds_bitmap_px(ga, off, 0, 0, &w, &h);
+    for (int y = 0; y < h && y0 + y < SCREEN_H; y++)
+        for (int x = 0; x < w && x0 + x < SCREEN_W; x++)
+            s->px[(y0 + y) * SCREEN_W + x0 + x] = col[assets_ds_bitmap_px(ga, off, x, y, NULL, NULL)];
+}
+
+/* one byte (4 pixels) of a CGA bit pattern */
+static void pattern(Screen *s, int x, int y, uint8_t b, const uint8_t col[4])
+{
+    for (int i = 0; i < 4; i++) s->px[y * SCREEN_W + x + i] = col[(b >> (6 - 2 * i)) & 3];
+}
+
+/* ovl6:89A9: a small map of who holds what: white and dotted white for you,
+ * black and dotted for the enemy (only when the enemy is always seen) */
+static void view_graphics(const Play *p, Screen *s, const uint8_t col[4])
+{
+    screen_fill(s, 0, 0x6A, 12 * 4, 1, col[3]);          /* draw_hline, rt:1E35 */
+    for (int y = 0x6B; y < 0x6A + 0x54; y++) {
+        pattern(s, 0, y, 0xF0, col);
+        for (int x = 1; x <= 10; x++) pattern(s, x * 4, y, 0x00, col);
+        pattern(s, 11 * 4, y, 0x0F, col);
+    }
+    screen_fill(s, 0, 0x6A + 0x54, 12 * 4, 1, col[3]);
+    for (int c = 0; c < MAP_W * MAP_H; c++) {
+        int v = p->supply[c];
+        uint8_t a = 0x55, b = 0x55;      /* rt:1E67: a on lines 0 and 2, b on 1 and 3 */
+        if (rule(p, RULE_ENEMY_SEEN) == RULE_SEEN_ALL) {
+            if (v > 25) a = b = 0x00;
+            else if (v > 9) a = b = 0x11;
+            else if (v > 1) a = 0x11;
+        }
+        if (v < -25) a = b = 0xFF;
+        else if (v < -9) a = b = 0xDD;
+        else if (v < -1) a = 0xDD;
+        int x = (1 + c % 10) * 4, y = 0x6C + (c / 10) * 4;
+        pattern(s, x, y, a, col);
+        pattern(s, x, y + 1, b, col);
+        pattern(s, x, y + 2, a, col);
+        pattern(s, x, y + 3, b, col);
+    }
+}
+
+static void info_graphics(const Play *p, Screen *s, const uint8_t col[4])   /* ovl6:7127 */
+{
+    const PSquad *q = &p->sq[p->sel];
+    screen_fill(s, 0, 0x9C, SCREEN_W, 1, col[3]);
+    bar(s, 0xA0, q->condition, col);
+    bar(s, 0xA8, q->food, col);
+    screen_fill(s, 0, 0xB0, SCREEN_W, 1, col[3]);
+    static const int tick_x[5] = { 0x1C, 0x28, 0x34, 0x40, 0x4C };
+    for (int k = 0; k < 5; k++) vline(s, tick_x[k], 0xB0, (k & 1) ? 4 : 6, col);
+    static const struct { int x; unsigned off; } label[10] = {
+        { 0x1C, 0x3E8 }, { 0x27, 0x400 }, { 0x29, 0x40C }, { 0x33, 0x40C }, { 0x35, 0x3E8 },
+        { 0x3F, 0x418 }, { 0x41, 0x40C }, { 0x4A, 0x3F4 }, { 0x4C, 0x3E8 }, { 0x4E, 0x3E8 },
+    };   /* 0, 25, 50, 75, 100 */
+    for (int k = 0; k < 10; k++) draw_ds_icon(s, p->ga, label[k].off, label[k].x * 4, 0xB8, col);
+    uint8_t white = col[3], black = col[0];
+    char m[2] = { 0, 0 };
+    if (p->cond_mark) { m[0] = p->cond_mark; screen_text(s, p->ga, (q->condition / 2 + 15) * 8, 0xA0, m, white, black); }
+    if (p->food_mark) { m[0] = p->food_mark; screen_text(s, p->ga, (q->food / 2 + 15) * 8, 0xA8, m, white, black); }
+}
+
+void play_draw(const Play *p, Screen *s, GfxMode mode)
+{
+    const AssetSet *set = &p->ga->set[mode];
+    int map_h = SCREEN_H - 8 * p->text_rows - 2;
+    campaign_draw_tiles(s, p->ga, mode, p->c, p->view_top * 2, map_h);
+
+    View v = { s, p->view_top * 2, map_h, { 0, 1, 2, 3 } };
+    int ncolors = set->tiles[0].ncolors;
+    for (int i = 0; i < 4; i++)
+        v.col[i] = screen_nearest(s, ncolors, CGA_PALETTE[i].r, CGA_PALETTE[i].g, CGA_PALETTE[i].b);
+    uint8_t white = v.col[3], black = v.col[0];
+
+    for (int i = 0; i < MAX_SQUADS; i++)                 /* rt:0F2C: marks, squads, flags, cursor */
+        if (p->sq[i].used && p->sq[i].marked && p->sq[i].friendly) draw_mark(&v, p->sq[i].mark_x, p->sq[i].mark_y);
+    for (int i = 0; i < MAX_SQUADS; i++) {               /* rt:19D9 */
+        const PSquad *q = &p->sq[i];
+        if (!visible(p, i)) continue;
+        SquadPose pose = q->small ? POSE_SMALL
+                       : q->fighting ? POSE_FIGHTING
+                       : q->moving == 0 ? POSE_STANDING
+                       : q->condition <= 10 ? POSE_WEAK : POSE_MARCHING;
+        bool white_fig = q->friendly != (q->clock == FIGHT_ON && p->blink);   /* fighting squads blink */
+        screen_sprite(s, p->ga->squad_sprite[pose], q->x * 4, q->y * 2 - v.top, white_fig, white, black, 0, map_h);
+    }
+    for (int i = 0; i < MAX_FLAGS; i++) {                /* rt:1AE0 */
+        const PFlag *f = &p->flag[i];
+        if (f->present) screen_sprite(s, p->ga->flag_sprite, f->x * 4, f->y * 2 - v.top, f->white, white, black, 0, map_h);
+    }
+    if (p->mode != PM_PROMPT) draw_cursor(&v, p->cx, p->cy, p->mode == PM_TRACE);
+
+    /* rt:1CE8: a white line under the map, then the text rows */
+    screen_fill(s, 0, map_h, SCREEN_W, 1, white);
+    screen_fill(s, 0, map_h + 1, SCREEN_W, SCREEN_H - map_h - 1, black);
+    for (int r = 25 - p->text_rows; r < 25; r++)
+        screen_text(s, p->ga, 0, r * 8, p->text[r], white, black);
+
+    if (p->mode == PM_TRACE) draw_ds_bitmap(s, p->ga, 0x490, 0x48 * 4, 0xB8, v.col);   /* the [M] key */
+    if (p->enter_icon)
+        draw_ds_bitmap(s, p->ga, 0x424, 0x1D * 4, 0xC0, v.col);                        /* the [Enter] key */
+    if (p->mode == PM_INFO) info_graphics(p, s, v.col);
+    if (p->mode == PM_VIEW) view_graphics(p, s, v.col);
+    if (p->prompt_offer) {              /* ovl6:3740: a box at the top of the screen */
+        for (int r = 3; r <= 6; r++) screen_text(s, p->ga, 0, r * 8, p->text[r], white, black);
+        vline(s, 0, 0x18, 0x22, v.col);
+        vline(s, 0x4F, 0x18, 0x22, v.col);
+        screen_fill(s, 4, 0x18, 0x4F * 4, 1, white);
+        screen_fill(s, 4, 0x38, 0x4F * 4, 1, white);
+    }
+}
