@@ -22,7 +22,7 @@ OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', 'WAS.EXE.as
 N = {
     # --- named from WAS.EXE itself (Nov 2026)
     ('rt', 0x0532): ('load_sm_tiles', 'Load SM (94 map tiles)'),
-    ('rt', 0x30AE): ('set_cga_palette_if', 'set_cga_palette(n) unless [0ECB] = 1; palette 0 is used for flashes in the sea battle (ovl5) and by ovl1_bc67 when [684D] is set'),
+    ('rt', 0x30AE): ('set_cga_palette_if', 'set_cga_palette(n) unless [0ECB] = 1: palette 0 for the scrolls (scroll_palette) and flashes in the sea battle (ovl5), 1 otherwise'),
     ('rt', 0x336D): ('read_joystick', 'Read the game port (201h) with PIT timing'),
     ('ovl1', 0x7650): ('ovl1_startup', 'thunk 0. Startup: SCNF options (29 bytes to DS:684C), title picture SPM'),
     ('ovl1', 0x7AF8): ('load_so2', 'Load SO2 (opponents, quotes, tunes) to [3F37]+5DC0h'),
@@ -37,6 +37,15 @@ N = {
     ('ovl1', 0xC4D8): ('ship_map_addresses', 'For the 40 ships: map buffer address (y+1)*80 + x'),
     ('ovl1', 0xCBEA): ('load_picture', 'load_picture(name, dest): two fields of word N + N codes (<=200 run, >200 literal), even lines at dest, odd at dest+3E80h'),
     ('ovl7', 0xCBC8): ('boarding_load_b', 'Boarding: load the deck picture B'),
+    ('rt', 0x0688): ('mark_flagship_squadrons', 'For each squadron: DS:5EBD = 1 if one of its ships (DS:6456 list) is type 3 (flag), 0 otherwise; merchants (2) are left alone'),
+    ('rt', 0x074B): ('squadron_info', 'Info: each ship of the squadron: name (DS:609F + 15n), LINE / FRIGATE / FLAG from DS:5E95 (1, 2, else), sails bar 4 x (5 - DS:5E6D), hull bar 4 x (5 - DS:6025); the supplies bar DS:5E1D'),
+    ('rt', 0x10D2): ('draw_squadrons', 'Draw the 40 squadrons: friend always, foe if seen or rule [64B7] = 80; wreck if [56FF], anchor if stopped, else the heading sprite DS:607F[DS:5FD5] (DS:075A: one line pair lower for some headings); pennant (DS:5EBD = 1) or cargo (= 2) one line pair above'),
+    ('rt', 0x2941): ('draw_map_sprite', 'draw_map_sprite(sprite, address, side): byte width, byte height in line pairs, then even/odd lines; friend: white figure, black outline (within each byte); foe: the reverse'),
+    ('rt', 0x2B2A): ('draw_bar', 'Info bars: draw_bar(x, y, length, pattern)'),
+    ('ovl4', 0xB35E): ('init_heading_sprites', 'DS:607F[16] = the 16 heading sprites at DS:04BF-059D'),
+    ('ovl1', 0x7F1A): ('show_scroll', 'thunk 15. The scrolls SPE / SPF, shown in CGA palette 0 (scroll_palette)'),
+    ('ovl1', 0xBC67): ('scroll_palette', 'If [684D] (an SCNF option, 1 in the shipped SCNF): CGA palette 0 for the scrolls'),
+    ('ovl1', 0xA9A9): ('key_disk', 'Copy protection: reads the original floppy with key_disk_check and looks for the copyright string DS:0BD9; 0 makes startup fail (ovl1:76B3). The DOSBox harness patches 76B3 jne -> jmp'),
     # --- matched to WAR.EXE
     ('rt', 0x01DF): ('require_war_disk', 'Same code as WAR.EXE rt:011E (exact match of the instruction sequence); see WAR_Analysis'),
     ('rt', 0x04CA): ('disk_prompt', 'Same code as WAR.EXE rt:0400 (exact match of the instruction sequence); see WAR_Analysis'),
@@ -473,8 +482,8 @@ section('PICTURE FORMAT (B, AD, SP*)', [
     'Each field unpacks to 8000 bytes (80 bytes x 100 lines).',
 ])
 section('COPY PROTECTION', [
-    'key_disk_check (overlay 1, same code as WAR.EXE): reads a track of the original floppy',
-    'with INT 13h. There is no manual word question in WAS.EXE.',
+    'key_disk (ovl1:A9A9) calls key_disk_check (same code as WAR.EXE: INT 13h reads of the',
+    'original floppy) and looks for the copyright string; no manual word question in WAS.EXE.',
     'The string "DPQZSJHIU 2:94 EBWF NVSSZ" is "COPYRIGHT 1983 DAVE MURRY" with each character +1.',
 ])
 named = sorted(N.items(), key=lambda kv: (['rt', 'root', 'ovl1', 'ovl2', 'ovl3', 'ovl4', 'ovl5', 'ovl6', 'ovl7'].index(kv[0][0]), kv[0][1]))

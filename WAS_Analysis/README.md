@@ -7,6 +7,7 @@ Analysis of the files on the At Sea 3.5" disk (`WAS_Original_Files_3.5`), starte
 | `WAS_file_reference.md` | Every file on the disk: what it holds and how it is laid out |
 | `WAS.EXE.asm` | Annotated disassembly of WAS.EXE (the CGA version), 59,000 lines |
 | `disassembler/wasdis.py`, `disassembler/gen_asm.py` | The disassembler that writes `WAS.EXE.asm` (`python3 gen_asm.py`, needs capstone). Adapted from `WAR_Analysis/disassembler`: the layout (resident size, root segment, overlay table, thunks) is read from WAS.EXE itself. Add names to the table `N` in `gen_asm.py` as routines are understood, then run it again |
+| `tools/dosbox/` | Runs the original WAS.EXE in DOSBox with the WAR harness (see its README) |
 | `manual_ocr/` | Text of the quick reference card, the hard-disk installation sheet and the manual pages scanned so far (raw tesseract output) |
 | `../WAS_Graphics/extract_graphics.py` | Extracts the CGA and 16-colour pictures and map tiles into `../WAS_Graphics/CGA` and `../WAS_Graphics/VGA` |
 
@@ -22,24 +23,25 @@ Analysis of the files on the At Sea 3.5" disk (`WAS_Original_Files_3.5`), starte
 - **New picture format** (load_picture ovl1:CBEA): word count per field, codes <= 200 are runs, > 200 literals. All 14 CGA pictures decode exactly to 2 x 8000 bytes.
 - **WAST.DAT has no palettes**: the 16-colour pictures use the standard 16 colours. The 16-colour version is for the Tandy 1000 (WAST.EXE); it has 12 pictures (no 16-colour SPP or SPQ battle reports).
 - **94 map tiles** (WAR: 72), with place names, ports, crowns, Neptune and sea serpents.
-- **Campaigns S0-SA** (2180 or 2220 bytes): story, map, 40 ships (WAR: 20 squads and 10 flags), opponent, 9 rule words, 40 ship names of 15 bytes. Saved game **SS** (10,444 bytes of DS).
+- **Campaigns S0-SA** (2180 or 2220 bytes): story, map, 40 squadrons (side, speed, position, supplies) and 40 ships (squadron, sails damage, type, name, hull damage; at most 3 ships to a squadron), opponent, 9 rule words. WAR had 20 squads and 10 flags. Saved game **SS** (10,444 bytes of DS).
+- **Map sprites** in the data segment: anchor, wreck, a ship in 16 headings, the flagship's pennant and the merchant's cargo. They are drawn as WAR's squads were (white with a black outline for the player, the reverse for the enemy), but the outline stays within each byte.
 - **6 opponents** (Thor Foote, Medina Sidonia, Blackbeard, Tromp, John Paul Jones, Nelson).
 - **No manual word question**; only the key-disk check.
-- The CGA palette stays at the BIOS default (palette 1, bright cyan / magenta / white); palette 0 is used only for flashes in the sea battle and under one option.
+- CGA palette 1 (bright cyan / magenta / white) for everything but the scrolls, which are in palette 0 as in WAR (checked in DOSBox).
 
 ### Map with the files (checked)
-S0, S5 and S9 were drawn from their map bytes with both tile sets and show the campaign maps (Oldain; the English Channel for the Armada; the North Atlantic for the Bismarck).
+S0, S5 and S9 were drawn from their map bytes with both tile sets and show the campaign maps (Oldain; the English Channel for the Armada; the North Atlantic for the Bismarck). The original in DOSBox (`tools/dosbox`) shows the first campaign's map and squadrons exactly as the remake's viewer draws them: 182 lines of map, squadrons at anchor, pennants over the ones with a flagship.
 
 ## Open questions
-- The four byte fields of the ship block and the meaning of each rule word (the editors in overlay 2 and ovl1 will tell).
+- The meaning of each rule word (the rules scroll in overlay 1 will tell).
 - The 29-byte SCNF layout (Options Shoppe ovl1:9BCB).
 - The SS layout (as WAR's, a block of DS: map once the play variables are named).
-- Sprite formats in SO0, SO3, SO8 and the map sprites in the data segment.
-- The extra 40 bytes in six of the campaign files (DS:6025; all zero).
+- Sprite formats in SO0, SO3 and SO8.
+- How WAST.EXE colours the map sprites (the remake draws them white and black).
 - The tile classes (port, crown, rough water, shallow water, land) and the wind.
 - WAST.EXE (EXEPACK + 4 MS-LINK overlays) is not disassembled; as with WARET.EXE, the remake would assume it plays like WAS.EXE.
 
 ## Next steps
 1. Name routines and DS variables as they are understood, starting with overlay 4 (campaign play) where WAR's names already help.
-2. DOSBox harness for WAS (new `.conf` mounts, a font dump for `screentext.py`; no manual-question helper is needed).
-3. The asset viewer (the remake's step 1), then the rest of the build order in `../WAS_Remake/WAS_Remake_plan.md`.
+2. More of the DOSBox harness for WAS (`tools/dosbox` starts the original; still to add: a font dump for `screentext.py`, a 300-cycle conf, the Tandy version).
+3. The remake's step 2, the campaign map, then the rest of the build order in `../WAS_Remake/WAS_Remake_plan.md`.

@@ -36,11 +36,11 @@ Note for the remake: the At Sea 16-colour set is the **Tandy 1000** version. Its
 | 6 | 0x1D160 | 13,168 | C9B0 | Sea battle support: loads SO6, SO7, SO8; the results ("They lost N ships", "Leaving the battle.") |
 | 7 | 0x204D0 | 13,792 | C9B0 | Boarding: the fight on deck (picture B; Flag, Quarterdeck, Poopdeck, Railing; Attack / Leave / Cross / Again) |
 
-Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 16 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
+Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 25 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
 
 Font: the same 8x8 font as WAR.EXE (95 characters, byte-identical), at DS:089C.
 
-Copy protection: the key-disk check only (key_disk_check ovl1:CF96, same code as WAR.EXE: INT 13h read of a track of the original floppy). **No manual word question** (no WarW-type file). "DPQZSJHIU 2:94 EBWF NVSSZ" (= "COPYRIGHT 1983 DAVE MURRY", shifted +1) is at DS:0835, as in WAR.
+Copy protection: the key-disk check only: key_disk (ovl1:A9A9) calls key_disk_check (ovl1:CF96, same code as WAR.EXE: INT 13h reads of the original floppy) and looks for the copyright string DS:0BD9 in what it read; without it startup gives up (ovl1:76B3). `WAS_Analysis/tools/dosbox/setup_was.sh` patches a copy of WAS.EXE there (file offset 7AB3h, `75 07` -> `EB 07`) so it runs in DOSBox. **No manual word question** (no WarW-type file). "DPQZSJHIU 2:94 EBWF NVSSZ" (= "COPYRIGHT 1983 DAVE MURRY", shifted +1) is at DS:0835, as in WAR.
 
 ## Pictures (CGA) - decoded
 New format for all of them (not WAR's two formats):
@@ -49,7 +49,7 @@ New format for all of them (not WAR's two formats):
   - code c <= 200: repeat the next byte c times;
   - c > 200: copy the next c - 200 bytes.
 - Each field unpacks to exactly 8000 bytes (80 bytes x 100 lines, 2 bits per pixel). load_picture (ovl1:CBEA) writes even lines at the destination and odd lines at +3E80h.
-- WAS.EXE leaves the CGA palette at the BIOS default for mode 4 (palette 1: black, cyan, magenta, white). set_cga_palette is reached only through rt_30AE: palette 0 for flashes in the sea battle (overlay 5) and in ovl1_bc67 when option [684D] is set.
+- The pictures show in CGA palette 1 (black, cyan, magenta, white), **except the scrolls SPE and SPF, in palette 0** (black, green, red, yellow), as in WAR: show_scroll (ovl1:7F1A) calls scroll_palette (ovl1:BC67), which switches to palette 0 when option [684D] is set (it is, in the shipped SCNF). Checked in DOSBox. The sea battle (overlay 5) also flashes between the palettes.
 
 | File | Contents | 16-colour record |
 |---|---|---|
@@ -92,25 +92,26 @@ Tiles 1-90 are terrain (sea, coasts, rough and shallow water, land, mountains) a
 | Offset | Size | Loaded to | Contents |
 |---|---|---|---|
 | 0x000 | 840 | DS:4E53 | Story text, 26 rows of 32, with 0x01 after each capital (as WAR) |
-| 0x348 | 200 | DS:5BFF | Map: 10 tiles across x 20 down, row by row; byte N = tile N (index N-1 in SM / the 16-colour tiles). Checked by drawing S0, S5 and S9 |
-| 0x410 | 480 | DS:5CDD | Ships: 40 ships, stored field by field (below) |
+| 0x348 | 200 | DS:5BFF | Map: 10 tiles across x 20 down, row by row; byte N = tile N (index N-1 in SM / the 16-colour tiles). The game shows 182 lines of it, with two text rows below, and starts at the bottom. Checked in DOSBox: the first campaign's map and squadrons match the remake pixel for pixel |
+| 0x410 | 480 | DS:5CDD | 40 squadrons and 40 ships, stored field by field (below) |
 | 0x5F0 | 2 | DS:646F | Opponent (word) |
 | 0x5F2 | 18 | DS:64AD | Rules: 9 words |
 | 0x604 | 600 | DS:609F | Ship names: 40 x 15 bytes, NUL-terminated |
-| 0x85C | 40 | DS:6025 | Only in the 2220-byte files (S1, S3, S4, S5, S7, S8); all zero in every file. The 2180-byte files end before it |
+| 0x85C | 40 | DS:6025 | Hull damage, one byte per ship (0-5; Info draws a bar 4 x (5 - damage)). Only in the 2220-byte files (S1, S3, S4, S5, S7, S8), all zero; the 2180-byte files end before it |
 
-Ship block (40 ships):
-| Offset | Size | Field |
-|---|---|---|
-| 0 | 40 words | Side: -1 or 0 (as WAR: -1 friend, 0 foe; to confirm) |
-| 80 | 40 words | 9999 = empty slot, else 0 |
-| 160 | 40 words | X: byte column in the map buffer (x4 = pixels) |
-| 240 | 40 words | Y: line pair (x2 = pixels) |
-| 320 | 40 bytes | Not yet identified (20 for most ships, 0 in empty slots; perhaps a condition) |
-| 360 | 40 bytes | Looks like the squadron number (ships share it in threes in S1; 255 = none) |
-| 400 | 40 bytes | Not yet identified (0-5) |
-| 440 | 40 bytes | Not yet identified (0-3) |
-The ships' map addresses are (y+1)*80 + x (ship_map_addresses ovl1:C4D8). The quick reference card: a squadron has 1-3 ships, all squadrons of one colour form the fleet; ship types are flagship, ship-of-the-line, frigate and merchantship.
+Squadron and ship block (DS:5CDD, 480 bytes). **The word fields are per squadron and the last three byte fields per ship** (worked out from draw_squadrons rt:10D2, squadron_info rt:074B and mark_flagship_squadrons rt:0688; checked against the Armada, where every Spanish ship's squadron is on one side and every English ship's on the other):
+
+| Offset | Size | DS | Field |
+|---|---|---|---|
+| 0 | 40 words | 5CDD | Squadron side: -1 the player's (white), 0 the enemy's (black; draw_squadrons hides it unless seen or rule [64B7] = 80) |
+| 80 | 40 words | 5D2D | Squadron slot: 9999 = empty; in play its speed (0 = anchored) |
+| 160 | 40 words | 5D7D | Squadron X: byte column in the map buffer (x4 = pixels) |
+| 240 | 40 words | 5DCD | Squadron Y: line pair (x2 = pixels) |
+| 320 | 40 bytes | 5E1D | Squadron supplies (20 when full; the editor and a new merchant squadron set 20; Info's supplies bar) |
+| 360 | 40 bytes | 5E45 | Ship: its squadron (0-39; 255 = not in a squadron, the name is kept in reserve). At most 3 ships to a squadron in every campaign |
+| 400 | 40 bytes | 5E6D | Ship: sails damage 0-5 (Info draws a bar 4 x (5 - damage)) |
+| 440 | 40 bytes | 5E95 | Ship: type: 1 LINE (ship-of-the-line), 2 FRIGATE, anything else is shown as FLAG (flagship, 3 in the files). A squadron with a type-3 ship gets the pennant (DS:5EBD = 1) |
+The ship names (0x604, 15 bytes each) and the hull damage (0x85C) are per ship too. A squadron's map address is (y+1)*80 + x (ship_map_addresses ovl1:C4D8). Runtime per squadron: DS:5EBD (0, 1 flagship, 2 merchant: set by ovl4:BFE8 when it makes a merchant squadron), DS:5F85 map address, DS:5FD5 heading 0-15, DS:56FF wrecked, DS:574F seen. The quick reference card: a squadron has 1-3 ships, all squadrons of one colour form the fleet; ship types are flagship, ship-of-the-line, frigate and merchantship.
 
 Rules (9 words): the rule lines in SO3 are "Ports repair ships", "Ports need supplies", "Wind changes", "Rough water is", "Shallow water is", "Visibility is", the crew ("green / average / crack") and cannon aim ("manual / automatic"), with values steadily/slowly/never, often/rarely/never, very risky/risky/mild, safe, short/medium/long/unlimited. Which word is which: to do. S0's are 20, 10, 0, 0, 1, 80, 0, 2, 0.
 
@@ -137,7 +138,17 @@ Opponents (SO2): Thor Foote, the Duke of Medina Sidonia, Blackbeard, Martin Trom
 | SO8 | 18,492 | Sea battle sprites (ships), loaded by overlays 5 and 6 |
 
 ## Data in WAS.EXE's data segment
-Strings for the map and battle screens ("Wind is from the ...", "You sank the ...", "grapples", "Zoom Pass", "ENEMY FRIGATE", "MERCHANT SUPPLIES SQUAD", "CROWN CAPTURED"), the file names (SM at DS:002A, S0-SB at DS:0BB5), the font (DS:089C) and, from about DS:1100 on, what look like the map sprites (ships, flags) and tables. To be mapped as the code is named.
+- Strings for the map and battle screens ("Wind is from the ...", "You sank the ...", "grapples", "Zoom Pass", "ENEMY FRIGATE", "MERCHANT SUPPLIES SQUAD", "CROWN CAPTURED"), the file names (SM at DS:002A, S0-SB at DS:0BB5), the font (DS:089C).
+- **Map sprites** at DS:049B-05CA, drawn by draw_map_sprite (rt:2941): byte width (2 = 8 pixels), byte height in line pairs, then for each line pair the even line's bytes and the odd line's bytes; only colours 0 and 3. The player's are drawn white with a black outline, the enemy's black with a white outline; the outline is the pixel left and right of each figure pixel **within the same byte** (WAR.EXE's spanned the whole 8-pixel word).
+
+| DS | Sprite |
+|---|---|
+| 049B | Anchor: a squadron that is not moving |
+| 04AD | Crossed bones: a wrecked squadron (DS:56FF) |
+| 04BF-059D | A squadron under sail, 16 headings N, NNE ... NNW (ovl4:B35E puts them in the table DS:607F; DS:075A moves headings 3-5 and 11-13, the east and west ones, one line pair lower) |
+| 05AF | Pennant, drawn one line pair above a squadron with a flagship |
+| 05BD | Cargo, drawn one line pair above a merchant squadron |
+- Icons at DS:05EF and DS:0607 (8x6, drawn by Info). From about DS:1100 on: more tables and sprite data, to be mapped as the code is named.
 
 ## Documentation
 `WAS_Documentation`: the manual is being scanned (so far the cover, title, contents, credits and introduction: Book I instruction manual p3, Book II planning guide p31, Book III history of fighting sail p53, Book IV appendixes p105); the quick reference card and the hard-disk installation sheet. Text in `WAS_Analysis/manual_ocr/`.
