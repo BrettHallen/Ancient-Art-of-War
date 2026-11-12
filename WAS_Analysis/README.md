@@ -16,7 +16,12 @@ Analysis of the files on the At Sea 3.5" disk (`WAS_Original_Files_3.5`), starte
 
 ### At Sea is built like WAR
 - WAS.EXE is linked with Phoenix PLINK86 and uses the same overlay loader as WAR.EXE; the same compiler and much of the same C code. 105 of WAR.EXE's named routines are found unchanged in WAS.EXE (matched by instruction sequence): the C library, file I/O, text output, the 8x8 font (byte-identical), sound, delay and random(), the scroll and menu helpers, the hardware detection and key-disk check, the editors' key and cursor handling, some campaign-play routines (select_squad, show_time_setting, msg_encounter, print_map_region, play_end_sound ...). Where a routine is the same, the WAR analysis and the WAR remake's port of it apply.
-- The overlays map onto WAR's: overlay 1 = WAR's overlay 1 (main program), 2 = WAR's 3 (squads editor, now ships), 3 = WAR's 4 (map maker), 4 = WAR's 6 (campaign play). The battle is new: overlay 5 (sea battle, with overlay 6 beside it) and overlay 7 (boarding).
+- The overlays map onto WAR's:
+  - overlay 1 = WAR's overlay 1 (main program),
+  - overlay 2 = WAR's overlay 3 (squads editor, now ships),
+  - overlay 3 = WAR's overlay 4 (map maker),
+  - overlay 4 = WAR's overlay 6 (campaign play).
+- The battle is new: overlay 5 (sea battle, with overlay 6 beside it) and overlay 7 (boarding).
 - The resident code is much bigger (6C50h bytes against 28D0h) and there are 61 overlay thunks (WAR: 21).
 - The units look the same as WAR's: a 10 x 20 tile map of 32x20 tiles (320x400 pixels), ship x in byte columns and y in line pairs, 9999 for an empty slot, -1/0 for the two sides, 2 bits per pixel in an off-screen buffer with odd lines at +3E80h.
 
