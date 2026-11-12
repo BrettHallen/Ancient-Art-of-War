@@ -1,0 +1,2 @@
+#!/bin/sh
+sh "$(dirname "$0")/fn" "$1" | sed 's/word ptr //g;s/byte ptr //g;s/ ; [^|]*//g;s/mov sp, bp|//g' 
