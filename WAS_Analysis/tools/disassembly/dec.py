@@ -91,15 +91,45 @@ CJ = {'je':'==','jne':'!=','jl':'<','jle':'<=','jg':'>','jge':'>=','jb':'<u','ja
 def decompile(name):
     st = find(name)
     ins = body(st)
+    # the compiler's booleans: "mov ax,1 / jcc L / dec ax / L:" is ax = (cond), and
+    # "or ax,ax / je L / mov ax,1 / L:" only makes ax 0 or 1: neither is a real branch
+    boolpat = {}
+    for i in range(len(ins) - 3):
+        a0, m0, o0 = ins[i]; a1, m1, o1 = ins[i + 1]; a2, m2, o2 = ins[i + 2]; a3 = ins[i + 3][0]
+        if m0 == 'mov' and o0.replace(' ', '') == 'ax,1' and m1 in CJ and m2 == 'dec' and o2 == 'ax' \
+                and re.match(r'0x[0-9a-f]+$', o1) and int(o1, 16) == a3:
+            boolpat[i] = ('set', m1)
+        elif m0 == 'or' and o0.replace(' ', '') == 'ax,ax' and m1 == 'je' and m2 == 'mov' \
+                and o2.replace(' ', '') == 'ax,1' and re.match(r'0x[0-9a-f]+$', o1) and int(o1, 16) == a3:
+            boolpat[i] = ('norm', None)
+    skip_jump = set()
+    for i, (kind, _) in boolpat.items():
+        skip_jump.add(i + 1)
     targets = set()
-    for a, mn, ops in ins:
+    for i, (a, mn, ops) in enumerate(ins):
+        if i in skip_jump: continue
         if mn.startswith('j') and re.match(r'0x[0-9a-f]+', ops):
             targets.add(int(ops, 16))
     d = D(); out = []
     emit = out.append
     incoming = {}
     prev_uncond = False
-    for a, mn, ops in ins:
+    skip = 0
+    for idx, (a, mn, ops) in enumerate(ins):
+        if skip:
+            skip -= 1
+            continue
+        if idx in boolpat:
+            kind, j = boolpat[idx]
+            if a in targets: emit('L%04X:' % a)
+            if kind == 'set':
+                c = d.cmp or (d.g('ax'), '0')
+                d.r['ax'] = '(%s %s %s)' % (c[0], CJ[j], c[1])
+            else:
+                d.r['ax'] = '(%s != 0)' % d.g('ax') if not re.match(r'^\(.* [<>=!]=? .*\)$', d.g('ax')) else d.g('ax')
+            d.cmp = (d.g('ax'), '0')
+            skip = 2
+            continue
         if a in targets:
             emit('L%04X:' % a)
             states = list(incoming.get(a, []))
@@ -158,7 +188,9 @@ def decompile(name):
                 d.r[o[0]] = '%s+%s' % (cur, src); continue
             val = binop(cur, sym, src)
             if mn == 'shl' and src == '1': val = '(%s << 1)' % cur
+            if mn == 'and' and src == '255' and o[0] == 'ax': val = cur   # after mov al, byte
             d.st(o[0], val, emit)
+            d.cmp = (d.g(o[0]), '0')   # the flags of the result
         elif mn in ('inc','dec'):
             if o[0] in ('ax','bx','cx','dx','si','di'):
                 d.r[o[0]] = binop(d.g(o[0]), '+' if mn == 'inc' else '-', '1')

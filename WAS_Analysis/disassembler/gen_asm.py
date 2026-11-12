@@ -46,6 +46,7 @@ N = {
     ('ovl1', 0x7F1A): ('show_scroll', 'thunk 15. The scrolls SPE / SPF, shown in CGA palette 0 (scroll_palette)'),
     ('ovl1', 0xBC67): ('scroll_palette', 'If [684D] (an SCNF option, 1 in the shipped SCNF): CGA palette 0 for the scrolls'),
     ('ovl1', 0xA9A9): ('key_disk', 'Copy protection: reads the original floppy with key_disk_check and looks for the copyright string DS:0BD9; 0 makes startup fail (ovl1:76B3). The DOSBox harness patches 76B3 jne -> jmp'),
+    ('rt', 0x6B04): ('switch_helper', 'The C switch: the caller is followed by word lowest case, word count, word default, then the targets'),
     ('rt', 0x0630): ('list_ships', 'list_ships(sq): the (up to 3) ships whose squadron is sq into DS:6456, -1 after the last'),
     ('rt', 0x0AC7): ('show_speed', 'Info: "SPEED: " Anchored / Half Sail / Full Sail at row 16, for a squadron the player commands'),
     ('rt', 0x0B3D): ('commandable', 'commandable(sq): DS:5EE5 = -1, or side -1 and DS:5EE5 != 0'),
@@ -66,9 +67,98 @@ N = {
     ('ovl4', 0xAB00): ('show_clear_or_pause', '"Clear" if there are messages, else "Pause"'),
     ('ovl4', 0xAB82): ('squadron_command_line', 'Move Info Detach Join Zoom Practice'),
     ('ovl4', 0xAD63): ('show_fleet', 'F: Friend: n Flag, n Line, n Frigate. / Foe: ... (rows 21-22), End'),
-    ('ovl4', 0xB252): ('join_partner', 'A squadron of the same side within 3 bytes and 7 line pairs (index+1, or 0); only a one-ship squadron'),
+    ('ovl4', 0xB252): ('join_partner', 'A squadron of the same side within 3 bytes and 7 line pairs (index+1, or 0); not for a squadron of three ships ([6458] = -1)'),
     ('ovl4', 0xC268): ('port_of_cell', 'The port next to a map cell (-1 none): "In Port" in Info'),
     ('ovl4', 0xEF92): ('count_fleet', 'Count flagships, ships of the line and frigates on each side (DS:64BF-64C9); sets the pennants'),
+    # --- the rules (step 3, Nov 2026)
+    ('rt', 0x0B90): ('debug_hook', 'Does something only with the debug flags DS:081C-0820 set'),
+    ('rt', 0x0F55): ('clear_paths', 'clear_paths(sq): zero its path in the ring DS:4E53 from [579F] (and route at 542F from [57EF]); destination 6316 = 9999; speed 0'),
+    ('rt', 0x104A): ('erase_squadrons', 'Put back what was under the marker, the squadrons and the destination marks'),
+    ('rt', 0x1084): ('redraw_squadrons', 'Destination marks (2A63/2AB8), then draw_squadrons and the marker'),
+    ('rt', 0x12BD): ('tile_is_sea', 'Tiles 0-2, 7, 12, 13, 19, 37-39, 42-45, 48-50, 78-81, 83 and up'),
+    ('rt', 0x15C4): ('tile_is_rough', 'Tiles 10-12, 16-18 (dark water: frigates may be lost, rule 64B3)'),
+    ('rt', 0x1656): ('tile_is_shallow', 'Tiles 7-9, 13-15 (light water: ships of the line may be lost, rule 64B9)'),
+    ('rt', 0x16E8): ('coast_a', 'Tiles 8, 10, 31-35: shore type 371h'),
+    ('rt', 0x176C): ('coast_b', 'Tiles 9, 11, 25-28: shore type 372h'),
+    ('rt', 0x17F0): ('coast_c', 'Tiles 14, 16, 23, 24, 29, 30: shore type 373h'),
+    ('rt', 0x18AC): ('coast_d', 'Tiles 15, 17, 19-22, 36: shore type 374h'),
+    ('rt', 0x1953): ('map_has_tile', 'Is the tile anywhere on the map?'),
+    ('rt', 0x19D6): ('supply_port_beside', 'supply_port_beside(cell, most): tile 75 in the four directions (on the map, rt_1c0c clear), with the least (most=0) or most supplies'),
+    ('rt', 0x1AA8): ('repair_port_beside', 'repair_port_beside(cell, most): the same for tile 74'),
+    ('rt', 0x1B7D): ('crown_beside', 'crown_beside(cell, side): tile 76 (the enemy crown) for side -1, 77 for side 0, in the four directions'),
+    ('rt', 0x1C0C): ('coast_blocks', 'coast_blocks(cell, dir): the cell\'s shore (425D 371h-374h) does not face dir all along (table DS:0796)'),
+    ('rt', 0x1C52): ('off_map', 'off_map(cell, col, dir): the neighbour in dir (1 E, 2 SE ... 8 NE; DS:0784) is off the 10x20 map'),
+    ('rt', 0x1E10): ('way_blocked', 'way_blocked(dir, cell, col): no way by sea from cell in dir (edges, shores)'),
+    ('rt', 0x1EF4): ('coast_pass', 'coast_pass(dir, cell): DS:0796 row of the cell\'s shore type: nonzero if it cannot be entered from dir'),
+    ('rt', 0x1F2D): ('place_detached', 'A squadron made by Detach: beside the old one, a byte east or west, or two line pairs north or south, where there is sea'),
+    ('rt', 0x2523): ('coast_init', 'The shore type of each cell into DS:425D (371h-379h, 0 sea); 65B2/65B4 (160 halved per repair/supply port)'),
+    ('rt', 0x28C8): ('save_squadron_bgs', 'Save what is under each squadron (10 line pairs of 2 bytes, DS:58DF)'),
+    ('rt', 0x28FE): ('restore_squadron_bgs', 'Put it back'),
+    ('rt', 0x2A2E): ('draw_tile', 'draw_tile(src, dst): a 32x20 tile into the map buffer (the wind\'s face)'),
+    ('rt', 0x2A63): ('save_dest_bg', 'Save what is under a squadron\'s destination mark'),
+    ('rt', 0x2A8F): ('restore_dest_bg', 'Put it back'),
+    ('rt', 0x2AB8): ('draw_dest_mark', 'A little cross at [6316]: OR 3Ch, FFh, OR 3Ch on three line pairs'),
+    ('rt', 0x2CC4): ('draw_icon', 'draw_icon(src, line, xbyte): byte width, byte height/2, rows (the Enter, M, + and - icons)'),
+    ('rt', 0x2DC8): ('invert_block', 'invert_block(addr, width, height/2): XOR FFh on the screen (Detach\'s mark)'),
+    ('rt', 0x2E26): ('clear_detach_panel', 'Clear lines 60-107, bytes 11-70'),
+    ('rt', 0x2E48): ('buf_byte_is', 'buf_byte_is(addr, value): the map buffer byte (44h, 11h: land)'),
+    ('rt', 0x2E61): ('invert_tile_buf', 'XOR a 32x20 tile in the map buffer (a port with nothing left)'),
+    ('rt', 0x30E2): ('beep_message', 'A 1000 divisor beep for 546h delay units'),
+    ('rt', 0x6AD0): ('sparse_switch', 'The C switch on scattered values: word count, the values, then count+1 targets (the default first)'),
+    ('ovl1', 0x7A3F): ('promote_flagship', 'promote_flagship(side): a side with no flagship and no crown: one of its ships becomes one (frigates only after a while)'),
+    ('ovl4', 0x8A2C): ('cancel_path', 'The selected squadron stops; its path is cleared'),
+    ('ovl4', 0x8A75): ('end_trace', 'M while tracing: 99 ends the path, full sail, the destination mark'),
+    ('ovl4', 0x8BCD): ('encounters', 'Every tick: your squadrons and merchants against the enemy\'s and merchants: encounters (C5B9), merchants met (BB29) or taken (BACD), sighting (rule 64B7)'),
+    ('ovl4', 0x8EDE): ('map_battles', 'Every iteration: encounters count up to the fight delay [6851], then are fought out on the map (9154)'),
+    ('ovl4', 0x910F): ('enemy_count', 'The enemy\'s squadrons'),
+    ('ovl4', 0x9154): ('battle_hit', 'battle_hit(sq, way): a ship of sq may be damaged; 1 when its last ship is lost'),
+    ('ovl4', 0x92B7): ('count_loss', 'count_loss(ship, sq, way): 64A5/64A9 yours, 64A7/64AB theirs (way 0: by 5EE5 = -1)'),
+    ('ovl4', 0x9345): ('eat', 'eat(sq): supplies used (rule 64B5 or opponent 6059), hunger damage, and an anchored squadron\'s supplies and repairs from a port or crown'),
+    ('ovl4', 0x96A0): ('move_squadrons', 'Every tick: squadrons on paths step when their countdown runs out; the marker follows the selected one'),
+    ('ovl4', 0x9A3C): ('step_heading', 'The heading (0-15) of a path step: -80 0, -79 3, 1 4, 81 5, 80 8, 79 11, -1 12, -81 13'),
+    ('ovl4', 0x9AB2): ('set_move_delays', 'Ticks per step: 3 - speed, doubled for ships of the line, torn sails, the wind (DS:0ECD); losses in rough and shallow water'),
+    ('ovl4', 0x9D7E): ('lost_at_sea', 'A ship lost in rough or shallow water'),
+    ('ovl4', 0x9E4F): ('end_check', 'After a loss: the counts, the opponent\'s values, crown, last ship, last flagship, the offer to surrender'),
+    ('ovl4', 0xA129): ('game_over', 'You Lost (1) / You Won blinks until a key; all squadrons shown'),
+    ('ovl4', 0xA347): ('detach_join', 'D or J: the two squadrons\' ships side by side; + and - mark one, S switches it, E ends'),
+    ('ovl4', 0xA952): ('detach_names', 'The two columns of ship names'),
+    ('ovl4', 0xACDA): ('trace_prompt', 'Trace path to destination and press [M]; the marker becomes a box'),
+    ('ovl4', 0xAEAE): ('cell_mid_x', 'The middle byte of a cell, with the shore\'s slant'),
+    ('ovl4', 0xAF08): ('cell_mid_y', 'The middle line pair of a cell, with the shore\'s slant'),
+    ('ovl4', 0xB3E5): ('trace_blocked', 'May the tracing box move this way? 77 if not (land tiles, land bytes in the buffer, the shore\'s slant)'),
+    ('ovl4', 0xB590): ('msg_sunk', 'name / ENEMY FRIGATE / ENEMY SHIP SUNK IN ROUGH WATERS / LOST IN SHALLOW WATER'),
+    ('ovl4', 0xB612): ('msg_sighted', 'ALERT - ENEMY SIGHTED IN THE ...'),
+    ('ovl4', 0xB6E5): ('msg_merchant_taken', 'NOTICE - MERCHANT LOST / ENEMY MERCHANT CAPTURED'),
+    ('ovl4', 0xB7B0): ('msg_resupplied', 'MERCHANT SUPPLIES SQUAD'),
+    ('ovl4', 0xB88B): ('msg_flag_taken', 'URGENT - FLAG TAKEN'),
+    ('ovl4', 0xB8F6): ('msg_enemy_flag', 'ENEMY FLAG CAPTURED'),
+    ('ovl4', 0xB961): ('msg_crown', 'WHITE / BLACK CROWN CAPTURED; the crown flashes to a tune with the sound on'),
+    ('ovl4', 0xBACD): ('take_merchant', 'take_merchant(m, w): w takes merchant m: +10 supplies'),
+    ('ovl4', 0xBB29): ('meet_merchant', 'A merchant meets a warship of its side: supplies 20; used up if it had less than 10'),
+    ('ovl4', 0xBBBC): ('message_row', 'A message row: up to two, then they scroll'),
+    ('ovl4', 0xBCD2): ('restock_ports', 'Tick 10: ports with 2 or less left call for a merchant'),
+    ('ovl4', 0xBD3C): ('port_side', 'The side of a port\'s merchant, from the strength map DS:4645'),
+    ('ovl4', 0xBD86): ('port_call', 'A port was used: restocked at once beside a crown or with no sea way; else a merchant sets out (BEE3)'),
+    ('ovl4', 0xC07C): ('port_sources', 'The ports merchants can reach (DS:689C) and where they come from (6932)'),
+    ('ovl4', 0xC102): ('port_source_of', 'Where a port\'s merchants come from'),
+    ('ovl4', 0xC141): ('merchant_bound', 'Is a merchant sailing for this port?'),
+    ('ovl4', 0xC197): ('port_supplies', 'At the start: repair ports rule 64AF, supply ports and crowns twice that'),
+    ('ovl4', 0xC21C): ('invert_empty_ports', 'Ports with nothing are drawn inverted'),
+    ('ovl4', 0xC302): ('promote_at_sea', 'After a loss at sea the squadron\'s first other ship of the line becomes a flagship'),
+    ('ovl4', 0xC35C): ('invert_cell', 'invert_tile_buf for a map cell'),
+    ('ovl4', 0xC3C9): ('flags_check', '1: you have no flagship left, 2: they have none (unless 65BA / 65BB: no flagships at the start but a crown)'),
+    ('ovl4', 0xC44E): ('crown_check', 'A squadron beside the other side\'s crown takes it unless a squadron of that side is in its cell: the game ends'),
+    ('ovl4', 0xC51A): ('crowns_check', 'Tick 20: crown_check for every squadron'),
+    ('ovl4', 0xC57C): ('port_empty_sound', 'Three notes: a port has nothing left'),
+    ('ovl4', 0xC5B9): ('close_to', 'close_to(a, b): |dx| < 3 and |dy| < 5; distance 2|dx| + |dy| into 689A'),
+    ('ovl4', 0xC658): ('wind_change', 'The wind (option 6865): a new direction and its message, or (1) just the face over tile 73'),
+    ('ovl4', 0xD549): ('count_at_cell', 'count_at_cell(cell, side, any): squadrons (anchored, or any) of a side in a cell'),
+    ('ovl4', 0xE5BF): ('sea_way', 'A way by sea from a port\'s cell to the edge of the map (the cell on the edge, or -1)'),
+    ('ovl4', 0xE805): ('strength_map', 'DS:4645: the strength of each side in each cell'),
+    ('ovl4', 0xE8C8): ('squadron_strength', 'Ship strengths less half their damage'),
+    ('ovl4', 0xEA05): ('has_flagship', 'Has the squadron a flagship?'),
+    ('ovl4', 0xEA51): ('port_value_map', 'DS:47D5: the value of the cells beside ports and crowns'),
+    ('ovl4', 0xEE4E): ('worst_damage', 'The worst sail or hull damage among a squadron\'s ships'),
     # --- matched to WAR.EXE
     ('rt', 0x01DF): ('require_war_disk', 'Same code as WAR.EXE rt:011E (exact match of the instruction sequence); see WAR_Analysis'),
     ('rt', 0x04CA): ('disk_prompt', 'Same code as WAR.EXE rt:0400 (exact match of the instruction sequence); see WAR_Analysis'),
@@ -76,7 +166,7 @@ N = {
     ('rt', 0x0C10): ('text_area_reset', 'Same code as WAR.EXE rt:0F80 (exact match of the instruction sequence); see WAR_Analysis'),
     ('rt', 0x0C32): ('beep_low', 'Same code as WAR.EXE rt:05A9 (exact match of the instruction sequence); see WAR_Analysis'),
     ('rt', 0x0D48): ('show_one_moment', 'Same code as WAR.EXE rt:06C1 (exact match of the instruction sequence); see WAR_Analysis'),
-    ('rt', 0x14A6): ('tile_is_battle_p7', 'Same code as WAR.EXE ovl7:60B0 (exact match of the instruction sequence); see WAR_Analysis'),
+    ('rt', 0x14A6): ('tile_is_land', 'Tiles 3-6, 40, 41, 46, 47, 51-77 (the ports and crowns too). Same code as WAR.EXE ovl7:60B0 (there: battle tiles)'),
     ('rt', 0x19BC): ('path_next_slot', 'Same code as WAR.EXE rt:1369 (exact match of the instruction sequence); see WAR_Analysis'),
     ('rt', 0x26D7): ('print_number', 'Same code as WAR.EXE rt:176B (exact match of the instruction sequence); see WAR_Analysis'),
     ('rt', 0x2759): ('load_file', 'Same code as WAR.EXE rt:17ED (exact match of the instruction sequence); see WAR_Analysis'),
@@ -162,18 +252,18 @@ N = {
     ('ovl3', 0x8591): ('mapmk_plan_mark', 'Same code as WAR.EXE ovl4:3B51 (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl3', 0x85B9): ('mapmk_plan', 'Same code as WAR.EXE ovl4:3B79 (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0x85D2): ('command_pause', 'Same code as WAR.EXE ovl6:4605 (exact match of the instruction sequence); see WAR_Analysis'),
-    ('ovl4', 0x89E4): ('start_move_order', 'Same code as WAR.EXE ovl6:477D (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xAAA8): ('show_time_setting', 'Same code as WAR.EXE ovl6:6C0B (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xAB48): ('select_squad', 'Same code as WAR.EXE ovl6:6CA3 (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xAF61): ('step_distance', 'Same code as WAR.EXE ovl6:75BB (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xAFB4): ('cell_distance', 'Same code as WAR.EXE ovl6:760E (exact match of the instruction sequence); see WAR_Analysis'),
-    ('ovl4', 0xB1CE): ('route_free_run', 'Same code as WAR.EXE rt:14A0 (prefix match of the instruction sequence); see WAR_Analysis'),
+    ('ovl4', 0x89E4): ('start_move_order', 'Same code as WAR.EXE ovl6:477D (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xB68C): ('msg_encounter', 'Same code as WAR.EXE ovl6:5A6E (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xB7E4): ('msg_fighting', 'Same code as WAR.EXE ovl6:5AC7 (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xB83B): ('msg_battle_result', 'Same code as WAR.EXE ovl6:5B1E (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xBBEB): ('map_region_code', 'Same code as WAR.EXE ovl6:5D00 (exact match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xBC2D): ('print_map_region', 'Same code as WAR.EXE ovl6:5D42 (prefix match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xC394): ('play_end_sound', 'Same code as WAR.EXE ovl6:38F6 (exact match of the instruction sequence); see WAR_Analysis'),
+    ('ovl4', 0xB1CE): ('route_free_run', 'Same code as WAR.EXE rt:14A0 (prefix match of the instruction sequence); see WAR_Analysis'),
     ('ovl4', 0xECD1): ('find_free_path_run', 'Same code as WAR.EXE ovl6:47F8 (exact match of the instruction sequence); see WAR_Analysis'),
 }
 
@@ -383,6 +473,25 @@ def emit_code(r):
                 line = f'{line:<70} ; ' + '; '.join(comments)
             P(line)
             off += ins.size
+        elif (r.name, off) in W.SWITCHES:
+            lo, n, dflt, tg = W.SWITCHES[(r.name, off)]
+            P(f'  {r.name}:{off:04X}  {r.file_of(off):05X}  dw {lo}, {n}, {dflt:04X}h'
+              f'{"":<54} ; switch table: lowest case {lo}, {n} cases, default {dflt:04X}')
+            for k, t in enumerate(tg):
+                a = off + 6 + 2 * k
+                P(f'  {r.name}:{a:04X}  {r.file_of(a):05X}  dw {t:04X}h{"":<64} ; case {lo + k}')
+            off += 6 + 2 * n
+        elif (r.name, off) in W.SPARSE:
+            vals, tg = W.SPARSE[(r.name, off)]
+            n = len(vals)
+            P(f'  {r.name}:{off:04X}  {r.file_of(off):05X}  dw {n}{"":<67} ; sparse switch table: {n} values, then {n + 1} targets (the default first)')
+            for k, v in enumerate(vals):
+                a = off + 2 + 2 * k
+                P(f'  {r.name}:{a:04X}  {r.file_of(a):05X}  dw {v}{"":<{68 - len(str(v))}} ; value {k}')
+            for k, t in enumerate(tg):
+                a = off + 2 + 2 * n + 2 * k
+                P(f'  {r.name}:{a:04X}  {r.file_of(a):05X}  dw {t:04X}h{"":<64} ; ' + ('default' if k == 0 else f'case {vals[k - 1]}'))
+            off += 4 + 4 * n
         else:
             # data gap: up to next instruction
             nxt = min([o for o in offs if o > off] + [end])

@@ -125,6 +125,19 @@ def imm_target(insn):
     return None
 
 
+# The C compiler's switch helper (rt_6B04): `call switch_helper` is followed
+# by a table in the code: word lowest case, word number of cases, word default
+# target, then one target word per case. The helper jumps through it.
+SWITCH_SIG = bytes.fromhex('5f8cc88ec05b262b1d263b5d02')
+SWITCH_HELPER = IMG.find(SWITCH_SIG)          # 0x6B04 in the resident code
+SWITCHES = {}                                 # (region, table offset) -> (low, count, default, [targets])
+# The other switch helper (rt_6AD0), for scattered case values: word count n,
+# the n values, then n + 1 targets, the default first.
+SPARSE_SIG = bytes.fromhex('558bec50535157068cc88ec08b7e028b4604268b0d')
+SPARSE_HELPER = IMG.find(SPARSE_SIG)          # 0x6AD0
+SPARSE = {}                                   # (region, table offset) -> ([values], [targets])
+
+
 def descend(region, seeds):
     work = [s for s in seeds if region.contains(s)]
     data = region.data
@@ -149,6 +162,28 @@ def descend(region, seeds):
                         work.append(t)
                     if insn.group(CS_GRP_CALL):
                         CALLS.append((region.name, off, t))
+            if m == 'call' and imm_target(insn) == SPARSE_HELPER:
+                tb = off + insn.size - region.origin
+                n = int.from_bytes(data[tb:tb + 2], 'little') if tb + 2 <= len(data) else 999
+                if n < 64 and tb + 2 + 4 * n + 2 <= len(data):
+                    vals = [int.from_bytes(data[tb + 2 + 2 * k:tb + 4 + 2 * k], 'little', signed=True) for k in range(n)]
+                    tg = [int.from_bytes(data[tb + 2 + 2 * n + 2 * k:tb + 4 + 2 * n + 2 * k], 'little') for k in range(n + 1)]
+                    SPARSE[(region.name, off + insn.size)] = (vals, tg)
+                    for k in range(4 + 4 * n):
+                        region.code.add(off + insn.size + k)
+                    work += [t for t in tg if region.contains(t)]
+                break
+            if m == 'call' and imm_target(insn) == SWITCH_HELPER:
+                tb = off + insn.size - region.origin
+                if tb + 6 <= len(data):
+                    lo, n, dflt = (int.from_bytes(data[tb + 2 * k:tb + 2 * k + 2], 'little') for k in range(3))
+                    if n < 64 and tb + 6 + 2 * n <= len(data):
+                        tg = [int.from_bytes(data[tb + 6 + 2 * k:tb + 8 + 2 * k], 'little') for k in range(n)]
+                        SWITCHES[(region.name, off + insn.size)] = (lo, n, dflt, tg)
+                        for k in range(6 + 2 * n):
+                            region.code.add(off + insn.size + k)
+                        work += [t for t in tg + [dflt] if region.contains(t)]
+                break
             if m in FLOW_END or insn.group(CS_GRP_RET) or insn.group(CS_GRP_IRET):
                 break
             off += insn.size

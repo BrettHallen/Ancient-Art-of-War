@@ -16,7 +16,7 @@ Note for the remake: the At Sea 16-colour set is the **Tandy 1000** version. Its
 ## Config
 | File | Size | Contents |
 |---|---|---|
-| SCNF | 29 | Options saved by WAS.EXE: DS:684C-6868 (save_options ovl1:A33A writes 1Dh bytes). WAR's CNF was 25 bytes. Field meanings: to do (Options Shoppe, ovl1:9BCB). |
+| SCNF | 29 | Options saved by WAS.EXE: DS:684C-6868 (save_options ovl1:A33A writes 1Dh bytes). WAR's CNF was 25 bytes. Known: [684D] scrolls in palette 0, [684F] sound (2 = on), [6851] the fight delay on the map (250, 500, 1000; ovl1:9DA3 doubles it, wrapping to 250), [6865] the wind (0 off, 1 on; ovl1:9DCF). The rest: to do (Options Shoppe, ovl1:9BCB). ovl1_startup sets 684C = 2Dh, 684D = 1, 684F = 2, 6851 = 500, 6865 = 0, 6868 = 1 before reading the file. The shipped SCNF: 500, wind off. |
 | SCNFT | 30 | The same for WAST.EXE. |
 
 ## WAS.EXE structure (from the disassembly)
@@ -36,7 +36,7 @@ Note for the remake: the At Sea 16-colour set is the **Tandy 1000** version. Its
 | 6 | 0x1D160 | 13,168 | C9B0 | Sea battle support: loads SO6, SO7, SO8; the results ("They lost N ships", "Leaving the battle.") |
 | 7 | 0x204D0 | 13,792 | C9B0 | Boarding: the fight on deck (picture B; Flag, Quarterdeck, Poopdeck, Railing; Attack / Leave / Cross / Again) |
 
-Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 48 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
+Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 137 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
 
 Font: the same 8x8 font as WAR.EXE (95 characters, byte-identical), at DS:089C.
 
@@ -86,7 +86,23 @@ New format for all of them (not WAR's two formats):
 |---|---|
 | SM | 94 map tiles, 32x20, 2 bits per pixel. Same records as WAR's M: word width in words (4), word height/2 (10), 160 bytes, rows top to bottom. Loaded by load_sm_tiles (rt:0532). The CGA tiles draw the sea and land with dither patterns. |
 
-Tiles 1-90 are terrain (sea, coasts, rough and shallow water, land, mountains) and the place names (NEW, OLD, FRANCE, SPAIN, ICELAND, FINLAND, SCOTLAND, IRELAND, ENGLAND, SICILY, ITALY, AFRICA, AMERICA, ENGLISH CHANNEL, ATLANTIC OCEAN, MEDITERRANEAN SEA), the compass rose, ports, crowns, Neptune, sea serpents and winged emblems. Which tiles count as port, crown, rough water and shallow water: to do (the tile tests in rt, as WAR's tile_is_* routines).
+Tiles 1-90 are terrain (sea, coasts, rough and shallow water, land, mountains) and the place names (NEW, OLD, FRANCE, SPAIN, ICELAND, FINLAND, SCOTLAND, IRELAND, ENGLAND, SICILY, ITALY, AFRICA, AMERICA, ENGLISH CHANNEL, ATLANTIC OCEAN, MEDITERRANEAN SEA), the compass rose, ports, crowns, Neptune, sea serpents and winged emblems. The tile classes (tile tests in rt; tile N is map byte N):
+
+| Tiles | Class |
+|---|---|
+| 0-2, 7, 12, 13, 19, 37-39, 42-45, 48-50, 78-81, 83-94 | sea (tile_is_sea rt:12BD) |
+| 7-9, 13-15 | shallow water (tile_is_shallow rt:1656): ships of the line may be lost |
+| 10-12, 16-18 | rough water (tile_is_rough rt:15C4): frigates may be lost |
+| 3-6, 40, 41, 46, 47, 51-77 | land (tile_is_land rt:14A6), the ports and crowns included |
+| 8, 10, 31-35 / 9, 11, 25-28 / 14, 16, 23, 24, 29, 30 / 15, 17, 19-22, 36 | the four slanting shores (rt:16E8, 176C, 17F0, 18AC): shore types 371h-374h in DS:425D (coast_init rt:2523); 42, 48 = 375h, 49, 50 = 376h, 37-39 = 377h, 43-45 = 378h, other land 379h, sea 0 |
+| 73 | the winged face: with the wind on, the wind's face is drawn over it (tiles 91-94: S, E, W, N) |
+| 74 | repair port (the fort) |
+| 75 | supply port (the town) |
+| 76 | the enemy's crown (taken by your squadron beside it) |
+| 77 | your crown |
+| 82 | the compass rose |
+
+A port or crown serves a squadron in one of the four cells beside it whose shore faces it all along (coast_blocks rt:1C0C: DS:0796 holds a row of 8 bytes per shore type, one per direction 1 E, 2 SE, 3 S ... 8 NE; DS:0784 the cell offsets 1, 11, 10, 9, -1, -11, -10, -9).
 
 ## Campaign files S0-SA - layout from load_campaign (ovl1:C388)
 | Offset | Size | Loaded to | Contents |
@@ -111,11 +127,11 @@ Squadron and ship block (DS:5CDD, 480 bytes). **The word fields are per squadron
 | 360 | 40 bytes | 5E45 | Ship: its squadron (0-39; 255 = not in a squadron, the name is kept in reserve). At most 3 ships to a squadron in every campaign |
 | 400 | 40 bytes | 5E6D | Ship: sails damage 0-5 (Info draws a bar 4 x (5 - damage)) |
 | 440 | 40 bytes | 5E95 | Ship: type: 1 LINE (ship-of-the-line), 2 FRIGATE, anything else is shown as FLAG (flagship, 3 in the files). A squadron with a type-3 ship gets the pennant (DS:5EBD = 1) |
-The ship names (0x604, 15 bytes each) and the hull damage (0x85C) are per ship too. A squadron's map address is (y+1)*80 + x (ship_map_addresses ovl1:C4D8). Runtime per squadron: DS:5EBD (0, 1 flagship, 2 merchant: set by ovl4:BFE8 when it makes a merchant squadron), DS:5F85 map address, DS:5FD5 heading 0-15, DS:56FF in an encounter, DS:574F seen, DS:583F on a traced path, DS:588F on a route, DS:5EE5 control (-2 at the start), DS:6581 speed before putting into port (README, Campaign play). The quick reference card: a squadron has 1-3 ships, all squadrons of one colour form the fleet; ship types are flagship, ship-of-the-line, frigate and merchantship.
+The ship names (0x604, 15 bytes each) and the hull damage (0x85C) are per ship too. A squadron's map address is (y+1)*80 + x (ship_map_addresses ovl1:C4D8). Runtime per squadron: DS:5EBD (0, 1 flagship, 2 merchant: set by ovl4:BFE8 when it makes a merchant squadron), DS:5F85 map address, DS:5FD5 heading 0-15, DS:56FF in an encounter, DS:574F seen, DS:583F on a traced path, DS:588F on a route, DS:5EE5 control (-2 free, 1 up to the fight delay in an encounter, then -1 or 0 fighting), DS:6581 the speed kept during an encounter (Info's S sets it too), DS:56AF the countdown to the next step, DS:64E1 the ticks a step takes, DS:579F the next step in the path ring (DS:4E53, 1500 bytes), DS:57EF the route position (DS:542F, 600 bytes), DS:6316 the end of the traced path (9999 none), DS:5F35 the port a merchant sails for, DS:5687 the merchant has a route (README, Campaign play: the rules). The quick reference card: a squadron has 1-3 ships, all squadrons of one colour form the fleet; ship types are flagship, ship-of-the-line, frigate and merchantship.
 
-Rules (9 words): the rule lines in SO3 are "Ports repair ships", "Ports need supplies", "Wind changes", "Rough water is", "Shallow water is", "Visibility is", the crew ("green / average / crack") and cannon aim ("manual / automatic"), with values steadily/slowly/never, often/rarely/never, very risky/risky/mild, safe, short/medium/long/unlimited. Which word is which: to do. S0's are 20, 10, 0, 0, 1, 80, 0, 2, 0.
+Rules (9 words, DS:64AD-64BD): the rule lines in SO3 are "Ports repair ships", "Ports need supplies", "Wind changes", "Rough water is", "Shallow water is", "Visibility is", the crew ("green / average / crack") and cannon aim ("manual / automatic"), with values steadily/slowly/never, often/rarely/never, very risky/risky/mild, safe, short/medium/long/unlimited. From campaign play (ovl4): word 0 [64AD] the chance (of 128) of a repair each time an anchored squadron is fed; 1 [64AF] what a repair port holds (supply ports and crowns twice that; 20 or more: they never run out); 2 [64B1] not used in campaign play; 3 [64B3] rough water (0 very risky, 1 safe, else risky); 4 [64B5] how fast your squadrons eat (chance (x 32 - 10)/128 of 2 supplies each time); 5 [64B7] visibility (2|dx| + |dy| under it; 80 = always seen); 6 [64B9] shallow water (as 64B3); 7 [64BB] wind changes (1 rarely 16/128, 2 often 64/128, every 31 ticks); 8 [64BD] not used in campaign play. S0's are 20, 10, 0, 0, 1, 80, 0, 2, 0.
 
-Opponents (SO2): Thor Foote, the Duke of Medina Sidonia, Blackbeard, Martin Tromp, John Paul Jones, Lord Admiral Nelson (6, in SPJ's order).
+Opponents (SO2): Thor Foote, the Duke of Medina Sidonia, Blackbeard, Martin Tromp, John Paul Jones, Lord Admiral Nelson (6, in SPJ's order). Each has 25 words at SO2 + 277h + 50 x n (pointers DS:6872-687C, ovl1:8CC6), copied to DS:604D-607D when chosen (ovl1:90F7; the demo takes opponent 2, ovl1:88A7). Known so far: [6053] the chance (of 128) that the enemy's squadron is hit in a fight on the map (yours: 65), [6057] the chance of forgetting a threatened crown after a win, [6059] how fast the enemy eats (of 128), [605B] the ratio of your squadrons to theirs that makes them offer to surrender, [606D] (x 8 of 128) how often a lost merchant tells them where your crown is; [6065], [6067], [6071], [6073] are changed by end_check for the enemy (step 5).
 
 | File | Contents |
 |---|---|

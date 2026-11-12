@@ -160,23 +160,50 @@
 ; rt:074B  squadron_info              Info: each ship of the squadron: name (DS:609F + 15n), LINE / FRIGATE / FLAG fro
 ; rt:0AC7  show_speed                 Info: "SPEED: " Anchored / Half Sail / Full Sail at row 16, for a squadron the p
 ; rt:0B3D  commandable                commandable(sq): DS:5EE5 = -1, or side -1 and DS:5EE5 != 0
+; rt:0B90  debug_hook                 Does something only with the debug flags DS:081C-0820 set
 ; rt:0BC2  text_rows_add              Same code as WAR.EXE rt:055B (exact match of the instruction sequence); see WAR_
 ; rt:0C10  text_area_reset            Same code as WAR.EXE rt:0F80 (exact match of the instruction sequence); see WAR_
 ; rt:0C32  beep_low                   Same code as WAR.EXE rt:05A9 (exact match of the instruction sequence); see WAR_
 ; rt:0C72  buzz                       The buzz as the marker comes onto a squadron: divisor 1F40h for 600 delay units
 ; rt:0D48  show_one_moment            Same code as WAR.EXE rt:06C1 (exact match of the instruction sequence); see WAR_
+; rt:0F55  clear_paths                clear_paths(sq): zero its path in the ring DS:4E53 from [579F] (and route at 542
+; rt:104A  erase_squadrons            Put back what was under the marker, the squadrons and the destination marks
+; rt:1084  redraw_squadrons           Destination marks (2A63/2AB8), then draw_squadrons and the marker
 ; rt:10D2  draw_squadrons             Draw the 40 squadrons: friend always, foe if seen or rule [64B7] = 80; crossed s
 ; rt:1217  is_scroll_up_key           Scan code is -, keypad - or Tab
 ; rt:126A  is_scroll_down_key         Scan code is =, keypad + or Ctrl
-; rt:14A6  tile_is_battle_p7          Same code as WAR.EXE ovl7:60B0 (exact match of the instruction sequence); see WA
+; rt:12BD  tile_is_sea                Tiles 0-2, 7, 12, 13, 19, 37-39, 42-45, 48-50, 78-81, 83 and up
+; rt:14A6  tile_is_land               Tiles 3-6, 40, 41, 46, 47, 51-77 (the ports and crowns too). Same code as WAR.EX
+; rt:15C4  tile_is_rough              Tiles 10-12, 16-18 (dark water: frigates may be lost, rule 64B3)
+; rt:1656  tile_is_shallow            Tiles 7-9, 13-15 (light water: ships of the line may be lost, rule 64B9)
+; rt:16E8  coast_a                    Tiles 8, 10, 31-35: shore type 371h
+; rt:176C  coast_b                    Tiles 9, 11, 25-28: shore type 372h
+; rt:17F0  coast_c                    Tiles 14, 16, 23, 24, 29, 30: shore type 373h
+; rt:18AC  coast_d                    Tiles 15, 17, 19-22, 36: shore type 374h
+; rt:1953  map_has_tile               Is the tile anywhere on the map?
 ; rt:1985  squadron_cell              squadron_cell(sq): ((y+2)/10)*10 + (x>>3), the 10x20 map cell
 ; rt:19BC  path_next_slot             Same code as WAR.EXE rt:1369 (exact match of the instruction sequence); see WAR_
+; rt:19D6  supply_port_beside         supply_port_beside(cell, most): tile 75 in the four directions (on the map, rt_1
+; rt:1AA8  repair_port_beside         repair_port_beside(cell, most): the same for tile 74
+; rt:1B7D  crown_beside               crown_beside(cell, side): tile 76 (the enemy crown) for side -1, 77 for side 0, 
+; rt:1C0C  coast_blocks               coast_blocks(cell, dir): the cell's shore (425D 371h-374h) does not face dir all
+; rt:1C52  off_map                    off_map(cell, col, dir): the neighbour in dir (1 E, 2 SE ... 8 NE; DS:0784) is o
+; rt:1E10  way_blocked                way_blocked(dir, cell, col): no way by sea from cell in dir (edges, shores)
+; rt:1EF4  coast_pass                 coast_pass(dir, cell): DS:0796 row of the cell's shore type: nonzero if it canno
+; rt:1F2D  place_detached             A squadron made by Detach: beside the old one, a byte east or west, or two line 
+; rt:2523  coast_init                 The shore type of each cell into DS:425D (371h-379h, 0 sea); 65B2/65B4 (160 halv
 ; rt:26D7  print_number               Same code as WAR.EXE rt:176B (exact match of the instruction sequence); see WAR_
 ; rt:2759  load_file                  Same code as WAR.EXE rt:17ED (exact match of the instruction sequence); see WAR_
 ; rt:27A2  save_cursor_background     Same code as WAR.EXE rt:1836 (exact match of the instruction sequence); see WAR_
 ; rt:280E  draw_cursor                The marker at [5CCB]: a cross, or a box while tracing ([65AA] = 2)
 ; rt:2870  restore_cursor_background  Same code as WAR.EXE rt:190C (exact match of the instruction sequence); see WAR_
+; rt:28C8  save_squadron_bgs          Save what is under each squadron (10 line pairs of 2 bytes, DS:58DF)
+; rt:28FE  restore_squadron_bgs       Put it back
 ; rt:2941  draw_map_sprite            draw_map_sprite(sprite, address, side): byte width, byte height in line pairs, t
+; rt:2A2E  draw_tile                  draw_tile(src, dst): a 32x20 tile into the map buffer (the wind's face)
+; rt:2A63  save_dest_bg               Save what is under a squadron's destination mark
+; rt:2A8F  restore_dest_bg            Put it back
+; rt:2AB8  draw_dest_mark             A little cross at [6316]: OR 3Ch, FFh, OR 3Ch on three line pairs
 ; rt:2B2A  draw_bar                   Info bars: draw_bar(x, y, length, pattern)
 ; rt:2B71  draw_vline                 draw_vline(line, xbyte, n): 2n lines of byte 0Fh
 ; rt:2B95  draw_hline                 Same code as WAR.EXE rt:1DF3 (exact match of the instruction sequence); see WAR_
@@ -186,9 +213,14 @@
 ; rt:2C7F  memset                     Same code as WAR.EXE rt:1F15 (exact match of the instruction sequence); see WAR_
 ; rt:2C96  memsetw                    Same code as WAR.EXE rt:1F2C (exact match of the instruction sequence); see WAR_
 ; rt:2CAD  memcpy                     Same code as WAR.EXE rt:1F43 (exact match of the instruction sequence); see WAR_
+; rt:2CC4  draw_icon                  draw_icon(src, line, xbyte): byte width, byte height/2, rows (the Enter, M, + an
 ; rt:2CF3  set_text_pos_px            Same code as WAR.EXE rt:1F87 (exact match of the instruction sequence); see WAR_
 ; rt:2D83  invert_bar                 Same code as WAR.EXE rt:2017 (exact match of the instruction sequence); see WAR_
+; rt:2DC8  invert_block               invert_block(addr, width, height/2): XOR FFh on the screen (Detach's mark)
 ; rt:2E04  clear_info_box             Clear lines 62-135, bytes 5-74 (the Info panel)
+; rt:2E26  clear_detach_panel         Clear lines 60-107, bytes 11-70
+; rt:2E48  buf_byte_is                buf_byte_is(addr, value): the map buffer byte (44h, 11h: land)
+; rt:2E61  invert_tile_buf            XOR a 32x20 tile in the map buffer (a port with nothing left)
 ; rt:2EBF  goto_xy                    Same code as WAR.EXE rt:205C (exact match of the instruction sequence); see WAR_
 ; rt:2EE0  print_spaces               Same code as WAR.EXE rt:207D (exact match of the instruction sequence); see WAR_
 ; rt:2EF9  seed_random                Same code as WAR.EXE rt:2096 (exact match of the instruction sequence); see WAR_
@@ -200,6 +232,7 @@
 ; rt:30AE  set_cga_palette_if         set_cga_palette(n) unless [0ECB] = 1: palette 0 for the scrolls (scroll_palette)
 ; rt:30B5  set_cga_palette            Same code as WAR.EXE rt:22C8 (exact match of the instruction sequence); see WAR_
 ; rt:30CF  set_palette_reg            Same code as WAR.EXE rt:22E2 (exact match of the instruction sequence); see WAR_
+; rt:30E2  beep_message               A 1000 divisor beep for 546h delay units
 ; rt:3355  print_string               Same code as WAR.EXE rt:2565 (exact match of the instruction sequence); see WAR_
 ; rt:336D  read_joystick              Read the game port (201h) with PIT timing
 ; rt:33F3  dos_open                   Same code as WAR.EXE rt:260A (exact match of the instruction sequence); see WAR_
@@ -207,11 +240,14 @@
 ; rt:3450  dos_write                  Same code as WAR.EXE rt:2667 (exact match of the instruction sequence); see WAR_
 ; rt:3467  dos_delete                 Same code as WAR.EXE rt:267E (exact match of the instruction sequence); see WAR_
 ; rt:3473  dos_close                  Same code as WAR.EXE rt:268A (exact match of the instruction sequence); see WAR_
+; rt:6AD0  sparse_switch              The C switch on scattered values: word count, the values, then count+1 targets (
+; rt:6B04  switch_helper              The C switch: the caller is followed by word lowest case, word count, word defau
 ; root:0287  overlay_load               Same code as WAR.EXE root:0287 (exact match of the instruction sequence); see WA
 ; root:02D0  overlay_call               Same code as WAR.EXE root:02D0 (exact match of the instruction sequence); see WA
 ; root:02FA  start                      Same code as WAR.EXE root:02FA (exact match of the instruction sequence); see WA
 ; ovl1:7650  ovl1_startup               thunk 0. Startup: SCNF options (29 bytes to DS:684C), title picture SPM
 ; ovl1:7753  game_init                  thunk 1. The title page, then a new game: view at the bottom (3F3B = 109), marke
+; ovl1:7A3F  promote_flagship           promote_flagship(side): a side with no flagship and no crown: one of its ships b
 ; ovl1:7ACB  load_o3                    Same code as WAR.EXE ovl1:3567 (exact match of the instruction sequence); see WA
 ; ovl1:7AF8  load_so2                   Load SO2 (opponents, quotes, tunes) to [3F37]+5DC0h
 ; ovl1:7B29  save_game                  thunk 4. Alt+S: write SS (the saved game) to the data disk
@@ -283,26 +319,79 @@
 ; ovl4:85F8  key_waiting                Is a key waiting (any key)?
 ; ovl4:8645  poll_input                 [6896] = the latched key, then [804] = the key held down (a held key repeats eve
 ; ovl4:89E4  start_move_order           Same code as WAR.EXE ovl6:477D (exact match of the instruction sequence); see WA
+; ovl4:8A2C  cancel_path                The selected squadron stops; its path is cleared
+; ovl4:8A75  end_trace                  M while tracing: 99 ends the path, full sail, the destination mark
+; ovl4:8BCD  encounters                 Every tick: your squadrons and merchants against the enemy's and merchants: enco
+; ovl4:8EDE  map_battles                Every iteration: encounters count up to the fight delay [6851], then are fought 
+; ovl4:910F  enemy_count                The enemy's squadrons
+; ovl4:9154  battle_hit                 battle_hit(sq, way): a ship of sq may be damaged; 1 when its last ship is lost
+; ovl4:92B7  count_loss                 count_loss(ship, sq, way): 64A5/64A9 yours, 64A7/64AB theirs (way 0: by 5EE5 = -
+; ovl4:9345  eat                        eat(sq): supplies used (rule 64B5 or opponent 6059), hunger damage, and an ancho
+; ovl4:96A0  move_squadrons             Every tick: squadrons on paths step when their countdown runs out; the marker fo
+; ovl4:9A3C  step_heading               The heading (0-15) of a path step: -80 0, -79 3, 1 4, 81 5, 80 8, 79 11, -1 12, 
+; ovl4:9AB2  set_move_delays            Ticks per step: 3 - speed, doubled for ships of the line, torn sails, the wind (
+; ovl4:9D7E  lost_at_sea                A ship lost in rough or shallow water
+; ovl4:9E4F  end_check                  After a loss: the counts, the opponent's values, crown, last ship, last flagship
+; ovl4:A129  game_over                  You Lost (1) / You Won blinks until a key; all squadrons shown
 ; ovl4:A202  check_cursor_over_squadron Is the marker over a squadron (its byte column, 2 line pairs above to 2 below (y
+; ovl4:A347  detach_join                D or J: the two squadrons' ships side by side; + and - mark one, S switches it, 
+; ovl4:A952  detach_names               The two columns of ship names
 ; ovl4:AA1C  show_command_line          Time (slow)  Fleet  Pause  Surrender
 ; ovl4:AAA8  show_time_setting          Same code as WAR.EXE ovl6:6C0B (exact match of the instruction sequence); see WA
 ; ovl4:AB00  show_clear_or_pause        "Clear" if there are messages, else "Pause"
 ; ovl4:AB48  select_squad               Same code as WAR.EXE ovl6:6CA3 (exact match of the instruction sequence); see WA
 ; ovl4:AB82  squadron_command_line      Move Info Detach Join Zoom Practice
+; ovl4:ACDA  trace_prompt               Trace path to destination and press [M]; the marker becomes a box
 ; ovl4:AD63  show_fleet                 F: Friend: n Flag, n Line, n Frigate. / Foe: ... (rows 21-22), End
+; ovl4:AEAE  cell_mid_x                 The middle byte of a cell, with the shore's slant
+; ovl4:AF08  cell_mid_y                 The middle line pair of a cell, with the shore's slant
 ; ovl4:AF61  step_distance              Same code as WAR.EXE ovl6:75BB (exact match of the instruction sequence); see WA
 ; ovl4:AFB4  cell_distance              Same code as WAR.EXE ovl6:760E (exact match of the instruction sequence); see WA
 ; ovl4:B1CE  route_free_run             Same code as WAR.EXE rt:14A0 (prefix match of the instruction sequence); see WAR
-; ovl4:B252  join_partner               A squadron of the same side within 3 bytes and 7 line pairs (index+1, or 0); onl
+; ovl4:B252  join_partner               A squadron of the same side within 3 bytes and 7 line pairs (index+1, or 0); not
 ; ovl4:B35E  init_heading_sprites       DS:607F[16] = the 16 heading sprites at DS:04BF-059D
+; ovl4:B3E5  trace_blocked              May the tracing box move this way? 77 if not (land tiles, land bytes in the buff
+; ovl4:B590  msg_sunk                   name / ENEMY FRIGATE / ENEMY SHIP SUNK IN ROUGH WATERS / LOST IN SHALLOW WATER
+; ovl4:B612  msg_sighted                ALERT - ENEMY SIGHTED IN THE ...
 ; ovl4:B68C  msg_encounter              Same code as WAR.EXE ovl6:5A6E (exact match of the instruction sequence); see WA
+; ovl4:B6E5  msg_merchant_taken         NOTICE - MERCHANT LOST / ENEMY MERCHANT CAPTURED
+; ovl4:B7B0  msg_resupplied             MERCHANT SUPPLIES SQUAD
 ; ovl4:B7E4  msg_fighting               Same code as WAR.EXE ovl6:5AC7 (exact match of the instruction sequence); see WA
 ; ovl4:B83B  msg_battle_result          Same code as WAR.EXE ovl6:5B1E (exact match of the instruction sequence); see WA
+; ovl4:B88B  msg_flag_taken             URGENT - FLAG TAKEN
+; ovl4:B8F6  msg_enemy_flag             ENEMY FLAG CAPTURED
+; ovl4:B961  msg_crown                  WHITE / BLACK CROWN CAPTURED; the crown flashes to a tune with the sound on
+; ovl4:BACD  take_merchant              take_merchant(m, w): w takes merchant m: +10 supplies
+; ovl4:BB29  meet_merchant              A merchant meets a warship of its side: supplies 20; used up if it had less than
+; ovl4:BBBC  message_row                A message row: up to two, then they scroll
 ; ovl4:BBEB  map_region_code            Same code as WAR.EXE ovl6:5D00 (exact match of the instruction sequence); see WA
 ; ovl4:BC2D  print_map_region           Same code as WAR.EXE ovl6:5D42 (prefix match of the instruction sequence); see W
+; ovl4:BCD2  restock_ports              Tick 10: ports with 2 or less left call for a merchant
+; ovl4:BD3C  port_side                  The side of a port's merchant, from the strength map DS:4645
+; ovl4:BD86  port_call                  A port was used: restocked at once beside a crown or with no sea way; else a mer
+; ovl4:C07C  port_sources               The ports merchants can reach (DS:689C) and where they come from (6932)
+; ovl4:C102  port_source_of             Where a port's merchants come from
+; ovl4:C141  merchant_bound             Is a merchant sailing for this port?
+; ovl4:C197  port_supplies              At the start: repair ports rule 64AF, supply ports and crowns twice that
+; ovl4:C21C  invert_empty_ports         Ports with nothing are drawn inverted
 ; ovl4:C268  port_of_cell               The port next to a map cell (-1 none): "In Port" in Info
+; ovl4:C302  promote_at_sea             After a loss at sea the squadron's first other ship of the line becomes a flagsh
+; ovl4:C35C  invert_cell                invert_tile_buf for a map cell
 ; ovl4:C394  play_end_sound             Same code as WAR.EXE ovl6:38F6 (exact match of the instruction sequence); see WA
+; ovl4:C3C9  flags_check                1: you have no flagship left, 2: they have none (unless 65BA / 65BB: no flagship
+; ovl4:C44E  crown_check                A squadron beside the other side's crown takes it unless a squadron of that side
+; ovl4:C51A  crowns_check               Tick 20: crown_check for every squadron
+; ovl4:C57C  port_empty_sound           Three notes: a port has nothing left
+; ovl4:C5B9  close_to                   close_to(a, b): |dx| < 3 and |dy| < 5; distance 2|dx| + |dy| into 689A
+; ovl4:C658  wind_change                The wind (option 6865): a new direction and its message, or (1) just the face ov
+; ovl4:D549  count_at_cell              count_at_cell(cell, side, any): squadrons (anchored, or any) of a side in a cell
+; ovl4:E5BF  sea_way                    A way by sea from a port's cell to the edge of the map (the cell on the edge, or
+; ovl4:E805  strength_map               DS:4645: the strength of each side in each cell
+; ovl4:E8C8  squadron_strength          Ship strengths less half their damage
+; ovl4:EA05  has_flagship               Has the squadron a flagship?
+; ovl4:EA51  port_value_map             DS:47D5: the value of the cells beside ports and crowns
 ; ovl4:ECD1  find_free_path_run         Same code as WAR.EXE ovl6:47F8 (exact match of the instruction sequence); see WA
+; ovl4:EE4E  worst_damage               The worst sail or hull damage among a squadron's ships
 ; ovl4:EF92  count_fleet                Count flagships, ships of the line and frigates on each side (DS:64BF-64C9); set
 ; ovl7:CBC8  boarding_load_b            Boarding: load the deck picture B
 ;==============================================================================
@@ -938,7 +1027,7 @@ load_sm_tiles:
   rt:05CA  009CA  ff76fe         push   word ptr [bp - 2]
   rt:05CD  009CD  8d865aff       lea    ax, [bp - 0xa6]
   rt:05D1  009D1  50             push   ax
-  rt:05D2  009D2  e85924         call   rt_2a2e
+  rt:05D2  009D2  e85924         call   draw_tile
   rt:05D5  009D5  5f             pop    di
   rt:05D6  009D6  5f             pop    di
   rt:05D7  009D7  b80800         mov    ax, 8
@@ -969,13 +1058,13 @@ load_sm_tiles:
   rt:061F  00A1F  ff366968       push   word ptr [0x6869]
   rt:0623  00A23  e84d2e         call   dos_close
   rt:0626  00A26  5f             pop    di
-  rt:0627  00A27  e85a0a         call   rt_1084
+  rt:0627  00A27  e85a0a         call   redraw_squadrons
   rt:062A  00A2A  33c0           xor    ax, ax
   rt:062C  00A2C  8be5           mov    sp, bp
   rt:062E  00A2E  5d             pop    bp
   rt:062F  00A2F  c3             ret
 
-; ---- list_ships   (called from 34 places)
+; ---- list_ships   (called from 35 places)
 ;      list_ships(sq): the (up to 3) ships whose squadron is sq into DS:6456, -1 after the last
 list_ships:
   rt:0630  00A30  55             push   bp
@@ -1045,7 +1134,7 @@ mark_flagship_squadrons:
   rt:06C5  00AC5  83f8ff         cmp    ax, -1
   rt:06C8  00AC8  7518           jne    0x6e2
   rt:06CA  00ACA  ff76fc         push   word ptr [bp - 4]
-  rt:06CD  00ACD  e88508         call   rt_0f55
+  rt:06CD  00ACD  e88508         call   clear_paths
   rt:06D0  00AD0  5f             pop    di
   rt:06D1  00AD1  b80f27         mov    ax, 0x270f
   rt:06D4  00AD4  be2d5d         mov    si, 0x5d2d
@@ -1629,8 +1718,9 @@ commandable:
   rt:0B8E  00F8E  5d             pop    bp
   rt:0B8F  00F8F  c3             ret
 
-; ---- rt_0b90   (called from 5 places)
-rt_0b90:
+; ---- debug_hook   (called from 5 places)
+;      Does something only with the debug flags DS:081C-0820 set
+debug_hook:
   rt:0B90  00F90  55             push   bp
   rt:0B91  00F91  8bec           mov    bp, sp
   rt:0B93  00F93  8b061c08       mov    ax, word ptr [0x81c]
@@ -1708,7 +1798,7 @@ text_area_reset:
   rt:0C30  01030  5d             pop    bp
   rt:0C31  01031  c3             ret
 
-; ---- beep_low   (called from 102 places)
+; ---- beep_low   (called from 116 places)
 ;      Same code as WAR.EXE rt:05A9 (exact match of the instruction sequence); see WAR_Analysis
 beep_low:
   rt:0C32  01032  55             push   bp
@@ -2009,7 +2099,7 @@ rt_0e46:
   rt:0E91  01291  5d             pop    bp
   rt:0E92  01292  c3             ret
 
-; ---- rt_0e93   (called from 17 places)
+; ---- rt_0e93   (called from 18 places)
 rt_0e93:
   rt:0E93  01293  55             push   bp
   rt:0E94  01294  8bec           mov    bp, sp
@@ -2104,8 +2194,9 @@ rt_0f1f:
   rt:0F53  01353  5d             pop    bp
   rt:0F54  01354  c3             ret
 
-; ---- rt_0f55   (called from 10 places)
-rt_0f55:
+; ---- clear_paths   (called from 10 places)
+;      clear_paths(sq): zero its path in the ring DS:4E53 from [579F] (and route at 542F from [57EF]); destination 6316 = 9999; speed 0
+clear_paths:
   rt:0F55  01355  55             push   bp
   rt:0F56  01356  8bec           mov    bp, sp
   rt:0F58  01358  83ec02         sub    sp, 2
@@ -2212,13 +2303,14 @@ rt_0f55:
   rt:1048  01448  5d             pop    bp
   rt:1049  01449  c3             ret
 
-; ---- rt_104a   (called from 17 places)
-rt_104a:
+; ---- erase_squadrons   (called from 18 places)
+;      Put back what was under the marker, the squadrons and the destination marks
+erase_squadrons:
   rt:104A  0144A  55             push   bp
   rt:104B  0144B  8bec           mov    bp, sp
   rt:104D  0144D  83ec02         sub    sp, 2
   rt:1050  01450  e81d18         call   restore_cursor_background
-  rt:1053  01453  e8a818         call   rt_28fe
+  rt:1053  01453  e8a818         call   restore_squadron_bgs
   rt:1056  01456  b82700         mov    ax, 0x27
   rt:1059  01459  8946fe         mov    word ptr [bp - 2], ax
   rt:105C  0145C  817efe0000     cmp    word ptr [bp - 2], 0
@@ -2231,7 +2323,7 @@ rt_104a:
   rt:106F  0146F  3d0f27         cmp    ax, 0x270f
   rt:1072  01472  7407           je     0x107b
   rt:1074  01474  ff76fe         push   word ptr [bp - 2]
-  rt:1077  01477  e8151a         call   rt_2a8f
+  rt:1077  01477  e8151a         call   restore_dest_bg
   rt:107A  0147A  5f             pop    di
   rt:107B  0147B  ff4efe         dec    word ptr [bp - 2]
   rt:107E  0147E  ebdc           jmp    0x105c
@@ -2239,8 +2331,9 @@ rt_104a:
   rt:1082  01482  5d             pop    bp
   rt:1083  01483  c3             ret
 
-; ---- rt_1084   (called from 18 places)
-rt_1084:
+; ---- redraw_squadrons   (called from 19 places)
+;      Destination marks (2A63/2AB8), then draw_squadrons and the marker
+redraw_squadrons:
   rt:1084  01484  55             push   bp
   rt:1085  01485  8bec           mov    bp, sp
   rt:1087  01487  83ec02         sub    sp, 2
@@ -2256,14 +2349,14 @@ rt_1084:
   rt:10A2  014A2  3d0f27         cmp    ax, 0x270f
   rt:10A5  014A5  740e           je     0x10b5
   rt:10A7  014A7  ff76fe         push   word ptr [bp - 2]
-  rt:10AA  014AA  e8b619         call   rt_2a63
+  rt:10AA  014AA  e8b619         call   save_dest_bg
   rt:10AD  014AD  5f             pop    di
   rt:10AE  014AE  ff76fe         push   word ptr [bp - 2]
-  rt:10B1  014B1  e8041a         call   rt_2ab8
+  rt:10B1  014B1  e8041a         call   draw_dest_mark
   rt:10B4  014B4  5f             pop    di
   rt:10B5  014B5  ff46fe         inc    word ptr [bp - 2]
   rt:10B8  014B8  ebd5           jmp    0x108f
-  rt:10BA  014BA  e80b18         call   rt_28c8
+  rt:10BA  014BA  e80b18         call   save_squadron_bgs
   rt:10BD  014BD  e81200         call   draw_squadrons
   rt:10C0  014C0  e8df16         call   save_cursor_background
   rt:10C3  014C3  813eaa656300   cmp    word ptr [0x65aa], 0x63
@@ -2493,8 +2586,9 @@ is_scroll_down_key:
   rt:12BB  016BB  5d             pop    bp
   rt:12BC  016BC  c3             ret
 
-; ---- rt_12bd   (called from 8 places)
-rt_12bd:
+; ---- tile_is_sea   (called from 8 places)
+;      Tiles 0-2, 7, 12, 13, 19, 37-39, 42-45, 48-50, 78-81, 83 and up
+tile_is_sea:
   rt:12BD  016BD  55             push   bp
   rt:12BE  016BE  8bec           mov    bp, sp
   rt:12C0  016C0  8b4604         mov    ax, word ptr [bp + 4]
@@ -2707,9 +2801,9 @@ rt_12bd:
   rt:14A4  018A4  5d             pop    bp
   rt:14A5  018A5  c3             ret
 
-; ---- tile_is_battle_p7   (called from 18 places)
-;      Same code as WAR.EXE ovl7:60B0 (exact match of the instruction sequence); see WAR_Analysis
-tile_is_battle_p7:
+; ---- tile_is_land   (called from 18 places)
+;      Tiles 3-6, 40, 41, 46, 47, 51-77 (the ports and crowns too). Same code as WAR.EXE ovl7:60B0 (there: battle tiles)
+tile_is_land:
   rt:14A6  018A6  55             push   bp
   rt:14A7  018A7  8bec           mov    bp, sp
   rt:14A9  018A9  8b4604         mov    ax, word ptr [bp + 4]
@@ -2835,8 +2929,9 @@ tile_is_battle_p7:
   rt:15C2  019C2  5d             pop    bp
   rt:15C3  019C3  c3             ret
 
-; ---- rt_15c4   (called from 7 places)
-rt_15c4:
+; ---- tile_is_rough   (called from 7 places)
+;      Tiles 10-12, 16-18 (dark water: frigates may be lost, rule 64B3)
+tile_is_rough:
   rt:15C4  019C4  55             push   bp
   rt:15C5  019C5  8bec           mov    bp, sp
   rt:15C7  019C7  8b4604         mov    ax, word ptr [bp + 4]
@@ -2902,8 +2997,9 @@ rt_15c4:
   rt:1654  01A54  5d             pop    bp
   rt:1655  01A55  c3             ret
 
-; ---- rt_1656   (called from 5 places)
-rt_1656:
+; ---- tile_is_shallow   (called from 5 places)
+;      Tiles 7-9, 13-15 (light water: ships of the line may be lost, rule 64B9)
+tile_is_shallow:
   rt:1656  01A56  55             push   bp
   rt:1657  01A57  8bec           mov    bp, sp
   rt:1659  01A59  8b4604         mov    ax, word ptr [bp + 4]
@@ -2969,8 +3065,9 @@ rt_1656:
   rt:16E6  01AE6  5d             pop    bp
   rt:16E7  01AE7  c3             ret
 
-; ---- rt_16e8   (called from 6 places)
-rt_16e8:
+; ---- coast_a   (called from 6 places)
+;      Tiles 8, 10, 31-35: shore type 371h
+coast_a:
   rt:16E8  01AE8  55             push   bp
   rt:16E9  01AE9  8bec           mov    bp, sp
   rt:16EB  01AEB  8b4604         mov    ax, word ptr [bp + 4]
@@ -3030,8 +3127,9 @@ rt_16e8:
   rt:176A  01B6A  5d             pop    bp
   rt:176B  01B6B  c3             ret
 
-; ---- rt_176c   (called from 6 places)
-rt_176c:
+; ---- coast_b   (called from 6 places)
+;      Tiles 9, 11, 25-28: shore type 372h
+coast_b:
   rt:176C  01B6C  55             push   bp
   rt:176D  01B6D  8bec           mov    bp, sp
   rt:176F  01B6F  8b4604         mov    ax, word ptr [bp + 4]
@@ -3091,8 +3189,9 @@ rt_176c:
   rt:17EE  01BEE  5d             pop    bp
   rt:17EF  01BEF  c3             ret
 
-; ---- rt_17f0   (called from 6 places)
-rt_17f0:
+; ---- coast_c   (called from 6 places)
+;      Tiles 14, 16, 23, 24, 29, 30: shore type 373h
+coast_c:
   rt:17F0  01BF0  55             push   bp
   rt:17F1  01BF1  8bec           mov    bp, sp
   rt:17F3  01BF3  8b4604         mov    ax, word ptr [bp + 4]
@@ -3176,8 +3275,9 @@ rt_17f0:
   rt:18AA  01CAA  5d             pop    bp
   rt:18AB  01CAB  c3             ret
 
-; ---- rt_18ac   (called from 6 places)
-rt_18ac:
+; ---- coast_d   (called from 6 places)
+;      Tiles 15, 17, 19-22, 36: shore type 374h
+coast_d:
   rt:18AC  01CAC  55             push   bp
   rt:18AD  01CAD  8bec           mov    bp, sp
   rt:18AF  01CAF  8b4604         mov    ax, word ptr [bp + 4]
@@ -3252,8 +3352,9 @@ rt_18ac:
   rt:1951  01D51  5d             pop    bp
   rt:1952  01D52  c3             ret
 
-; ---- rt_1953   (called from 2 places)
-rt_1953:
+; ---- map_has_tile   (called from 2 places)
+;      Is the tile anywhere on the map?
+map_has_tile:
   rt:1953  01D53  55             push   bp
   rt:1954  01D54  8bec           mov    bp, sp
   rt:1956  01D56  83ec02         sub    sp, 2
@@ -3325,8 +3426,9 @@ path_next_slot:
   rt:19D4  01DD4  5d             pop    bp
   rt:19D5  01DD5  c3             ret
 
-; ---- rt_19d6   (called from 8 places)
-rt_19d6:
+; ---- supply_port_beside   (called from 8 places)
+;      supply_port_beside(cell, most): tile 75 in the four directions (on the map, rt_1c0c clear), with the least (most=0) or most supplies
+supply_port_beside:
   rt:19D6  01DD6  55             push   bp
   rt:19D7  01DD7  8bec           mov    bp, sp
   rt:19D9  01DD9  83ec0a         sub    sp, 0xa
@@ -3353,13 +3455,13 @@ rt_19d6:
   rt:1A10  01E10  ff76f6         push   word ptr [bp - 0xa]
   rt:1A13  01E13  ff76fe         push   word ptr [bp - 2]
   rt:1A16  01E16  ff7604         push   word ptr [bp + 4]
-  rt:1A19  01E19  e83602         call   rt_1c52
+  rt:1A19  01E19  e83602         call   off_map
   rt:1A1C  01E1C  83c406         add    sp, 6
   rt:1A1F  01E1F  0bc0           or     ax, ax
   rt:1A21  01E21  750f           jne    0x1a32
   rt:1A23  01E23  ff76f6         push   word ptr [bp - 0xa]
   rt:1A26  01E26  ff7604         push   word ptr [bp + 4]
-  rt:1A29  01E29  e8e001         call   rt_1c0c
+  rt:1A29  01E29  e8e001         call   coast_blocks
   rt:1A2C  01E2C  5f             pop    di
   rt:1A2D  01E2D  5f             pop    di
   rt:1A2E  01E2E  0bc0           or     ax, ax
@@ -3413,8 +3515,9 @@ rt_19d6:
   rt:1AA6  01EA6  5d             pop    bp
   rt:1AA7  01EA7  c3             ret
 
-; ---- rt_1aa8   (called from 8 places)
-rt_1aa8:
+; ---- repair_port_beside   (called from 8 places)
+;      repair_port_beside(cell, most): the same for tile 74
+repair_port_beside:
   rt:1AA8  01EA8  55             push   bp
   rt:1AA9  01EA9  8bec           mov    bp, sp
   rt:1AAB  01EAB  83ec0a         sub    sp, 0xa
@@ -3442,13 +3545,13 @@ rt_1aa8:
   rt:1AE5  01EE5  ff76f6         push   word ptr [bp - 0xa]
   rt:1AE8  01EE8  ff76fe         push   word ptr [bp - 2]
   rt:1AEB  01EEB  ff7604         push   word ptr [bp + 4]
-  rt:1AEE  01EEE  e86101         call   rt_1c52
+  rt:1AEE  01EEE  e86101         call   off_map
   rt:1AF1  01EF1  83c406         add    sp, 6
   rt:1AF4  01EF4  0bc0           or     ax, ax
   rt:1AF6  01EF6  750f           jne    0x1b07
   rt:1AF8  01EF8  ff76f6         push   word ptr [bp - 0xa]
   rt:1AFB  01EFB  ff7604         push   word ptr [bp + 4]
-  rt:1AFE  01EFE  e80b01         call   rt_1c0c
+  rt:1AFE  01EFE  e80b01         call   coast_blocks
   rt:1B01  01F01  5f             pop    di
   rt:1B02  01F02  5f             pop    di
   rt:1B03  01F03  0bc0           or     ax, ax
@@ -3502,8 +3605,9 @@ rt_1aa8:
   rt:1B7B  01F7B  5d             pop    bp
   rt:1B7C  01F7C  c3             ret
 
-; ---- rt_1b7d   (called from 24 places)
-rt_1b7d:
+; ---- crown_beside   (called from 24 places)
+;      crown_beside(cell, side): tile 76 (the enemy crown) for side -1, 77 for side 0, in the four directions
+crown_beside:
   rt:1B7D  01F7D  55             push   bp
   rt:1B7E  01F7E  8bec           mov    bp, sp
   rt:1B80  01F80  83ec06         sub    sp, 6
@@ -3528,13 +3632,13 @@ rt_1b7d:
   rt:1BB3  01FB3  ff76fa         push   word ptr [bp - 6]
   rt:1BB6  01FB6  ff76fe         push   word ptr [bp - 2]
   rt:1BB9  01FB9  ff7604         push   word ptr [bp + 4]
-  rt:1BBC  01FBC  e89300         call   rt_1c52
+  rt:1BBC  01FBC  e89300         call   off_map
   rt:1BBF  01FBF  83c406         add    sp, 6
   rt:1BC2  01FC2  0bc0           or     ax, ax
   rt:1BC4  01FC4  750f           jne    0x1bd5
   rt:1BC6  01FC6  ff76fa         push   word ptr [bp - 6]
   rt:1BC9  01FC9  ff7604         push   word ptr [bp + 4]
-  rt:1BCC  01FCC  e83d00         call   rt_1c0c
+  rt:1BCC  01FCC  e83d00         call   coast_blocks
   rt:1BCF  01FCF  5f             pop    di
   rt:1BD0  01FD0  5f             pop    di
   rt:1BD1  01FD1  0bc0           or     ax, ax
@@ -3564,8 +3668,9 @@ rt_1b7d:
   rt:1C0A  0200A  5d             pop    bp
   rt:1C0B  0200B  c3             ret
 
-; ---- rt_1c0c   (called from 7 places)
-rt_1c0c:
+; ---- coast_blocks   (called from 7 places)
+;      coast_blocks(cell, dir): the cell's shore (425D 371h-374h) does not face dir all along (table DS:0796)
+coast_blocks:
   rt:1C0C  0200C  55             push   bp
   rt:1C0D  0200D  8bec           mov    bp, sp
   rt:1C0F  0200F  be5d42         mov    si, 0x425d
@@ -3597,8 +3702,9 @@ rt_1c0c:
   rt:1C50  02050  5d             pop    bp
   rt:1C51  02051  c3             ret
 
-; ---- rt_1c52   (called from 9 places)
-rt_1c52:
+; ---- off_map   (called from 9 places)
+;      off_map(cell, col, dir): the neighbour in dir (1 E, 2 SE ... 8 NE; DS:0784) is off the 10x20 map
+off_map:
   rt:1C52  02052  55             push   bp
   rt:1C53  02053  8bec           mov    bp, sp
   rt:1C55  02055  8b4604         mov    ax, word ptr [bp + 4]
@@ -3793,8 +3899,9 @@ rt_1c52:
   rt:1E0E  0220E  5d             pop    bp
   rt:1E0F  0220F  c3             ret
 
-; ---- rt_1e10   (called from 4 places)
-rt_1e10:
+; ---- way_blocked   (called from 4 places)
+;      way_blocked(dir, cell, col): no way by sea from cell in dir (edges, shores)
+way_blocked:
   rt:1E10  02210  55             push   bp
   rt:1E11  02211  8bec           mov    bp, sp
   rt:1E13  02213  83ec04         sub    sp, 4
@@ -3834,7 +3941,7 @@ rt_1e10:
   rt:1E84  02284  8946fc         mov    word ptr [bp - 4], ax
   rt:1E87  02287  ff7604         push   word ptr [bp + 4]
   rt:1E8A  0228A  ff7606         push   word ptr [bp + 6]
-  rt:1E8D  0228D  e87cfd         call   rt_1c0c
+  rt:1E8D  0228D  e87cfd         call   coast_blocks
   rt:1E90  02290  5f             pop    di
   rt:1E91  02291  5f             pop    di
   rt:1E92  02292  0bc0           or     ax, ax
@@ -3872,8 +3979,9 @@ rt_1e10:
   rt:1EF2  022F2  5d             pop    bp
   rt:1EF3  022F3  c3             ret
 
-; ---- rt_1ef4   (called from 4 places)
-rt_1ef4:
+; ---- coast_pass   (called from 4 places)
+;      coast_pass(dir, cell): DS:0796 row of the cell's shore type: nonzero if it cannot be entered from dir
+coast_pass:
   rt:1EF4  022F4  55             push   bp
   rt:1EF5  022F5  8bec           mov    bp, sp
   rt:1EF7  022F7  be5d42         mov    si, 0x425d
@@ -3900,8 +4008,9 @@ rt_1ef4:
   rt:1F2B  0232B  5d             pop    bp
   rt:1F2C  0232C  c3             ret
 
-; ---- rt_1f2d   (called from 3 places)
-rt_1f2d:
+; ---- place_detached   (called from 3 places)
+;      A squadron made by Detach: beside the old one, a byte east or west, or two line pairs north or south, where there is sea
+place_detached:
   rt:1F2D  0232D  55             push   bp
   rt:1F2E  0232E  8bec           mov    bp, sp
   rt:1F30  02330  83ec10         sub    sp, 0x10
@@ -3951,7 +4060,7 @@ rt_1f2d:
   rt:1F98  02398  0bc0           or     ax, ax
   rt:1F9A  0239A  7516           jne    0x1fb2
   rt:1F9C  0239C  ff76f2         push   word ptr [bp - 0xe]
-  rt:1F9F  0239F  e8caf7         call   rt_176c
+  rt:1F9F  0239F  e8caf7         call   coast_b
   rt:1FA2  023A2  5f             pop    di
   rt:1FA3  023A3  0bc0           or     ax, ax
   rt:1FA5  023A5  7403           je     0x1faa
@@ -3967,7 +4076,7 @@ rt_1f2d:
   rt:1FBC  023BC  0bc0           or     ax, ax
   rt:1FBE  023BE  7516           jne    0x1fd6
   rt:1FC0  023C0  ff76f2         push   word ptr [bp - 0xe]
-  rt:1FC3  023C3  e8e6f8         call   rt_18ac
+  rt:1FC3  023C3  e8e6f8         call   coast_d
   rt:1FC6  023C6  5f             pop    di
   rt:1FC7  023C7  0bc0           or     ax, ax
   rt:1FC9  023C9  7403           je     0x1fce
@@ -4019,7 +4128,7 @@ rt_1f2d:
   rt:2033  02433  8a04           mov    al, byte ptr [si]
   rt:2035  02435  98             cwde
   rt:2036  02436  50             push   ax
-  rt:2037  02437  e883f2         call   rt_12bd
+  rt:2037  02437  e883f2         call   tile_is_sea
   rt:203A  0243A  5f             pop    di
   rt:203B  0243B  0bc0           or     ax, ax
   rt:203D  0243D  7403           je     0x2042
@@ -4044,7 +4153,7 @@ rt_1f2d:
   rt:2069  02469  8a04           mov    al, byte ptr [si]
   rt:206B  0246B  98             cwde
   rt:206C  0246C  50             push   ax
-  rt:206D  0246D  e836f4         call   tile_is_battle_p7
+  rt:206D  0246D  e836f4         call   tile_is_land
   rt:2070  02470  5f             pop    di
   rt:2071  02471  0bc0           or     ax, ax
   rt:2073  02473  7403           je     0x2078
@@ -4063,7 +4172,7 @@ rt_1f2d:
   rt:2092  02492  0bc0           or     ax, ax
   rt:2094  02494  7516           jne    0x20ac
   rt:2096  02496  ff76f2         push   word ptr [bp - 0xe]
-  rt:2099  02499  e84cf6         call   rt_16e8
+  rt:2099  02499  e84cf6         call   coast_a
   rt:209C  0249C  5f             pop    di
   rt:209D  0249D  0bc0           or     ax, ax
   rt:209F  0249F  7403           je     0x20a4
@@ -4079,7 +4188,7 @@ rt_1f2d:
   rt:20B6  024B6  0bc0           or     ax, ax
   rt:20B8  024B8  7516           jne    0x20d0
   rt:20BA  024BA  ff76f2         push   word ptr [bp - 0xe]
-  rt:20BD  024BD  e830f7         call   rt_17f0
+  rt:20BD  024BD  e830f7         call   coast_c
   rt:20C0  024C0  5f             pop    di
   rt:20C1  024C1  0bc0           or     ax, ax
   rt:20C3  024C3  7403           je     0x20c8
@@ -4131,7 +4240,7 @@ rt_1f2d:
   rt:212D  0252D  8a04           mov    al, byte ptr [si]
   rt:212F  0252F  98             cwde
   rt:2130  02530  50             push   ax
-  rt:2131  02531  e889f1         call   rt_12bd
+  rt:2131  02531  e889f1         call   tile_is_sea
   rt:2134  02534  5f             pop    di
   rt:2135  02535  0bc0           or     ax, ax
   rt:2137  02537  7403           je     0x213c
@@ -4156,7 +4265,7 @@ rt_1f2d:
   rt:2163  02563  8a04           mov    al, byte ptr [si]
   rt:2165  02565  98             cwde
   rt:2166  02566  50             push   ax
-  rt:2167  02567  e83cf3         call   tile_is_battle_p7
+  rt:2167  02567  e83cf3         call   tile_is_land
   rt:216A  0256A  5f             pop    di
   rt:216B  0256B  0bc0           or     ax, ax
   rt:216D  0256D  7403           je     0x2172
@@ -4175,7 +4284,7 @@ rt_1f2d:
   rt:218C  0258C  0bc0           or     ax, ax
   rt:218E  0258E  7516           jne    0x21a6
   rt:2190  02590  ff76f2         push   word ptr [bp - 0xe]
-  rt:2193  02593  e852f5         call   rt_16e8
+  rt:2193  02593  e852f5         call   coast_a
   rt:2196  02596  5f             pop    di
   rt:2197  02597  0bc0           or     ax, ax
   rt:2199  02599  7403           je     0x219e
@@ -4191,7 +4300,7 @@ rt_1f2d:
   rt:21B0  025B0  0bc0           or     ax, ax
   rt:21B2  025B2  7516           jne    0x21ca
   rt:21B4  025B4  ff76f2         push   word ptr [bp - 0xe]
-  rt:21B7  025B7  e8b2f5         call   rt_176c
+  rt:21B7  025B7  e8b2f5         call   coast_b
   rt:21BA  025BA  5f             pop    di
   rt:21BB  025BB  0bc0           or     ax, ax
   rt:21BD  025BD  7403           je     0x21c2
@@ -4249,7 +4358,7 @@ rt_1f2d:
   rt:2237  02637  8a04           mov    al, byte ptr [si]
   rt:2239  02639  98             cwde
   rt:223A  0263A  50             push   ax
-  rt:223B  0263B  e87ff0         call   rt_12bd
+  rt:223B  0263B  e87ff0         call   tile_is_sea
   rt:223E  0263E  5f             pop    di
   rt:223F  0263F  0bc0           or     ax, ax
   rt:2241  02641  7403           je     0x2246
@@ -4274,7 +4383,7 @@ rt_1f2d:
   rt:226F  0266F  8a04           mov    al, byte ptr [si]
   rt:2271  02671  98             cwde
   rt:2272  02672  50             push   ax
-  rt:2273  02673  e830f2         call   tile_is_battle_p7
+  rt:2273  02673  e830f2         call   tile_is_land
   rt:2276  02676  5f             pop    di
   rt:2277  02677  0bc0           or     ax, ax
   rt:2279  02679  7403           je     0x227e
@@ -4293,7 +4402,7 @@ rt_1f2d:
   rt:2299  02699  0bc0           or     ax, ax
   rt:229B  0269B  7516           jne    0x22b3
   rt:229D  0269D  ff76f2         push   word ptr [bp - 0xe]
-  rt:22A0  026A0  e84df5         call   rt_17f0
+  rt:22A0  026A0  e84df5         call   coast_c
   rt:22A3  026A3  5f             pop    di
   rt:22A4  026A4  0bc0           or     ax, ax
   rt:22A6  026A6  7403           je     0x22ab
@@ -4309,7 +4418,7 @@ rt_1f2d:
   rt:22BD  026BD  0bc0           or     ax, ax
   rt:22BF  026BF  7516           jne    0x22d7
   rt:22C1  026C1  ff76f2         push   word ptr [bp - 0xe]
-  rt:22C4  026C4  e8e5f5         call   rt_18ac
+  rt:22C4  026C4  e8e5f5         call   coast_d
   rt:22C7  026C7  5f             pop    di
   rt:22C8  026C8  0bc0           or     ax, ax
   rt:22CA  026CA  7403           je     0x22cf
@@ -4367,7 +4476,7 @@ rt_1f2d:
   rt:2344  02744  8a04           mov    al, byte ptr [si]
   rt:2346  02746  98             cwde
   rt:2347  02747  50             push   ax
-  rt:2348  02748  e872ef         call   rt_12bd
+  rt:2348  02748  e872ef         call   tile_is_sea
   rt:234B  0274B  5f             pop    di
   rt:234C  0274C  0bc0           or     ax, ax
   rt:234E  0274E  7403           je     0x2353
@@ -4392,7 +4501,7 @@ rt_1f2d:
   rt:237C  0277C  8a04           mov    al, byte ptr [si]
   rt:237E  0277E  98             cwde
   rt:237F  0277F  50             push   ax
-  rt:2380  02780  e823f1         call   tile_is_battle_p7
+  rt:2380  02780  e823f1         call   tile_is_land
   rt:2383  02783  5f             pop    di
   rt:2384  02784  0bc0           or     ax, ax
   rt:2386  02786  7403           je     0x238b
@@ -4570,8 +4679,9 @@ rt_1f2d:
   rt:2521  02921  5d             pop    bp
   rt:2522  02922  c3             ret
 
-; ---- rt_2523   (called from 2 places)
-rt_2523:
+; ---- coast_init   (called from 2 places)
+;      The shore type of each cell into DS:425D (371h-379h, 0 sea); 65B2/65B4 (160 halved per repair/supply port)
+coast_init:
   rt:2523  02923  55             push   bp
   rt:2524  02924  8bec           mov    bp, sp
   rt:2526  02926  83ec06         sub    sp, 6
@@ -4589,7 +4699,7 @@ rt_2523:
   rt:254B  0294B  98             cwde
   rt:254C  0294C  8946fc         mov    word ptr [bp - 4], ax
   rt:254F  0294F  ff76fc         push   word ptr [bp - 4]
-  rt:2552  02952  e893f1         call   rt_16e8
+  rt:2552  02952  e893f1         call   coast_a
   rt:2555  02955  5f             pop    di
   rt:2556  02956  0bc0           or     ax, ax
   rt:2558  02958  7412           je     0x256c
@@ -4601,7 +4711,7 @@ rt_2523:
   rt:2567  02967  8904           mov    word ptr [si], ax
   rt:2569  02969  e91701         jmp    0x2683
   rt:256C  0296C  ff76fc         push   word ptr [bp - 4]
-  rt:256F  0296F  e8faf1         call   rt_176c
+  rt:256F  0296F  e8faf1         call   coast_b
   rt:2572  02972  5f             pop    di
   rt:2573  02973  0bc0           or     ax, ax
   rt:2575  02975  7412           je     0x2589
@@ -4613,7 +4723,7 @@ rt_2523:
   rt:2584  02984  8904           mov    word ptr [si], ax
   rt:2586  02986  e9fa00         jmp    0x2683
   rt:2589  02989  ff76fc         push   word ptr [bp - 4]
-  rt:258C  0298C  e861f2         call   rt_17f0
+  rt:258C  0298C  e861f2         call   coast_c
   rt:258F  0298F  5f             pop    di
   rt:2590  02990  0bc0           or     ax, ax
   rt:2592  02992  7412           je     0x25a6
@@ -4625,7 +4735,7 @@ rt_2523:
   rt:25A1  029A1  8904           mov    word ptr [si], ax
   rt:25A3  029A3  e9dd00         jmp    0x2683
   rt:25A6  029A6  ff76fc         push   word ptr [bp - 4]
-  rt:25A9  029A9  e800f3         call   rt_18ac
+  rt:25A9  029A9  e800f3         call   coast_d
   rt:25AC  029AC  5f             pop    di
   rt:25AD  029AD  0bc0           or     ax, ax
   rt:25AF  029AF  7412           je     0x25c3
@@ -4681,18 +4791,18 @@ rt_2523:
   rt:263D  02A3D  8904           mov    word ptr [si], ax
   rt:263F  02A3F  eb42           jmp    0x2683
   rt:2641  02A41  ff76fc         push   word ptr [bp - 4]
-  rt:2644  02A44  e876ec         call   rt_12bd
+  rt:2644  02A44  e876ec         call   tile_is_sea
   rt:2647  02A47  5f             pop    di
   rt:2648  02A48  0bc0           or     ax, ax
   rt:264A  02A4A  750b           jne    0x2657
   rt:264C  02A4C  ff76fc         push   word ptr [bp - 4]
-  rt:264F  02A4F  e872ef         call   rt_15c4
+  rt:264F  02A4F  e872ef         call   tile_is_rough
   rt:2652  02A52  5f             pop    di
   rt:2653  02A53  0bc0           or     ax, ax
   rt:2655  02A55  7402           je     0x2659
   rt:2657  02A57  eb0b           jmp    0x2664
   rt:2659  02A59  ff76fc         push   word ptr [bp - 4]
-  rt:265C  02A5C  e8f7ef         call   rt_1656
+  rt:265C  02A5C  e8f7ef         call   tile_is_shallow
   rt:265F  02A5F  5f             pop    di
   rt:2660  02A60  0bc0           or     ax, ax
   rt:2662  02A62  7410           je     0x2674
@@ -4996,8 +5106,9 @@ rt_28a5:
   rt:28C3  02CC3  89874001       mov    word ptr [bx + 0x140], ax
   rt:28C7  02CC7  c3             ret
 
-; ---- rt_28c8   (called from 1 place)
-rt_28c8:
+; ---- save_squadron_bgs   (called from 1 place)
+;      Save what is under each squadron (10 line pairs of 2 bytes, DS:58DF)
+save_squadron_bgs:
   rt:28C8  02CC8  06             push   es
   rt:28C9  02CC9  fc             cld
   rt:28CA  02CCA  8cd8           mov    ax, ds
@@ -5023,8 +5134,9 @@ rt_28c8:
   rt:28FC  02CFC  07             pop    es
   rt:28FD  02CFD  c3             ret
 
-; ---- rt_28fe   (called from 1 place)
-rt_28fe:
+; ---- restore_squadron_bgs   (called from 1 place)
+;      Put it back
+restore_squadron_bgs:
   rt:28FE  02CFE  06             push   es
   rt:28FF  02CFF  8cd8           mov    ax, ds
   rt:2901  02D01  8ec0           mov    es, ax
@@ -5163,8 +5275,9 @@ draw_map_sprite:
   rt:2A2A  02E2A  75a0           jne    0x29cc
   rt:2A2C  02E2C  eb9c           jmp    0x29ca
 
-; ---- rt_2a2e   (called from 1 place)
-rt_2a2e:
+; ---- draw_tile   (called from 2 places)
+;      draw_tile(src, dst): a 32x20 tile into the map buffer (the wind's face)
+draw_tile:
   rt:2A2E  02E2E  55             push   bp
   rt:2A2F  02E2F  8bec           mov    bp, sp
   rt:2A31  02E31  8b7604         mov    si, word ptr [bp + 4]
@@ -5194,8 +5307,9 @@ rt_2a2e:
   rt:2A61  02E61  5d             pop    bp
   rt:2A62  02E62  c3             ret
 
-; ---- rt_2a63   (called from 1 place)
-rt_2a63:
+; ---- save_dest_bg   (called from 1 place)
+;      Save what is under a squadron's destination mark
+save_dest_bg:
   rt:2A63  02E63  55             push   bp
   rt:2A64  02E64  8bec           mov    bp, sp
   rt:2A66  02E66  8b7e04         mov    di, word ptr [bp + 4]
@@ -5217,8 +5331,9 @@ rt_2a63:
   rt:2A8D  02E8D  5d             pop    bp
   rt:2A8E  02E8E  c3             ret
 
-; ---- rt_2a8f   (called from 1 place)
-rt_2a8f:
+; ---- restore_dest_bg   (called from 1 place)
+;      Put it back
+restore_dest_bg:
   rt:2A8F  02E8F  55             push   bp
   rt:2A90  02E90  8bec           mov    bp, sp
   rt:2A92  02E92  fc             cld
@@ -5239,8 +5354,9 @@ rt_2a8f:
   rt:2AB6  02EB6  5d             pop    bp
   rt:2AB7  02EB7  c3             ret
 
-; ---- rt_2ab8   (called from 1 place)
-rt_2ab8:
+; ---- draw_dest_mark   (called from 1 place)
+;      A little cross at [6316]: OR 3Ch, FFh, OR 3Ch on three line pairs
+draw_dest_mark:
   rt:2AB8  02EB8  55             push   bp
   rt:2AB9  02EB9  8bec           mov    bp, sp
   rt:2ABB  02EBB  8b7e04         mov    di, word ptr [bp + 4]
@@ -5445,7 +5561,7 @@ scroll_text_area:
   rt:2C46  03046  07             pop    es
   rt:2C47  03047  c3             ret
 
-; ---- clear_text_row   (called from 159 places)
+; ---- clear_text_row   (called from 162 places)
 ;      Same code as WAR.EXE rt:1EDE (exact match of the instruction sequence); see WAR_Analysis
 clear_text_row:
   rt:2C48  03048  55             push   bp
@@ -5530,8 +5646,9 @@ memcpy:
   rt:2CC2  030C2  5d             pop    bp
   rt:2CC3  030C3  c3             ret
 
-; ---- rt_2cc4   (called from 52 places)
-rt_2cc4:
+; ---- draw_icon   (called from 53 places)
+;      draw_icon(src, line, xbyte): byte width, byte height/2, rows (the Enter, M, + and - icons)
+draw_icon:
   rt:2CC4  030C4  55             push   bp
   rt:2CC5  030C5  8bec           mov    bp, sp
   rt:2CC7  030C7  8b7604         mov    si, word ptr [bp + 4]
@@ -5669,8 +5786,9 @@ rt_2dc1:
   rt:2DC5  031C5  03fa           add    di, dx
   rt:2DC7  031C7  c3             ret
 
-; ---- rt_2dc8   (called from 15 places)
-rt_2dc8:
+; ---- invert_block   (called from 19 places)
+;      invert_block(addr, width, height/2): XOR FFh on the screen (Detach's mark)
+invert_block:
   rt:2DC8  031C8  55             push   bp
   rt:2DC9  031C9  8bec           mov    bp, sp
   rt:2DCB  031CB  06             push   es
@@ -5723,8 +5841,9 @@ clear_info_box:
   rt:2E24  03224  07             pop    es
   rt:2E25  03225  c3             ret
 
-; ---- rt_2e26   (called from 1 place)
-rt_2e26:
+; ---- clear_detach_panel   (called from 1 place)
+;      Clear lines 60-107, bytes 11-70
+clear_detach_panel:
   rt:2E26  03226  06             push   es
   rt:2E27  03227  fc             cld
   rt:2E28  03228  a12a0d         mov    ax, word ptr [0xd2a]
@@ -5743,8 +5862,9 @@ rt_2e26:
   rt:2E46  03246  07             pop    es
   rt:2E47  03247  c3             ret
 
-; ---- rt_2e48   (called from 4 places)
-rt_2e48:
+; ---- buf_byte_is   (called from 4 places)
+;      buf_byte_is(addr, value): the map buffer byte (44h, 11h: land)
+buf_byte_is:
   rt:2E48  03248  55             push   bp
   rt:2E49  03249  8bec           mov    bp, sp
   rt:2E4B  0324B  8b5e04         mov    bx, word ptr [bp + 4]
@@ -5758,8 +5878,9 @@ rt_2e48:
   rt:2E5F  0325F  5d             pop    bp
   rt:2E60  03260  c3             ret
 
-; ---- rt_2e61   (called from 1 place)
-rt_2e61:
+; ---- invert_tile_buf   (called from 1 place)
+;      XOR a 32x20 tile in the map buffer (a port with nothing left)
+invert_tile_buf:
   rt:2E61  03261  55             push   bp
   rt:2E62  03262  8bec           mov    bp, sp
   rt:2E64  03264  8b5e04         mov    bx, word ptr [bp + 4]
@@ -5781,7 +5902,7 @@ rt_2e61:
   rt:2E8C  0328C  5d             pop    bp
   rt:2E8D  0328D  c3             ret
 
-; ---- rt_2e8e   (called from 30 places)
+; ---- rt_2e8e   (called from 35 places)
 rt_2e8e:
   rt:2E8E  0328E  06             push   es
   rt:2E8F  0328F  b84000         mov    ax, 0x40
@@ -5806,7 +5927,7 @@ rt_2e8e:
   rt:2EBC  032BC  b01b           mov    al, 0x1b
   rt:2EBE  032BE  c3             ret
 
-; ---- goto_xy   (called from 117 places)
+; ---- goto_xy   (called from 118 places)
 ;      Same code as WAR.EXE rt:205C (exact match of the instruction sequence); see WAR_Analysis
 goto_xy:
   rt:2EBF  032BF  55             push   bp
@@ -5829,7 +5950,7 @@ goto_xy:
   rt:2EDE  032DE  5d             pop    bp
   rt:2EDF  032DF  c3             ret
 
-; ---- print_spaces   (called from 11 places)
+; ---- print_spaces   (called from 12 places)
 ;      Same code as WAR.EXE rt:207D (exact match of the instruction sequence); see WAR_Analysis
 print_spaces:
   rt:2EE0  032E0  55             push   bp
@@ -5859,7 +5980,7 @@ seed_random:
   rt:2F06  03306  c7060a08b80b   mov    word ptr [0x80a], 0xbb8
   rt:2F0C  0330C  c3             ret
 
-; ---- random   (called from 128 places)
+; ---- random   (called from 129 places)
 ;      Same code as WAR.EXE rt:20AA (exact match of the instruction sequence); see WAR_Analysis
 random:
   rt:2F0D  0330D  ff060a08       inc    word ptr [0x80a]
@@ -5920,7 +6041,7 @@ rt_2f67:
   rt:2F6B  0336B  e661           out    0x61, al
   rt:2F6D  0336D  c3             ret
 
-; ---- delay   (called from 166 places)
+; ---- delay   (called from 170 places)
 ;      Same code as WAR.EXE rt:2188 (exact match of the instruction sequence); see WAR_Analysis
 delay:
   rt:2F6E  0336E  55             push   bp
@@ -6032,8 +6153,9 @@ set_palette_reg:
   rt:30E0  034E0  5d             pop    bp
   rt:30E1  034E1  c3             ret
 
-; ---- rt_30e2   (called from 4 places)
-rt_30e2:
+; ---- beep_message   (called from 4 places)
+;      A 1000 divisor beep for 546h delay units
+beep_message:
   rt:30E2  034E2  e874fe         call   speaker_on
   rt:30E5  034E5  b8e803         mov    ax, 0x3e8
   rt:30E8  034E8  50             push   ax
@@ -6184,7 +6306,7 @@ rt_32d4:
   rt:3353  03753  5d             pop    bp
   rt:3354  03754  c3             ret
 
-; ---- print_string   (called from 276 places)
+; ---- print_string   (called from 290 places)
 ;      Same code as WAR.EXE rt:2565 (exact match of the instruction sequence); see WAR_Analysis
 print_string:
   rt:3355  03755  55             push   bp
@@ -7516,7 +7638,7 @@ rt_3eaa:
   rt:3FA2  043A2  5d             pop    bp
   rt:3FA3  043A3  c3             ret
 
-; ---- rt_3fa4   (called from 2 places)
+; ---- rt_3fa4   (called from 4 places)
 rt_3fa4:
   rt:3FA4  043A4  55             push   bp
   rt:3FA5  043A5  8bec           mov    bp, sp
@@ -7890,7 +8012,7 @@ rt_41bc:
   rt:433C  0473C  5d             pop    bp
   rt:433D  0473D  c3             ret
 
-; ---- rt_433e   (called from 4 places)
+; ---- rt_433e   (called from 6 places)
 rt_433e:
   rt:433E  0473E  55             push   bp
   rt:433F  0473F  8bec           mov    bp, sp
@@ -8046,7 +8168,7 @@ rt_433e:
   rt:44B0  048B0  5d             pop    bp
   rt:44B1  048B1  c3             ret
 
-; ---- rt_44b2   (called from 2 places)
+; ---- rt_44b2   (called from 3 places)
 rt_44b2:
   rt:44B2  048B2  55             push   bp
   rt:44B3  048B3  8bec           mov    bp, sp
@@ -8566,7 +8688,7 @@ rt_4926:
   rt:49A9  04DA9  5d             pop    bp
   rt:49AA  04DAA  c3             ret
 
-; ---- rt_49ab
+; ---- rt_49ab   (called from 3 places)
 rt_49ab:
   rt:49AB  04DAB  55             push   bp
   rt:49AC  04DAC  8bec           mov    bp, sp
@@ -9691,7 +9813,7 @@ rt_5290:
   rt:5365  05765  5d             pop    bp
   rt:5366  05766  c3             ret
 
-; ---- rt_5367   (called from 5 places)
+; ---- rt_5367   (called from 6 places)
 rt_5367:
   rt:5367  05767  55             push   bp
   rt:5368  05768  8bec           mov    bp, sp
@@ -11655,7 +11777,7 @@ rt_64f0:
   rt:656D  0696D  5d             pop    bp
   rt:656E  0696E  c3             ret
 
-; ---- rt_656f   (called from 25 places)
+; ---- rt_656f   (called from 29 places)
 rt_656f:
   rt:656F  0696F  56             push   si
   rt:6570  06970  57             push   di
@@ -11789,7 +11911,7 @@ rt_660c:
   rt:6695  06A95  5d             pop    bp
   rt:6696  06A96  c3             ret
 
-; ---- rt_6697   (called from 6 places)
+; ---- rt_6697   (called from 10 places)
 rt_6697:
   rt:6697  06A97  55             push   bp
   rt:6698  06A98  8bec           mov    bp, sp
@@ -12257,8 +12379,9 @@ rt_6a94:
   rt:6ACE  06ECE  5d             pop    bp
   rt:6ACF  06ECF  c3             ret
 
-; ---- rt_6ad0   (called from 8 places)
-rt_6ad0:
+; ---- sparse_switch   (called from 8 places)
+;      The C switch on scattered values: word count, the values, then count+1 targets (the default first)
+sparse_switch:
   rt:6AD0  06ED0  55             push   bp
   rt:6AD1  06ED1  8bec           mov    bp, sp
   rt:6AD3  06ED3  50             push   ax
@@ -12290,8 +12413,9 @@ rt_6ad0:
   rt:6B00  06F00  fc             cld
   rt:6B01  06F01  c20200         ret    2
 
-; ---- rt_6b04   (called from 8 places)
-rt_6b04:
+; ---- switch_helper   (called from 9 places)
+;      The C switch: the caller is followed by word lowest case, word count, word default, then the targets
+switch_helper:
   rt:6B04  06F04  5f             pop    di
   rt:6B05  06F05  8cc8           mov    ax, cs
   rt:6B07  06F07  8ec0           mov    es, ax
@@ -13473,7 +13597,7 @@ game_init:
   ovl1:7944  07D44  751d           jne    0x7963
   ovl1:7946  07D46  b84d00         mov    ax, 0x4d
   ovl1:7949  07D49  50             push   ax
-  ovl1:794A  07D4A  e806a0         call   rt_1953
+  ovl1:794A  07D4A  e806a0         call   map_has_tile
   ovl1:794D  07D4D  5f             pop    di
   ovl1:794E  07D4E  0bc0           or     ax, ax
   ovl1:7950  07D50  7409           je     0x795b
@@ -13482,14 +13606,14 @@ game_init:
   ovl1:7959  07D59  eb08           jmp    0x7963
   ovl1:795B  07D5B  b8ffff         mov    ax, 0xffff
   ovl1:795E  07D5E  50             push   ax
-  ovl1:795F  07D5F  e8dd00         call   ovl1_7a3f
+  ovl1:795F  07D5F  e8dd00         call   promote_flagship
   ovl1:7962  07D62  5f             pop    di
   ovl1:7963  07D63  8b46fc         mov    ax, word ptr [bp - 4]
   ovl1:7966  07D66  0bc0           or     ax, ax
   ovl1:7968  07D68  751c           jne    0x7986
   ovl1:796A  07D6A  b84c00         mov    ax, 0x4c
   ovl1:796D  07D6D  50             push   ax
-  ovl1:796E  07D6E  e8e29f         call   rt_1953
+  ovl1:796E  07D6E  e8e29f         call   map_has_tile
   ovl1:7971  07D71  5f             pop    di
   ovl1:7972  07D72  0bc0           or     ax, ax
   ovl1:7974  07D74  7409           je     0x797f
@@ -13498,7 +13622,7 @@ game_init:
   ovl1:797D  07D7D  eb07           jmp    0x7986
   ovl1:797F  07D7F  33c0           xor    ax, ax
   ovl1:7981  07D81  50             push   ax
-  ovl1:7982  07D82  e8ba00         call   ovl1_7a3f
+  ovl1:7982  07D82  e8ba00         call   promote_flagship
   ovl1:7985  07D85  5f             pop    di
   ovl1:7986  07D86  b8dc05         mov    ax, 0x5dc
   ovl1:7989  07D89  50             push   ax
@@ -13566,8 +13690,9 @@ game_init:
   ovl1:7A3D  07E3D  5d             pop    bp
   ovl1:7A3E  07E3E  c3             ret
 
-; ---- ovl1_7a3f   (called from 2 places)
-ovl1_7a3f:
+; ---- promote_flagship   (called from 2 places)
+;      promote_flagship(side): a side with no flagship and no crown: one of its ships becomes one (frigates only after a while)
+promote_flagship:
   ovl1:7A3F  07E3F  55             push   bp
   ovl1:7A40  07E40  8bec           mov    bp, sp
   ovl1:7A42  07E42  83ec04         sub    sp, 4
@@ -14418,7 +14543,7 @@ show_scroll:
   ovl1:8236  08636  50             push   ax
   ovl1:8237  08637  b82b06         mov    ax, 0x62b
   ovl1:823A  0863A  50             push   ax
-  ovl1:823B  0863B  e886aa         call   rt_2cc4
+  ovl1:823B  0863B  e886aa         call   draw_icon
   ovl1:823E  0863E  83c406         add    sp, 6
   ovl1:8241  08641  b81800         mov    ax, 0x18
   ovl1:8244  08644  50             push   ax
@@ -15320,7 +15445,7 @@ menu_poll_key:
   ovl1:8A93  08E93  55             push   bp
   ovl1:8A94  08E94  8bec           mov    bp, sp
   ovl1:8A96  08E96  83ec02         sub    sp, 2
-  ovl1:8A99  08E99  e8f480         call   rt_0b90
+  ovl1:8A99  08E99  e8f480         call   debug_hook
   ovl1:8A9C  08E9C  b86400         mov    ax, 0x64
   ovl1:8A9F  08E9F  89066964       mov    word ptr [0x6469], ax
   ovl1:8AA3  08EA3  8b060408       mov    ax, word ptr [0x804]
@@ -15615,7 +15740,7 @@ choose_opponent:
   ovl1:8D60  09160  8b068964       mov    ax, word ptr [0x6489]
   ovl1:8D64  09164  05d314         add    ax, 0x14d3
   ovl1:8D67  09167  50             push   ax
-  ovl1:8D68  09168  e8599f         call   rt_2cc4
+  ovl1:8D68  09168  e8599f         call   draw_icon
   ovl1:8D6B  0916B  83c406         add    sp, 6
   ovl1:8D6E  0916E  b80100         mov    ax, 1
   ovl1:8D71  09171  50             push   ax
@@ -15676,7 +15801,7 @@ choose_opponent:
   ovl1:8DED  091ED  50             push   ax
   ovl1:8DEE  091EE  b84d06         mov    ax, 0x64d
   ovl1:8DF1  091F1  50             push   ax
-  ovl1:8DF2  091F2  e8cf9e         call   rt_2cc4
+  ovl1:8DF2  091F2  e8cf9e         call   draw_icon
   ovl1:8DF5  091F5  83c406         add    sp, 6
   ovl1:8DF8  091F8  b83300         mov    ax, 0x33
   ovl1:8DFB  091FB  50             push   ax
@@ -15684,7 +15809,7 @@ choose_opponent:
   ovl1:8DFE  091FE  50             push   ax
   ovl1:8DFF  091FF  b82b06         mov    ax, 0x62b
   ovl1:8E02  09202  50             push   ax
-  ovl1:8E03  09203  e8be9e         call   rt_2cc4
+  ovl1:8E03  09203  e8be9e         call   draw_icon
   ovl1:8E06  09206  83c406         add    sp, 6
   ovl1:8E09  09209  b80100         mov    ax, 1
   ovl1:8E0C  0920C  0bc0           or     ax, ax
@@ -16040,7 +16165,7 @@ help_change_select:
   ovl1:9148  09548  50             push   ax
   ovl1:9149  09549  b82b06         mov    ax, 0x62b
   ovl1:914C  0954C  50             push   ax
-  ovl1:914D  0954D  e8749b         call   rt_2cc4
+  ovl1:914D  0954D  e8749b         call   draw_icon
   ovl1:9150  09550  83c406         add    sp, 6
   ovl1:9153  09553  b81800         mov    ax, 0x18
   ovl1:9156  09556  50             push   ax
@@ -16111,7 +16236,7 @@ ovl1_91ba:
   ovl1:91CB  095CB  8b068b64       mov    ax, word ptr [0x648b]
   ovl1:91CF  095CF  05be0c         add    ax, 0xcbe
   ovl1:91D2  095D2  50             push   ax
-  ovl1:91D3  095D3  e8ee9a         call   rt_2cc4
+  ovl1:91D3  095D3  e8ee9a         call   draw_icon
   ovl1:91D6  095D6  83c406         add    sp, 6
   ovl1:91D9  095D9  b81800         mov    ax, 0x18
   ovl1:91DC  095DC  50             push   ax
@@ -16204,7 +16329,7 @@ ovl1_91f4:
   ovl1:929D  0969D  50             push   ax
   ovl1:929E  0969E  b82b06         mov    ax, 0x62b
   ovl1:92A1  096A1  50             push   ax
-  ovl1:92A2  096A2  e81f9a         call   rt_2cc4
+  ovl1:92A2  096A2  e81f9a         call   draw_icon
   ovl1:92A5  096A5  83c406         add    sp, 6
   ovl1:92A8  096A8  b81800         mov    ax, 0x18
   ovl1:92AB  096AB  50             push   ax
@@ -17924,7 +18049,7 @@ ovl1_a282:
   ovl1:A292  0A692  50             push   ax
   ovl1:A293  0A693  b84d06         mov    ax, 0x64d
   ovl1:A296  0A696  50             push   ax
-  ovl1:A297  0A697  e82a8a         call   rt_2cc4
+  ovl1:A297  0A697  e82a8a         call   draw_icon
   ovl1:A29A  0A69A  83c406         add    sp, 6
   ovl1:A29D  0A69D  b81700         mov    ax, 0x17
   ovl1:A2A0  0A6A0  50             push   ax
@@ -17943,7 +18068,7 @@ ovl1_a282:
   ovl1:A2B7  0A6B7  50             push   ax
   ovl1:A2B8  0A6B8  b86f06         mov    ax, 0x66f
   ovl1:A2BB  0A6BB  50             push   ax
-  ovl1:A2BC  0A6BC  e8058a         call   rt_2cc4
+  ovl1:A2BC  0A6BC  e8058a         call   draw_icon
   ovl1:A2BF  0A6BF  83c406         add    sp, 6
   ovl1:A2C2  0A6C2  b81700         mov    ax, 0x17
   ovl1:A2C5  0A6C5  50             push   ax
@@ -17968,7 +18093,7 @@ ovl1_a282:
   ovl1:A2E8  0A6E8  8b068b64       mov    ax, word ptr [0x648b]
   ovl1:A2EC  0A6EC  05360c         add    ax, 0xc36
   ovl1:A2EF  0A6EF  50             push   ax
-  ovl1:A2F0  0A6F0  e8d189         call   rt_2cc4
+  ovl1:A2F0  0A6F0  e8d189         call   draw_icon
   ovl1:A2F3  0A6F3  83c406         add    sp, 6
   ovl1:A2F6  0A6F6  b81800         mov    ax, 0x18
   ovl1:A2F9  0A6F9  50             push   ax
@@ -17988,7 +18113,7 @@ ovl1_a282:
   ovl1:A314  0A714  50             push   ax
   ovl1:A315  0A715  b82b06         mov    ax, 0x62b
   ovl1:A318  0A718  50             push   ax
-  ovl1:A319  0A719  e8a889         call   rt_2cc4
+  ovl1:A319  0A719  e8a889         call   draw_icon
   ovl1:A31C  0A71C  83c406         add    sp, 6
   ovl1:A31F  0A71F  b81800         mov    ax, 0x18
   ovl1:A322  0A722  50             push   ax
@@ -18070,7 +18195,7 @@ ovl1_a384:
   ovl1:A3B6  0A7B6  50             push   ax
   ovl1:A3B7  0A7B7  b82b06         mov    ax, 0x62b
   ovl1:A3BA  0A7BA  50             push   ax
-  ovl1:A3BB  0A7BB  e80689         call   rt_2cc4
+  ovl1:A3BB  0A7BB  e80689         call   draw_icon
   ovl1:A3BE  0A7BE  83c406         add    sp, 6
   ovl1:A3C1  0A7C1  b81800         mov    ax, 0x18
   ovl1:A3C4  0A7C4  50             push   ax
@@ -18191,7 +18316,7 @@ ovl1_a489:
   ovl1:A4BD  0A8BD  50             push   ax
   ovl1:A4BE  0A8BE  b82b06         mov    ax, 0x62b
   ovl1:A4C1  0A8C1  50             push   ax
-  ovl1:A4C2  0A8C2  e8ff87         call   rt_2cc4
+  ovl1:A4C2  0A8C2  e8ff87         call   draw_icon
   ovl1:A4C5  0A8C5  83c406         add    sp, 6
   ovl1:A4C8  0A8C8  e8d700         call   ovl1_a5a2
   ovl1:A4CB  0A8CB  e8c5e5         call   menu_poll_key
@@ -18227,7 +18352,7 @@ ovl1_a489:
   ovl1:A515  0A915  50             push   ax
   ovl1:A516  0A916  b82b06         mov    ax, 0x62b
   ovl1:A519  0A919  50             push   ax
-  ovl1:A51A  0A91A  e8a787         call   rt_2cc4
+  ovl1:A51A  0A91A  e8a787         call   draw_icon
   ovl1:A51D  0A91D  83c406         add    sp, 6
   ovl1:A520  0A920  e87f00         call   ovl1_a5a2
   ovl1:A523  0A923  b87017         mov    ax, 0x1770
@@ -18339,7 +18464,7 @@ ovl1_a5f5:
   ovl1:A61C  0AA1C  50             push   ax
   ovl1:A61D  0AA1D  b82b06         mov    ax, 0x62b
   ovl1:A620  0AA20  50             push   ax
-  ovl1:A621  0AA21  e8a086         call   rt_2cc4
+  ovl1:A621  0AA21  e8a086         call   draw_icon
   ovl1:A624  0AA24  83c406         add    sp, 6
   ovl1:A627  0AA27  b81800         mov    ax, 0x18
   ovl1:A62A  0AA2A  50             push   ax
@@ -19139,7 +19264,7 @@ titles_help:
   ovl1:AD8F  0B18F  8b068b64       mov    ax, word ptr [0x648b]
   ovl1:AD93  0B193  05be0c         add    ax, 0xcbe
   ovl1:AD96  0B196  50             push   ax
-  ovl1:AD97  0B197  e82a7f         call   rt_2cc4
+  ovl1:AD97  0B197  e82a7f         call   draw_icon
   ovl1:AD9A  0B19A  83c406         add    sp, 6
   ovl1:AD9D  0B19D  eb6d           jmp    0xae0c
   ovl1:AD9F  0B19F  813e85640700   cmp    word ptr [0x6485], 7
@@ -19159,7 +19284,7 @@ titles_help:
   ovl1:ADC4  0B1C4  8b068b64       mov    ax, word ptr [0x648b]
   ovl1:ADC8  0B1C8  05be0c         add    ax, 0xcbe
   ovl1:ADCB  0B1CB  50             push   ax
-  ovl1:ADCC  0B1CC  e8f57e         call   rt_2cc4
+  ovl1:ADCC  0B1CC  e8f57e         call   draw_icon
   ovl1:ADCF  0B1CF  83c406         add    sp, 6
   ovl1:ADD2  0B1D2  b81700         mov    ax, 0x17
   ovl1:ADD5  0B1D5  50             push   ax
@@ -19304,7 +19429,7 @@ ovl1_ae72:
   ovl1:AF0A  0B30A  50             push   ax
   ovl1:AF0B  0B30B  b84d06         mov    ax, 0x64d
   ovl1:AF0E  0B30E  50             push   ax
-  ovl1:AF0F  0B30F  e8b27d         call   rt_2cc4
+  ovl1:AF0F  0B30F  e8b27d         call   draw_icon
   ovl1:AF12  0B312  83c406         add    sp, 6
   ovl1:AF15  0B315  b81700         mov    ax, 0x17
   ovl1:AF18  0B318  50             push   ax
@@ -19323,7 +19448,7 @@ ovl1_ae72:
   ovl1:AF2F  0B32F  50             push   ax
   ovl1:AF30  0B330  b86f06         mov    ax, 0x66f
   ovl1:AF33  0B333  50             push   ax
-  ovl1:AF34  0B334  e88d7d         call   rt_2cc4
+  ovl1:AF34  0B334  e88d7d         call   draw_icon
   ovl1:AF37  0B337  83c406         add    sp, 6
   ovl1:AF3A  0B33A  b81700         mov    ax, 0x17
   ovl1:AF3D  0B33D  50             push   ax
@@ -19360,7 +19485,7 @@ ovl1_ae72:
   ovl1:AF7E  0B37E  8b068b64       mov    ax, word ptr [0x648b]
   ovl1:AF82  0B382  05360c         add    ax, 0xc36
   ovl1:AF85  0B385  50             push   ax
-  ovl1:AF86  0B386  e83b7d         call   rt_2cc4
+  ovl1:AF86  0B386  e83b7d         call   draw_icon
   ovl1:AF89  0B389  83c406         add    sp, 6
   ovl1:AF8C  0B38C  b81800         mov    ax, 0x18
   ovl1:AF8F  0B38F  50             push   ax
@@ -19380,7 +19505,7 @@ ovl1_ae72:
   ovl1:AFAA  0B3AA  50             push   ax
   ovl1:AFAB  0B3AB  b82b06         mov    ax, 0x62b
   ovl1:AFAE  0B3AE  50             push   ax
-  ovl1:AFAF  0B3AF  e8127d         call   rt_2cc4
+  ovl1:AFAF  0B3AF  e8127d         call   draw_icon
   ovl1:AFB2  0B3B2  83c406         add    sp, 6
   ovl1:AFB5  0B3B5  b81800         mov    ax, 0x18
   ovl1:AFB8  0B3B8  50             push   ax
@@ -20873,7 +20998,7 @@ ovl1_bec5:
   ovl1:BED5  0C2D5  50             push   ax
   ovl1:BED6  0C2D6  b84d06         mov    ax, 0x64d
   ovl1:BED9  0C2D9  50             push   ax
-  ovl1:BEDA  0C2DA  e8e76d         call   rt_2cc4
+  ovl1:BEDA  0C2DA  e8e76d         call   draw_icon
   ovl1:BEDD  0C2DD  83c406         add    sp, 6
   ovl1:BEE0  0C2E0  b81800         mov    ax, 0x18
   ovl1:BEE3  0C2E3  50             push   ax
@@ -20892,7 +21017,7 @@ ovl1_bec5:
   ovl1:BEFA  0C2FA  50             push   ax
   ovl1:BEFB  0C2FB  b86f06         mov    ax, 0x66f
   ovl1:BEFE  0C2FE  50             push   ax
-  ovl1:BEFF  0C2FF  e8c26d         call   rt_2cc4
+  ovl1:BEFF  0C2FF  e8c26d         call   draw_icon
   ovl1:BF02  0C302  8be5           mov    sp, bp
   ovl1:BF04  0C304  5d             pop    bp
   ovl1:BF05  0C305  c3             ret
@@ -23052,7 +23177,7 @@ ovl2_7650:
   ovl2:7756  0D526  8b068964       mov    ax, word ptr [0x6489]
   ovl2:775A  0D52A  055902         add    ax, 0x259
   ovl2:775D  0D52D  50             push   ax
-  ovl2:775E  0D52E  e863b5         call   rt_2cc4
+  ovl2:775E  0D52E  e863b5         call   draw_icon
   ovl2:7761  0D531  83c406         add    sp, 6
   ovl2:7764  0D534  b81800         mov    ax, 0x18
   ovl2:7767  0D537  50             push   ax
@@ -23304,7 +23429,7 @@ ovl2_7992:
   ovl2:79C6  0D796  50             push   ax
   ovl2:79C7  0D797  b82b06         mov    ax, 0x62b
   ovl2:79CA  0D79A  50             push   ax
-  ovl2:79CB  0D79B  e8f6b2         call   rt_2cc4
+  ovl2:79CB  0D79B  e8f6b2         call   draw_icon
   ovl2:79CE  0D79E  83c406         add    sp, 6
   ovl2:79D1  0D7A1  b81800         mov    ax, 0x18
   ovl2:79D4  0D7A4  50             push   ax
@@ -23587,7 +23712,7 @@ ovl2_7ba2:
   ovl2:7C65  0DA35  817efe1700     cmp    word ptr [bp - 2], 0x17
   ovl2:7C6A  0DA3A  7513           jne    0x7c7f
   ovl2:7C6C  0DA3C  e8c38f         call   beep_low
-  ovl2:7C6F  0DA3F  e8d893         call   rt_104a
+  ovl2:7C6F  0DA3F  e8d893         call   erase_squadrons
   ovl2:7C72  0DA42  e8e207         call   ovl2_8457
   ovl2:7C75  0DA45  33c0           xor    ax, ax
   ovl2:7C77  0DA47  89060408       mov    word ptr [0x804], ax
@@ -23609,7 +23734,7 @@ ovl2_7ba2:
   ovl2:7CAF  0DA7F  7403           je     0x7cb4
   ovl2:7CB1  0DA81  e98b00         jmp    0x7d3f
   ovl2:7CB4  0DA84  e87b8f         call   beep_low
-  ovl2:7CB7  0DA87  e89093         call   rt_104a
+  ovl2:7CB7  0DA87  e89093         call   erase_squadrons
   ovl2:7CBA  0DA8A  8b06c75c       mov    ax, word ptr [0x5cc7]
   ovl2:7CBE  0DA8E  be7d5d         mov    si, 0x5d7d
   ovl2:7CC1  0DA91  8b16fb62       mov    dx, word ptr [0x62fb]
@@ -23653,7 +23778,7 @@ ovl2_7ba2:
   ovl2:7D29  0DAF9  d1e2           shl    dx, 1
   ovl2:7D2B  0DAFB  03f2           add    si, dx
   ovl2:7D2D  0DAFD  8904           mov    word ptr [si], ax
-  ovl2:7D2F  0DAFF  e85293         call   rt_1084
+  ovl2:7D2F  0DAFF  e85293         call   redraw_squadrons
   ovl2:7D32  0DB02  e8f6fd         call   ovl2_7b2b
   ovl2:7D35  0DB05  33c0           xor    ax, ax
   ovl2:7D37  0DB07  89060408       mov    word ptr [0x804], ax
@@ -23848,7 +23973,7 @@ sqed_read_key:
   ovl2:7FBF  0DD8F  55             push   bp
   ovl2:7FC0  0DD90  8bec           mov    bp, sp
   ovl2:7FC2  0DD92  83ec02         sub    sp, 2
-  ovl2:7FC5  0DD95  e8c88b         call   rt_0b90
+  ovl2:7FC5  0DD95  e8c88b         call   debug_hook
   ovl2:7FC8  0DD98  b80200         mov    ax, 2
   ovl2:7FCB  0DD9B  89066964       mov    word ptr [0x6469], ax
   ovl2:7FCF  0DD9F  813e04084600   cmp    word ptr [0x804], 0x46
@@ -24187,7 +24312,7 @@ ovl2_8336:
   ovl2:8337  0E107  8bec           mov    bp, sp
   ovl2:8339  0E109  83ec02         sub    sp, 2
   ovl2:833C  0E10C  e8f388         call   beep_low
-  ovl2:833F  0E10F  e8088d         call   rt_104a
+  ovl2:833F  0E10F  e8088d         call   erase_squadrons
   ovl2:8342  0E112  ff36fb62       push   word ptr [0x62fb]
   ovl2:8346  0E116  e8e782         call   list_ships
   ovl2:8349  0E119  5f             pop    di
@@ -24219,7 +24344,7 @@ ovl2_8336:
   ovl2:8388  0E158  d1e2           shl    dx, 1
   ovl2:838A  0E15A  03f2           add    si, dx
   ovl2:838C  0E15C  8904           mov    word ptr [si], ax
-  ovl2:838E  0E15E  e8f38c         call   rt_1084
+  ovl2:838E  0E15E  e8f38c         call   redraw_squadrons
   ovl2:8391  0E161  8be5           mov    sp, bp
   ovl2:8393  0E163  5d             pop    bp
   ovl2:8394  0E164  c3             ret
@@ -24229,7 +24354,7 @@ ovl2_8395:
   ovl2:8395  0E165  55             push   bp
   ovl2:8396  0E166  8bec           mov    bp, sp
   ovl2:8398  0E168  83ec04         sub    sp, 4
-  ovl2:839B  0E16B  e8ac8c         call   rt_104a
+  ovl2:839B  0E16B  e8ac8c         call   erase_squadrons
   ovl2:839E  0E16E  33c0           xor    ax, ax
   ovl2:83A0  0E170  be2d5d         mov    si, 0x5d2d
   ovl2:83A3  0E173  8b16fb62       mov    dx, word ptr [0x62fb]
@@ -24320,7 +24445,7 @@ ovl2_8457:
   ovl2:8478  0E248  50             push   ax
   ovl2:8479  0E249  b8850c         mov    ax, 0xc85
   ovl2:847C  0E24C  50             push   ax
-  ovl2:847D  0E24D  e848a9         call   rt_2dc8
+  ovl2:847D  0E24D  e848a9         call   invert_block
   ovl2:8480  0E250  83c406         add    sp, 6
   ovl2:8483  0E253  e80d8a         call   rt_0e93
   ovl2:8486  0E256  b88813         mov    ax, 0x1388
@@ -24374,7 +24499,7 @@ ovl2_8457:
   ovl2:84F5  0E2C5  f7eb           imul   bx
   ovl2:84F7  0E2C7  05850c         add    ax, 0xc85
   ovl2:84FA  0E2CA  50             push   ax
-  ovl2:84FB  0E2CB  e8caa8         call   rt_2dc8
+  ovl2:84FB  0E2CB  e8caa8         call   invert_block
   ovl2:84FE  0E2CE  83c406         add    sp, 6
   ovl2:8501  0E2D1  ff06cf64       inc    word ptr [0x64cf]
   ovl2:8505  0E2D5  8b06cf64       mov    ax, word ptr [0x64cf]
@@ -24420,7 +24545,7 @@ ovl2_8457:
   ovl2:857B  0E34B  f7eb           imul   bx
   ovl2:857D  0E34D  05850c         add    ax, 0xc85
   ovl2:8580  0E350  50             push   ax
-  ovl2:8581  0E351  e844a8         call   rt_2dc8
+  ovl2:8581  0E351  e844a8         call   invert_block
   ovl2:8584  0E354  83c406         add    sp, 6
   ovl2:8587  0E357  e8a886         call   beep_low
   ovl2:858A  0E35A  33c0           xor    ax, ax
@@ -24468,7 +24593,7 @@ ovl2_8457:
   ovl2:85F4  0E3C4  f7eb           imul   bx
   ovl2:85F6  0E3C6  05850c         add    ax, 0xc85
   ovl2:85F9  0E3C9  50             push   ax
-  ovl2:85FA  0E3CA  e8cba7         call   rt_2dc8
+  ovl2:85FA  0E3CA  e8cba7         call   invert_block
   ovl2:85FD  0E3CD  83c406         add    sp, 6
   ovl2:8600  0E3D0  ff0ecf64       dec    word ptr [0x64cf]
   ovl2:8604  0E3D4  8b06cf64       mov    ax, word ptr [0x64cf]
@@ -24518,7 +24643,7 @@ ovl2_8457:
   ovl2:8688  0E458  f7eb           imul   bx
   ovl2:868A  0E45A  05850c         add    ax, 0xc85
   ovl2:868D  0E45D  50             push   ax
-  ovl2:868E  0E45E  e837a7         call   rt_2dc8
+  ovl2:868E  0E45E  e837a7         call   invert_block
   ovl2:8691  0E461  83c406         add    sp, 6
   ovl2:8694  0E464  e89b85         call   beep_low
   ovl2:8697  0E467  33c0           xor    ax, ax
@@ -24559,7 +24684,7 @@ ovl2_8457:
   ovl2:86F6  0E4C6  f7eb           imul   bx
   ovl2:86F8  0E4C8  05850c         add    ax, 0xc85
   ovl2:86FB  0E4CB  50             push   ax
-  ovl2:86FC  0E4CC  e8c9a6         call   rt_2dc8
+  ovl2:86FC  0E4CC  e8c9a6         call   invert_block
   ovl2:86FF  0E4CF  83c406         add    sp, 6
   ovl2:8702  0E4D2  b80100         mov    ax, 1
   ovl2:8705  0E4D5  50             push   ax
@@ -24599,7 +24724,7 @@ ovl2_8457:
   ovl2:8761  0E531  f7eb           imul   bx
   ovl2:8763  0E533  05850c         add    ax, 0xc85
   ovl2:8766  0E536  50             push   ax
-  ovl2:8767  0E537  e85ea6         call   rt_2dc8
+  ovl2:8767  0E537  e85ea6         call   invert_block
   ovl2:876A  0E53A  83c406         add    sp, 6
   ovl2:876D  0E53D  e83c06         call   ovl2_8dac
   ovl2:8770  0E540  8a46fc         mov    al, byte ptr [bp - 4]
@@ -24987,7 +25112,7 @@ ovl2_8457:
   ovl2:8AF8  0E8C8  f7eb           imul   bx
   ovl2:8AFA  0E8CA  05850c         add    ax, 0xc85
   ovl2:8AFD  0E8CD  50             push   ax
-  ovl2:8AFE  0E8CE  e8c7a2         call   rt_2dc8
+  ovl2:8AFE  0E8CE  e8c7a2         call   invert_block
   ovl2:8B01  0E8D1  83c406         add    sp, 6
   ovl2:8B04  0E8D4  ff0ed364       dec    word ptr [0x64d3]
   ovl2:8B08  0E8D8  e99001         jmp    0x8c9b
@@ -25182,7 +25307,7 @@ ovl2_8457:
   ovl2:8CCD  0EA9D  03f2           add    si, dx
   ovl2:8CCF  0EA9F  8904           mov    word ptr [si], ax
   ovl2:8CD1  0EAA1  e8beec         call   ovl2_7992
-  ovl2:8CD4  0EAA4  e8ad83         call   rt_1084
+  ovl2:8CD4  0EAA4  e8ad83         call   redraw_squadrons
   ovl2:8CD7  0EAA7  ff365964       push   word ptr [0x6459]
   ovl2:8CDB  0EAAB  e8379a         call   rt_2715
   ovl2:8CDE  0EAAE  8be5           mov    sp, bp
@@ -25315,7 +25440,7 @@ ovl2_8dac:
   ovl2:8DED  0EBBD  50             push   ax
   ovl2:8DEE  0EBBE  b84d06         mov    ax, 0x64d
   ovl2:8DF1  0EBC1  50             push   ax
-  ovl2:8DF2  0EBC2  e8cf9e         call   rt_2cc4
+  ovl2:8DF2  0EBC2  e8cf9e         call   draw_icon
   ovl2:8DF5  0EBC5  83c406         add    sp, 6
   ovl2:8DF8  0EBC8  b83d00         mov    ax, 0x3d
   ovl2:8DFB  0EBCB  50             push   ax
@@ -25323,7 +25448,7 @@ ovl2_8dac:
   ovl2:8DFE  0EBCE  50             push   ax
   ovl2:8DFF  0EBCF  b86f06         mov    ax, 0x66f
   ovl2:8E02  0EBD2  50             push   ax
-  ovl2:8E03  0EBD3  e8be9e         call   rt_2cc4
+  ovl2:8E03  0EBD3  e8be9e         call   draw_icon
   ovl2:8E06  0EBD6  8be5           mov    sp, bp
   ovl2:8E08  0EBD8  5d             pop    bp
   ovl2:8E09  0EBD9  c3             ret
@@ -25377,7 +25502,7 @@ ovl2_8e0a:
   ovl2:8E6A  0EC3A  50             push   ax
   ovl2:8E6B  0EC3B  b84d06         mov    ax, 0x64d
   ovl2:8E6E  0EC3E  50             push   ax
-  ovl2:8E6F  0EC3F  e8529e         call   rt_2cc4
+  ovl2:8E6F  0EC3F  e8529e         call   draw_icon
   ovl2:8E72  0EC42  83c406         add    sp, 6
   ovl2:8E75  0EC45  b82400         mov    ax, 0x24
   ovl2:8E78  0EC48  50             push   ax
@@ -25385,7 +25510,7 @@ ovl2_8e0a:
   ovl2:8E7B  0EC4B  50             push   ax
   ovl2:8E7C  0EC4C  b86f06         mov    ax, 0x66f
   ovl2:8E7F  0EC4F  50             push   ax
-  ovl2:8E80  0EC50  e8419e         call   rt_2cc4
+  ovl2:8E80  0EC50  e8419e         call   draw_icon
   ovl2:8E83  0EC53  8be5           mov    sp, bp
   ovl2:8E85  0EC55  5d             pop    bp
   ovl2:8E86  0EC56  c3             ret
@@ -25405,7 +25530,7 @@ ovl2_8e87:
   ovl2:8E9A  0EC6A  50             push   ax
   ovl2:8E9B  0EC6B  b84d06         mov    ax, 0x64d
   ovl2:8E9E  0EC6E  50             push   ax
-  ovl2:8E9F  0EC6F  e8229e         call   rt_2cc4
+  ovl2:8E9F  0EC6F  e8229e         call   draw_icon
   ovl2:8EA2  0EC72  83c406         add    sp, 6
   ovl2:8EA5  0EC75  b80400         mov    ax, 4
   ovl2:8EA8  0EC78  50             push   ax
@@ -25413,7 +25538,7 @@ ovl2_8e87:
   ovl2:8EAB  0EC7B  50             push   ax
   ovl2:8EAC  0EC7C  b86f06         mov    ax, 0x66f
   ovl2:8EAF  0EC7F  50             push   ax
-  ovl2:8EB0  0EC80  e8119e         call   rt_2cc4
+  ovl2:8EB0  0EC80  e8119e         call   draw_icon
   ovl2:8EB3  0EC83  83c406         add    sp, 6
   ovl2:8EB6  0EC86  b83600         mov    ax, 0x36
   ovl2:8EB9  0EC89  50             push   ax
@@ -25421,7 +25546,7 @@ ovl2_8e87:
   ovl2:8EBC  0EC8C  50             push   ax
   ovl2:8EBD  0EC8D  b82b06         mov    ax, 0x62b
   ovl2:8EC0  0EC90  50             push   ax
-  ovl2:8EC1  0EC91  e8009e         call   rt_2cc4
+  ovl2:8EC1  0EC91  e8009e         call   draw_icon
   ovl2:8EC4  0EC94  83c406         add    sp, 6
   ovl2:8EC7  0EC97  b81800         mov    ax, 0x18
   ovl2:8ECA  0EC9A  50             push   ax
@@ -25460,7 +25585,7 @@ ovl2_8ee2:
   ovl2:8F06  0ECD6  50             push   ax
   ovl2:8F07  0ECD7  b84d06         mov    ax, 0x64d
   ovl2:8F0A  0ECDA  50             push   ax
-  ovl2:8F0B  0ECDB  e8b69d         call   rt_2cc4
+  ovl2:8F0B  0ECDB  e8b69d         call   draw_icon
   ovl2:8F0E  0ECDE  83c406         add    sp, 6
   ovl2:8F11  0ECE1  b83000         mov    ax, 0x30
   ovl2:8F14  0ECE4  50             push   ax
@@ -25468,7 +25593,7 @@ ovl2_8ee2:
   ovl2:8F17  0ECE7  50             push   ax
   ovl2:8F18  0ECE8  b86f06         mov    ax, 0x66f
   ovl2:8F1B  0ECEB  50             push   ax
-  ovl2:8F1C  0ECEC  e8a59d         call   rt_2cc4
+  ovl2:8F1C  0ECEC  e8a59d         call   draw_icon
   ovl2:8F1F  0ECEF  83c406         add    sp, 6
   ovl2:8F22  0ECF2  b83600         mov    ax, 0x36
   ovl2:8F25  0ECF5  50             push   ax
@@ -25476,7 +25601,7 @@ ovl2_8ee2:
   ovl2:8F28  0ECF8  50             push   ax
   ovl2:8F29  0ECF9  b82b06         mov    ax, 0x62b
   ovl2:8F2C  0ECFC  50             push   ax
-  ovl2:8F2D  0ECFD  e8949d         call   rt_2cc4
+  ovl2:8F2D  0ECFD  e8949d         call   draw_icon
   ovl2:8F30  0ED00  83c406         add    sp, 6
   ovl2:8F33  0ED03  b81800         mov    ax, 0x18
   ovl2:8F36  0ED06  50             push   ax
@@ -26081,7 +26206,7 @@ ovl2_9443:
   ovl2:9492  0F262  b002           mov    al, 2
   ovl2:9494  0F264  50             push   ax
   ovl2:9495  0F265  ff76fe         push   word ptr [bp - 2]
-  ovl2:9498  0F268  e82d99         call   rt_2dc8
+  ovl2:9498  0F268  e82d99         call   invert_block
   ovl2:949B  0F26B  8be5           mov    sp, bp
   ovl2:949D  0F26D  5d             pop    bp
   ovl2:949E  0F26E  c3             ret
@@ -26369,7 +26494,7 @@ ovl3_7650:
   ovl3:7790  0F510  50             push   ax
   ovl3:7791  0F511  b82b06         mov    ax, 0x62b
   ovl3:7794  0F514  50             push   ax
-  ovl3:7795  0F515  e82cb5         call   rt_2cc4
+  ovl3:7795  0F515  e82cb5         call   draw_icon
   ovl3:7798  0F518  83c406         add    sp, 6
   ovl3:779B  0F51B  b82900         mov    ax, 0x29
   ovl3:779E  0F51E  50             push   ax
@@ -26378,7 +26503,7 @@ ovl3_7650:
   ovl3:77A2  0F522  8b068964       mov    ax, word ptr [0x6489]
   ovl3:77A6  0F526  05f600         add    ax, 0xf6
   ovl3:77A9  0F529  50             push   ax
-  ovl3:77AA  0F52A  e817b5         call   rt_2cc4
+  ovl3:77AA  0F52A  e817b5         call   draw_icon
   ovl3:77AD  0F52D  83c406         add    sp, 6
   ovl3:77B0  0F530  b86300         mov    ax, 0x63
   ovl3:77B3  0F533  89065b64       mov    word ptr [0x645b], ax
@@ -26721,7 +26846,7 @@ ovl3_7aa4:
   ovl3:7AB4  0F834  50             push   ax
   ovl3:7AB5  0F835  b84d06         mov    ax, 0x64d
   ovl3:7AB8  0F838  50             push   ax
-  ovl3:7AB9  0F839  e808b2         call   rt_2cc4
+  ovl3:7AB9  0F839  e808b2         call   draw_icon
   ovl3:7ABC  0F83C  83c406         add    sp, 6
   ovl3:7ABF  0F83F  b80600         mov    ax, 6
   ovl3:7AC2  0F842  50             push   ax
@@ -26729,7 +26854,7 @@ ovl3_7aa4:
   ovl3:7AC5  0F845  50             push   ax
   ovl3:7AC6  0F846  b86f06         mov    ax, 0x66f
   ovl3:7AC9  0F849  50             push   ax
-  ovl3:7ACA  0F84A  e8f7b1         call   rt_2cc4
+  ovl3:7ACA  0F84A  e8f7b1         call   draw_icon
   ovl3:7ACD  0F84D  83c406         add    sp, 6
   ovl3:7AD0  0F850  b81600         mov    ax, 0x16
   ovl3:7AD3  0F853  50             push   ax
@@ -26748,7 +26873,7 @@ ovl3_7aa4:
   ovl3:7AEA  0F86A  b0c0           mov    al, 0xc0
   ovl3:7AEC  0F86C  50             push   ax
   ovl3:7AED  0F86D  ff36ae65       push   word ptr [0x65ae]
-  ovl3:7AF1  0F871  e8d0b1         call   rt_2cc4
+  ovl3:7AF1  0F871  e8d0b1         call   draw_icon
   ovl3:7AF4  0F874  83c406         add    sp, 6
   ovl3:7AF7  0F877  b81800         mov    ax, 0x18
   ovl3:7AFA  0F87A  50             push   ax
@@ -26766,7 +26891,7 @@ ovl3_7aa4:
   ovl3:7B0F  0F88F  b0c0           mov    al, 0xc0
   ovl3:7B11  0F891  50             push   ax
   ovl3:7B12  0F892  ff36b065       push   word ptr [0x65b0]
-  ovl3:7B16  0F896  e8abb1         call   rt_2cc4
+  ovl3:7B16  0F896  e8abb1         call   draw_icon
   ovl3:7B19  0F899  83c406         add    sp, 6
   ovl3:7B1C  0F89C  b83500         mov    ax, 0x35
   ovl3:7B1F  0F89F  50             push   ax
@@ -26774,7 +26899,7 @@ ovl3_7aa4:
   ovl3:7B22  0F8A2  50             push   ax
   ovl3:7B23  0F8A3  b82b06         mov    ax, 0x62b
   ovl3:7B26  0F8A6  50             push   ax
-  ovl3:7B27  0F8A7  e89ab1         call   rt_2cc4
+  ovl3:7B27  0F8A7  e89ab1         call   draw_icon
   ovl3:7B2A  0F8AA  83c406         add    sp, 6
   ovl3:7B2D  0F8AD  b81800         mov    ax, 0x18
   ovl3:7B30  0F8B0  50             push   ax
@@ -27055,7 +27180,7 @@ mapmk_read_key:
   ovl3:7E44  0FBC4  55             push   bp
   ovl3:7E45  0FBC5  8bec           mov    bp, sp
   ovl3:7E47  0FBC7  83ec02         sub    sp, 2
-  ovl3:7E4A  0FBCA  e8438d         call   rt_0b90
+  ovl3:7E4A  0FBCA  e8438d         call   debug_hook
   ovl3:7E4D  0FBCD  b86400         mov    ax, 0x64
   ovl3:7E50  0FBD0  89066964       mov    word ptr [0x6469], ax
   ovl3:7E54  0FBD4  8b060408       mov    ax, word ptr [0x804]
@@ -27382,7 +27507,7 @@ ovl3_8146:
   ovl3:8169  0FEE9  8a04           mov    al, byte ptr [si]
   ovl3:816B  0FEEB  98             cwde
   ovl3:816C  0FEEC  50             push   ax
-  ovl3:816D  0FEED  e83693         call   tile_is_battle_p7
+  ovl3:816D  0FEED  e83693         call   tile_is_land
   ovl3:8170  0FEF0  5f             pop    di
   ovl3:8171  0FEF1  0bc0           or     ax, ax
   ovl3:8173  0FEF3  7411           je     0x8186
@@ -27401,7 +27526,7 @@ ovl3_8146:
   ovl3:8192  0FF12  8904           mov    word ptr [si], ax
   ovl3:8194  0FF14  ff46f2         inc    word ptr [bp - 0xe]
   ovl3:8197  0FF17  ebc3           jmp    0x815c
-  ovl3:8199  0FF19  e887a3         call   rt_2523
+  ovl3:8199  0FF19  e887a3         call   coast_init
   ovl3:819C  0FF1C  33c0           xor    ax, ax
   ovl3:819E  0FF1E  8946fe         mov    word ptr [bp - 2], ax
   ovl3:81A1  0FF21  817efec800     cmp    word ptr [bp - 2], 0xc8
@@ -27416,19 +27541,19 @@ ovl3_8146:
   ovl3:81B9  0FF39  7403           je     0x81be
   ovl3:81BB  0FF3B  e90102         jmp    0x83bf
   ovl3:81BE  0FF3E  ff76fe         push   word ptr [bp - 2]
-  ovl3:81C1  0FF41  e8e498         call   rt_1aa8
+  ovl3:81C1  0FF41  e8e498         call   repair_port_beside
   ovl3:81C4  0FF44  5f             pop    di
   ovl3:81C5  0FF45  83f8ff         cmp    ax, -1
   ovl3:81C8  0FF48  7530           jne    0x81fa
   ovl3:81CA  0FF4A  ff76fe         push   word ptr [bp - 2]
-  ovl3:81CD  0FF4D  e80698         call   rt_19d6
+  ovl3:81CD  0FF4D  e80698         call   supply_port_beside
   ovl3:81D0  0FF50  5f             pop    di
   ovl3:81D1  0FF51  83f8ff         cmp    ax, -1
   ovl3:81D4  0FF54  7524           jne    0x81fa
   ovl3:81D6  0FF56  33c0           xor    ax, ax
   ovl3:81D8  0FF58  50             push   ax
   ovl3:81D9  0FF59  ff76fe         push   word ptr [bp - 2]
-  ovl3:81DC  0FF5C  e89e99         call   rt_1b7d
+  ovl3:81DC  0FF5C  e89e99         call   crown_beside
   ovl3:81DF  0FF5F  5f             pop    di
   ovl3:81E0  0FF60  5f             pop    di
   ovl3:81E1  0FF61  83f8ff         cmp    ax, -1
@@ -27436,7 +27561,7 @@ ovl3_8146:
   ovl3:81E6  0FF66  b8ffff         mov    ax, 0xffff
   ovl3:81E9  0FF69  50             push   ax
   ovl3:81EA  0FF6A  ff76fe         push   word ptr [bp - 2]
-  ovl3:81ED  0FF6D  e88d99         call   rt_1b7d
+  ovl3:81ED  0FF6D  e88d99         call   crown_beside
   ovl3:81F0  0FF70  5f             pop    di
   ovl3:81F1  0FF71  5f             pop    di
   ovl3:81F2  0FF72  83f8ff         cmp    ax, -1
@@ -27521,7 +27646,7 @@ ovl3_8146:
   ovl3:82B4  10034  ff76f2         push   word ptr [bp - 0xe]
   ovl3:82B7  10037  ff76f8         push   word ptr [bp - 8]
   ovl3:82BA  1003A  ff76f4         push   word ptr [bp - 0xc]
-  ovl3:82BD  1003D  e8509b         call   rt_1e10
+  ovl3:82BD  1003D  e8509b         call   way_blocked
   ovl3:82C0  10040  83c406         add    sp, 6
   ovl3:82C3  10043  0bc0           or     ax, ax
   ovl3:82C5  10045  7403           je     0x82ca
@@ -27581,7 +27706,7 @@ ovl3_8146:
   ovl3:8362  100E2  50             push   ax
   ovl3:8363  100E3  ff76f6         push   word ptr [bp - 0xa]
   ovl3:8366  100E6  ff76f4         push   word ptr [bp - 0xc]
-  ovl3:8369  100E9  e8889b         call   rt_1ef4
+  ovl3:8369  100E9  e8889b         call   coast_pass
   ovl3:836C  100EC  83c406         add    sp, 6
   ovl3:836F  100EF  0bc0           or     ax, ax
   ovl3:8371  100F1  7531           jne    0x83a4
@@ -27663,7 +27788,7 @@ ovl3_8146:
   ovl3:8433  101B3  8a04           mov    al, byte ptr [si]
   ovl3:8435  101B5  98             cwde
   ovl3:8436  101B6  50             push   ax
-  ovl3:8437  101B7  e8b693         call   rt_17f0
+  ovl3:8437  101B7  e8b693         call   coast_c
   ovl3:843A  101BA  5f             pop    di
   ovl3:843B  101BB  0bc0           or     ax, ax
   ovl3:843D  101BD  7515           jne    0x8454
@@ -27672,7 +27797,7 @@ ovl3_8146:
   ovl3:8445  101C5  8a04           mov    al, byte ptr [si]
   ovl3:8447  101C7  98             cwde
   ovl3:8448  101C8  50             push   ax
-  ovl3:8449  101C9  e86094         call   rt_18ac
+  ovl3:8449  101C9  e86094         call   coast_d
   ovl3:844C  101CC  5f             pop    di
   ovl3:844D  101CD  0bc0           or     ax, ax
   ovl3:844F  101CF  7503           jne    0x8454
@@ -27694,7 +27819,7 @@ ovl3_8146:
   ovl3:847A  101FA  8a04           mov    al, byte ptr [si]
   ovl3:847C  101FC  98             cwde
   ovl3:847D  101FD  50             push   ax
-  ovl3:847E  101FE  e86792         call   rt_16e8
+  ovl3:847E  101FE  e86792         call   coast_a
   ovl3:8481  10201  5f             pop    di
   ovl3:8482  10202  0bc0           or     ax, ax
   ovl3:8484  10204  7515           jne    0x849b
@@ -27703,7 +27828,7 @@ ovl3_8146:
   ovl3:848C  1020C  8a04           mov    al, byte ptr [si]
   ovl3:848E  1020E  98             cwde
   ovl3:848F  1020F  50             push   ax
-  ovl3:8490  10210  e8d992         call   rt_176c
+  ovl3:8490  10210  e8d992         call   coast_b
   ovl3:8493  10213  5f             pop    di
   ovl3:8494  10214  0bc0           or     ax, ax
   ovl3:8496  10216  7503           jne    0x849b
@@ -27725,7 +27850,7 @@ ovl3_8146:
   ovl3:84BF  1023F  8a04           mov    al, byte ptr [si]
   ovl3:84C1  10241  98             cwde
   ovl3:84C2  10242  50             push   ax
-  ovl3:84C3  10243  e82292         call   rt_16e8
+  ovl3:84C3  10243  e82292         call   coast_a
   ovl3:84C6  10246  5f             pop    di
   ovl3:84C7  10247  0bc0           or     ax, ax
   ovl3:84C9  10249  7514           jne    0x84df
@@ -27734,7 +27859,7 @@ ovl3_8146:
   ovl3:84D1  10251  8a04           mov    al, byte ptr [si]
   ovl3:84D3  10253  98             cwde
   ovl3:84D4  10254  50             push   ax
-  ovl3:84D5  10255  e81893         call   rt_17f0
+  ovl3:84D5  10255  e81893         call   coast_c
   ovl3:84D8  10258  5f             pop    di
   ovl3:84D9  10259  0bc0           or     ax, ax
   ovl3:84DB  1025B  7502           jne    0x84df
@@ -27756,7 +27881,7 @@ ovl3_8146:
   ovl3:8503  10283  8a04           mov    al, byte ptr [si]
   ovl3:8505  10285  98             cwde
   ovl3:8506  10286  50             push   ax
-  ovl3:8507  10287  e86292         call   rt_176c
+  ovl3:8507  10287  e86292         call   coast_b
   ovl3:850A  1028A  5f             pop    di
   ovl3:850B  1028B  0bc0           or     ax, ax
   ovl3:850D  1028D  7514           jne    0x8523
@@ -27765,7 +27890,7 @@ ovl3_8146:
   ovl3:8515  10295  8a04           mov    al, byte ptr [si]
   ovl3:8517  10297  98             cwde
   ovl3:8518  10298  50             push   ax
-  ovl3:8519  10299  e89093         call   rt_18ac
+  ovl3:8519  10299  e89093         call   coast_d
   ovl3:851C  1029C  5f             pop    di
   ovl3:851D  1029D  0bc0           or     ax, ax
   ovl3:851F  1029F  7502           jne    0x8523
@@ -27925,7 +28050,7 @@ campaign_play:
   ovl4:7670  103A0  c3             ret
   ovl4:7671  103A1  b80100         mov    ax, 1
   ovl4:7674  103A4  50             push   ax
-  ovl4:7675  103A5  e8e04f         call   ovl4_c658
+  ovl4:7675  103A5  e8e04f         call   wind_change
   ovl4:7678  103A8  5f             pop    di
   ovl4:7679  103A9  b87303         mov    ax, 0x373                    ; DS:0373 "You"
   ovl4:767C  103AC  50             push   ax
@@ -27955,10 +28080,10 @@ campaign_play:
   ovl4:76B8  103E8  89065d64       mov    word ptr [0x645d], ax
   ovl4:76BC  103EC  b002           mov    al, 2
   ovl4:76BE  103EE  89065b64       mov    word ptr [0x645b], ax
-  ovl4:76C2  103F2  e85eae         call   rt_2523
-  ovl4:76C5  103F5  e83d71         call   ovl4_e805
-  ovl4:76C8  103F8  e88673         call   ovl4_ea51
-  ovl4:76CB  103FB  e87c99         call   rt_104a
+  ovl4:76C2  103F2  e85eae         call   coast_init
+  ovl4:76C5  103F5  e83d71         call   strength_map
+  ovl4:76C8  103F8  e88673         call   port_value_map
+  ovl4:76CB  103FB  e87c99         call   erase_squadrons
   ovl4:76CE  103FE  8b066564       mov    ax, word ptr [0x6465]
   ovl4:76D2  10402  0bc0           or     ax, ax
   ovl4:76D4  10404  7503           jne    0x76d9
@@ -27967,9 +28092,9 @@ campaign_play:
   ovl4:76DC  1040C  89060163       mov    word ptr [0x6301], ax
   ovl4:76E0  10410  89060363       mov    word ptr [0x6303], ax
   ovl4:76E4  10414  89060563       mov    word ptr [0x6305], ax
-  ovl4:76E8  10418  e8de4c         call   ovl4_c3c9
+  ovl4:76E8  10418  e8de4c         call   flags_check
   ovl4:76EB  1041B  e8a64c         call   play_end_sound
-  ovl4:76EE  1041E  e88b49         call   ovl4_c07c
+  ovl4:76EE  1041E  e88b49         call   port_sources
   ovl4:76F1  10421  e8a650         call   ovl4_c79a
   ovl4:76F4  10424  33c0           xor    ax, ax
   ovl4:76F6  10426  8946f6         mov    word ptr [bp - 0xa], ax
@@ -27995,7 +28120,7 @@ campaign_play:
   ovl4:7728  10458  98             cwde
   ovl4:7729  10459  8946f8         mov    word ptr [bp - 8], ax
   ovl4:772C  1045C  ff76f8         push   word ptr [bp - 8]
-  ovl4:772F  1045F  e8749d         call   tile_is_battle_p7
+  ovl4:772F  1045F  e8749d         call   tile_is_land
   ovl4:7732  10462  5f             pop    di
   ovl4:7733  10463  0bc0           or     ax, ax
   ovl4:7735  10465  741f           je     0x7756
@@ -28023,7 +28148,7 @@ campaign_play:
   ovl4:7771  104A1  8b04           mov    ax, word ptr [si]
   ovl4:7773  104A3  0346f8         add    ax, word ptr [bp - 8]
   ovl4:7776  104A6  50             push   ax
-  ovl4:7777  104A7  e8ceb6         call   rt_2e48
+  ovl4:7777  104A7  e8ceb6         call   buf_byte_is
   ovl4:777A  104AA  5f             pop    di
   ovl4:777B  104AB  5f             pop    di
   ovl4:777C  104AC  0bc0           or     ax, ax
@@ -28037,7 +28162,7 @@ campaign_play:
   ovl4:778E  104BE  8b04           mov    ax, word ptr [si]
   ovl4:7790  104C0  0346f8         add    ax, word ptr [bp - 8]
   ovl4:7793  104C3  50             push   ax
-  ovl4:7794  104C4  e8b1b6         call   rt_2e48
+  ovl4:7794  104C4  e8b1b6         call   buf_byte_is
   ovl4:7797  104C7  5f             pop    di
   ovl4:7798  104C8  5f             pop    di
   ovl4:7799  104C9  0bc0           or     ax, ax
@@ -28085,13 +28210,13 @@ campaign_play:
   ovl4:7809  10539  7407           je     0x7812
   ovl4:780B  1053B  b84a00         mov    ax, 0x4a
   ovl4:780E  1053E  89069668       mov    word ptr [0x6896], ax
-  ovl4:7812  10542  e88249         call   ovl4_c197
+  ovl4:7812  10542  e88249         call   port_supplies
   ovl4:7815  10545  8b06b865       mov    ax, word ptr [0x65b8]
   ovl4:7819  10549  0bc0           or     ax, ax
   ovl4:781B  1054B  751b           jne    0x7838
   ovl4:781D  1054D  ff360163       push   word ptr [0x6301]
   ovl4:7821  10551  ff360363       push   word ptr [0x6303]
-  ovl4:7825  10555  e82726         call   ovl4_9e4f
+  ovl4:7825  10555  e82726         call   end_check
   ovl4:7828  10558  5f             pop    di
   ovl4:7829  10559  5f             pop    di
   ovl4:782A  1055A  8946f6         mov    word ptr [bp - 0xa], ax
@@ -28124,7 +28249,7 @@ campaign_play:
   ovl4:786B  1059B  8b060163       mov    ax, word ptr [0x6301]
   ovl4:786F  1059F  8906ff62       mov    word ptr [0x62ff], ax
   ovl4:7873  105A3  e80d75         call   ovl4_ed83
-  ovl4:7876  105A6  e80b98         call   rt_1084
+  ovl4:7876  105A6  e80b98         call   redraw_squadrons
   ovl4:7879  105A9  33c0           xor    ax, ax
   ovl4:787B  105AB  89068c68       mov    word ptr [0x688c], ax
   ovl4:787F  105AF  89068d64       mov    word ptr [0x648d], ax
@@ -28151,7 +28276,7 @@ campaign_play:
   ovl4:78AB  105DB  50             push   ax
   ovl4:78AC  105DC  e8e093         call   rt_0c8f
   ovl4:78AF  105DF  83c410         add    sp, 0x10
-  ovl4:78B2  105E2  e86749         call   ovl4_c21c
+  ovl4:78B2  105E2  e86749         call   invert_empty_ports
   ovl4:78B5  105E5  33c0           xor    ax, ax
   ovl4:78B7  105E7  50             push   ax
   ovl4:78B8  105E8  e80793         call   text_rows_add
@@ -28166,7 +28291,7 @@ campaign_play:
   ovl4:78D0  10600  89061463       mov    word ptr [0x6314], ax
   ovl4:78D4  10604  33c0           xor    ax, ax
   ovl4:78D6  10606  50             push   ax
-  ovl4:78D7  10607  e87e4d         call   ovl4_c658
+  ovl4:78D7  10607  e87e4d         call   wind_change
   ovl4:78DA  1060A  5f             pop    di
   ovl4:78DB  1060B  ff365964       push   word ptr [0x6459]
   ovl4:78DF  1060F  e833ae         call   rt_2715
@@ -28181,7 +28306,7 @@ campaign_play:
   ovl4:78F5  10625  e8000d         call   key_waiting
   ovl4:78F8  10628  0bc0           or     ax, ax
   ovl4:78FA  1062A  7511           jne    0x790d
-  ovl4:78FC  1062C  e8df15         call   ovl4_8ede
+  ovl4:78FC  1062C  e8df15         call   map_battles
   ovl4:78FF  1062F  8946f6         mov    word ptr [bp - 0xa], ax
   ovl4:7902  10632  0bc0           or     ax, ax
   ovl4:7904  10634  7407           je     0x790d
@@ -28223,7 +28348,7 @@ campaign_play:
   ovl4:796C  1069C  7c05           jl     0x7973
   ovl4:796E  1069E  33c0           xor    ax, ax
   ovl4:7970  106A0  8946fe         mov    word ptr [bp - 2], ax
-  ovl4:7973  106A3  e85712         call   ovl4_8bcd
+  ovl4:7973  106A3  e85712         call   encounters
   ovl4:7976  106A6  8946f6         mov    word ptr [bp - 0xa], ax
   ovl4:7979  106A9  0bc0           or     ax, ax
   ovl4:797B  106AB  7407           je     0x7984
@@ -28248,7 +28373,7 @@ campaign_play:
   ovl4:79AC  106DC  e9d400         jmp    0x7a83
   ovl4:79AF  106DF  ff46f6         inc    word ptr [bp - 0xa]
   ovl4:79B2  106E2  ebdf           jmp    0x7993
-  ovl4:79B4  106E4  e8e91c         call   ovl4_96a0
+  ovl4:79B4  106E4  e8e91c         call   move_squadrons
   ovl4:79B7  106E7  8946f6         mov    word ptr [bp - 0xa], ax
   ovl4:79BA  106EA  0bc0           or     ax, ax
   ovl4:79BC  106EC  7407           je     0x79c5
@@ -28261,7 +28386,7 @@ campaign_play:
   ovl4:79CA  106FA  7403           je     0x79cf
   ovl4:79CC  106FC  e9b400         jmp    0x7a83
   ovl4:79CF  106FF  ff76fe         push   word ptr [bp - 2]
-  ovl4:79D2  10702  e87019         call   ovl4_9345
+  ovl4:79D2  10702  e87019         call   eat
   ovl4:79D5  10705  5f             pop    di
   ovl4:79D6  10706  ff46fe         inc    word ptr [bp - 2]
   ovl4:79D9  10709  8b46fe         mov    ax, word ptr [bp - 2]
@@ -28270,7 +28395,7 @@ campaign_play:
   ovl4:79E1  10711  33c0           xor    ax, ax
   ovl4:79E3  10713  8946fe         mov    word ptr [bp - 2], ax
   ovl4:79E6  10716  ff76fe         push   word ptr [bp - 2]
-  ovl4:79E9  10719  e85919         call   ovl4_9345
+  ovl4:79E9  10719  e85919         call   eat
   ovl4:79EC  1071C  5f             pop    di
   ovl4:79ED  1071D  e8080c         call   key_waiting
   ovl4:79F0  10720  0bc0           or     ax, ax
@@ -28281,10 +28406,10 @@ campaign_play:
   ovl4:79FF  1072F  e80bb5         call   random
   ovl4:7A02  10732  83f84b         cmp    ax, 0x4b
   ovl4:7A05  10735  7d03           jge    0x7a0a
-  ovl4:7A07  10737  e8c842         call   ovl4_bcd2
+  ovl4:7A07  10737  e8c842         call   restock_ports
   ovl4:7A0A  1073A  813e8a681400   cmp    word ptr [0x688a], 0x14
   ovl4:7A10  10740  750e           jne    0x7a20
-  ovl4:7A12  10742  e8054b         call   ovl4_c51a
+  ovl4:7A12  10742  e8054b         call   crowns_check
   ovl4:7A15  10745  0bc0           or     ax, ax
   ovl4:7A17  10747  7407           je     0x7a20
   ovl4:7A19  10749  b80100         mov    ax, 1
@@ -28311,7 +28436,7 @@ campaign_play:
   ovl4:7A57  10787  7d07           jge    0x7a60
   ovl4:7A59  10789  33c0           xor    ax, ax
   ovl4:7A5B  1078B  50             push   ax
-  ovl4:7A5C  1078C  e8f94b         call   ovl4_c658
+  ovl4:7A5C  1078C  e8f94b         call   wind_change
   ovl4:7A5F  1078F  5f             pop    di
   ovl4:7A60  10790  813e8a681e00   cmp    word ptr [0x688a], 0x1e
   ovl4:7A66  10796  7e1b           jle    0x7a83
@@ -28323,7 +28448,7 @@ campaign_play:
   ovl4:7A76  107A6  89069068       mov    word ptr [0x6890], ax
   ovl4:7A7A  107AA  33c0           xor    ax, ax
   ovl4:7A7C  107AC  89068a68       mov    word ptr [0x688a], ax
-  ovl4:7A80  107B0  e8826d         call   ovl4_e805
+  ovl4:7A80  107B0  e8826d         call   strength_map
   ovl4:7A83  107B3  e8df00         call   campaign_input
   ovl4:7A86  107B6  8946f6         mov    word ptr [bp - 0xa], ax
   ovl4:7A89  107B9  83f801         cmp    ax, 1
@@ -28709,7 +28834,7 @@ campaign_input:
   ovl4:7E4D  10B7D  7409           je     0x7e58
   ovl4:7E4F  10B7F  33c0           xor    ax, ax
   ovl4:7E51  10B81  89065f64       mov    word ptr [0x645f], ax
-  ovl4:7E55  10B85  e8ef24         call   ovl4_a347
+  ovl4:7E55  10B85  e8ef24         call   detach_join
   ovl4:7E58  10B88  813e96682400   cmp    word ptr [0x6896], 0x24
   ovl4:7E5E  10B8E  7542           jne    0x7ea2
   ovl4:7E60  10B90  bedd5c         mov    si, 0x5cdd
@@ -28735,7 +28860,7 @@ campaign_input:
   ovl4:7E96  10BC6  7e0a           jle    0x7ea2
   ovl4:7E98  10BC8  b80100         mov    ax, 1
   ovl4:7E9B  10BCB  89065f64       mov    word ptr [0x645f], ax
-  ovl4:7E9F  10BCF  e8a524         call   ovl4_a347
+  ovl4:7E9F  10BCF  e8a524         call   detach_join
   ovl4:7EA2  10BD2  813e96682c00   cmp    word ptr [0x6896], 0x2c
   ovl4:7EA8  10BD8  7403           je     0x7ead
   ovl4:7EAA  10BDA  e91f02         jmp    0x80cc
@@ -28810,7 +28935,7 @@ campaign_input:
   ovl4:7F6F  10C9F  89066b68       mov    word ptr [0x686b], ax
   ovl4:7F73  10CA3  eb4e           jmp    0x7fc3
   ovl4:7F75  10CA5  ff76fa         push   word ptr [bp - 6]
-  ovl4:7F78  10CA8  e8f197         call   rt_176c
+  ovl4:7F78  10CA8  e8f197         call   coast_b
   ovl4:7F7B  10CAB  5f             pop    di
   ovl4:7F7C  10CAC  0bc0           or     ax, ax
   ovl4:7F7E  10CAE  7409           je     0x7f89
@@ -28818,7 +28943,7 @@ campaign_input:
   ovl4:7F83  10CB3  89066b68       mov    word ptr [0x686b], ax
   ovl4:7F87  10CB7  eb3a           jmp    0x7fc3
   ovl4:7F89  10CB9  ff76fa         push   word ptr [bp - 6]
-  ovl4:7F8C  10CBC  e81d99         call   rt_18ac
+  ovl4:7F8C  10CBC  e81d99         call   coast_d
   ovl4:7F8F  10CBF  5f             pop    di
   ovl4:7F90  10CC0  0bc0           or     ax, ax
   ovl4:7F92  10CC2  7409           je     0x7f9d
@@ -28826,7 +28951,7 @@ campaign_input:
   ovl4:7F97  10CC7  89066b68       mov    word ptr [0x686b], ax
   ovl4:7F9B  10CCB  eb26           jmp    0x7fc3
   ovl4:7F9D  10CCD  ff76fa         push   word ptr [bp - 6]
-  ovl4:7FA0  10CD0  e84d98         call   rt_17f0
+  ovl4:7FA0  10CD0  e84d98         call   coast_c
   ovl4:7FA3  10CD3  5f             pop    di
   ovl4:7FA4  10CD4  0bc0           or     ax, ax
   ovl4:7FA6  10CD6  7409           je     0x7fb1
@@ -28834,7 +28959,7 @@ campaign_input:
   ovl4:7FAB  10CDB  89066b68       mov    word ptr [0x686b], ax
   ovl4:7FAF  10CDF  eb12           jmp    0x7fc3
   ovl4:7FB1  10CE1  ff76fa         push   word ptr [bp - 6]
-  ovl4:7FB4  10CE4  e83197         call   rt_16e8
+  ovl4:7FB4  10CE4  e83197         call   coast_a
   ovl4:7FB7  10CE7  5f             pop    di
   ovl4:7FB8  10CE8  0bc0           or     ax, ax
   ovl4:7FBA  10CEA  7407           je     0x7fc3
@@ -28893,7 +29018,7 @@ campaign_input:
   ovl4:8045  10D75  8a04           mov    al, byte ptr [si]
   ovl4:8047  10D77  98             cwde
   ovl4:8048  10D78  50             push   ax
-  ovl4:8049  10D79  e85a94         call   tile_is_battle_p7
+  ovl4:8049  10D79  e85a94         call   tile_is_land
   ovl4:804C  10D7C  5f             pop    di
   ovl4:804D  10D7D  0bc0           or     ax, ax
   ovl4:804F  10D7F  7407           je     0x8058
@@ -28908,7 +29033,7 @@ campaign_input:
   ovl4:8068  10D98  8a04           mov    al, byte ptr [si]
   ovl4:806A  10D9A  98             cwde
   ovl4:806B  10D9B  50             push   ax
-  ovl4:806C  10D9C  e83794         call   tile_is_battle_p7
+  ovl4:806C  10D9C  e83794         call   tile_is_land
   ovl4:806F  10D9F  5f             pop    di
   ovl4:8070  10DA0  0bc0           or     ax, ax
   ovl4:8072  10DA2  7407           je     0x807b
@@ -28923,7 +29048,7 @@ campaign_input:
   ovl4:808D  10DBD  8a04           mov    al, byte ptr [si]
   ovl4:808F  10DBF  98             cwde
   ovl4:8090  10DC0  50             push   ax
-  ovl4:8091  10DC1  e81294         call   tile_is_battle_p7
+  ovl4:8091  10DC1  e81294         call   tile_is_land
   ovl4:8094  10DC4  5f             pop    di
   ovl4:8095  10DC5  0bc0           or     ax, ax
   ovl4:8097  10DC7  7407           je     0x80a0
@@ -28938,7 +29063,7 @@ campaign_input:
   ovl4:80B2  10DE2  8a04           mov    al, byte ptr [si]
   ovl4:80B4  10DE4  98             cwde
   ovl4:80B5  10DE5  50             push   ax
-  ovl4:80B6  10DE6  e8ed93         call   tile_is_battle_p7
+  ovl4:80B6  10DE6  e8ed93         call   tile_is_land
   ovl4:80B9  10DE9  5f             pop    di
   ovl4:80BA  10DEA  0bc0           or     ax, ax
   ovl4:80BC  10DEC  7407           je     0x80c5
@@ -29002,7 +29127,7 @@ campaign_input:
   ovl4:8156  10E86  750c           jne    0x8164
   ovl4:8158  10E88  33c0           xor    ax, ax
   ovl4:815A  10E8A  89068d64       mov    word ptr [0x648d], ax
-  ovl4:815E  10E8E  e8792b         call   ovl4_acda
+  ovl4:815E  10E8E  e8792b         call   trace_prompt
   ovl4:8161  10E91  e86e04         call   command_pause
   ovl4:8164  10E94  eb42           jmp    0x81a8
   ovl4:8166  10E96  813eaa650200   cmp    word ptr [0x65aa], 2
@@ -29010,7 +29135,7 @@ campaign_input:
   ovl4:816E  10E9E  813e96682e00   cmp    word ptr [0x6896], 0x2e
   ovl4:8174  10EA4  7524           jne    0x819a
   ovl4:8176  10EA6  e8b98a         call   beep_low
-  ovl4:8179  10EA9  e8b008         call   ovl4_8a2c
+  ovl4:8179  10EA9  e8b008         call   cancel_path
   ovl4:817C  10EAC  e8f1a6         call   restore_cursor_background
   ovl4:817F  10EAF  33c0           xor    ax, ax
   ovl4:8181  10EB1  8906aa65       mov    word ptr [0x65aa], ax
@@ -29023,7 +29148,7 @@ campaign_input:
   ovl4:8197  10EC7  e83804         call   command_pause
   ovl4:819A  10ECA  813e96683200   cmp    word ptr [0x6896], 0x32
   ovl4:81A0  10ED0  7506           jne    0x81a8
-  ovl4:81A2  10ED2  e8d008         call   ovl4_8a75
+  ovl4:81A2  10ED2  e8d008         call   end_trace
   ovl4:81A5  10ED5  e82a04         call   command_pause
   ovl4:81A8  10ED8  813eaa650200   cmp    word ptr [0x65aa], 2
   ovl4:81AE  10EDE  7520           jne    0x81d0
@@ -29108,7 +29233,7 @@ campaign_input:
   ovl4:82A0  10FD0  7546           jne    0x82e8
   ovl4:82A2  10FD2  b80100         mov    ax, 1
   ovl4:82A5  10FD5  50             push   ax
-  ovl4:82A6  10FD6  e83c31         call   ovl4_b3e5
+  ovl4:82A6  10FD6  e83c31         call   trace_blocked
   ovl4:82A9  10FD9  5f             pop    di
   ovl4:82AA  10FDA  83f84d         cmp    ax, 0x4d
   ovl4:82AD  10FDD  7510           jne    0x82bf
@@ -29120,7 +29245,7 @@ campaign_input:
   ovl4:82BF  10FEF  ff0ec95c       dec    word ptr [0x5cc9]
   ovl4:82C3  10FF3  b80100         mov    ax, 1
   ovl4:82C6  10FF6  50             push   ax
-  ovl4:82C7  10FF7  e81b31         call   ovl4_b3e5
+  ovl4:82C7  10FF7  e81b31         call   trace_blocked
   ovl4:82CA  10FFA  5f             pop    di
   ovl4:82CB  10FFB  83f84d         cmp    ax, 0x4d
   ovl4:82CE  10FFE  7514           jne    0x82e4
@@ -29183,7 +29308,7 @@ campaign_input:
   ovl4:838D  110BD  7543           jne    0x83d2
   ovl4:838F  110BF  b80900         mov    ax, 9
   ovl4:8392  110C2  50             push   ax
-  ovl4:8393  110C3  e84f30         call   ovl4_b3e5
+  ovl4:8393  110C3  e84f30         call   trace_blocked
   ovl4:8396  110C6  5f             pop    di
   ovl4:8397  110C7  83f84d         cmp    ax, 0x4d
   ovl4:839A  110CA  750d           jne    0x83a9
@@ -29194,7 +29319,7 @@ campaign_input:
   ovl4:83A9  110D9  ff06c95c       inc    word ptr [0x5cc9]
   ovl4:83AD  110DD  b80900         mov    ax, 9
   ovl4:83B0  110E0  50             push   ax
-  ovl4:83B1  110E1  e83130         call   ovl4_b3e5
+  ovl4:83B1  110E1  e83130         call   trace_blocked
   ovl4:83B4  110E4  5f             pop    di
   ovl4:83B5  110E5  83f84d         cmp    ax, 0x4d
   ovl4:83B8  110E8  7514           jne    0x83ce
@@ -29226,7 +29351,7 @@ campaign_input:
   ovl4:8415  11145  813eaa650200   cmp    word ptr [0x65aa], 2
   ovl4:841B  1114B  750f           jne    0x842c
   ovl4:841D  1114D  ff76fa         push   word ptr [bp - 6]
-  ovl4:8420  11150  e8c22f         call   ovl4_b3e5
+  ovl4:8420  11150  e8c22f         call   trace_blocked
   ovl4:8423  11153  5f             pop    di
   ovl4:8424  11154  83f84d         cmp    ax, 0x4d
   ovl4:8427  11157  7503           jne    0x842c
@@ -29339,7 +29464,7 @@ campaign_input:
   ovl4:857D  112AD  0336f762       add    si, word ptr [0x62f7]
   ovl4:8581  112B1  8804           mov    byte ptr [si], al
   ovl4:8583  112B3  ff0ef762       dec    word ptr [0x62f7]
-  ovl4:8587  112B7  e8eb04         call   ovl4_8a75
+  ovl4:8587  112B7  e8eb04         call   end_trace
   ovl4:858A  112BA  eb40           jmp    0x85cc
   ovl4:858C  112BC  817ef87800     cmp    word ptr [bp - 8], 0x78
   ovl4:8591  112C1  7e13           jle    0x85a6
@@ -29427,7 +29552,7 @@ key_waiting:
 poll_input:
   ovl4:8645  11375  55             push   bp
   ovl4:8646  11376  8bec           mov    bp, sp
-  ovl4:8648  11378  e84585         call   rt_0b90
+  ovl4:8648  11378  e84585         call   debug_hook
   ovl4:864B  1137B  b80200         mov    ax, 2
   ovl4:864E  1137E  89066964       mov    word ptr [0x6469], ax
   ovl4:8652  11382  813e04084600   cmp    word ptr [0x804], 0x46
@@ -29785,7 +29910,7 @@ start_move_order:
   ovl4:89F5  11725  8b04           mov    ax, word ptr [si]
   ovl4:89F7  11727  0bc0           or     ax, ax
   ovl4:89F9  11729  7403           je     0x89fe
-  ovl4:89FB  1172B  e82e00         call   ovl4_8a2c
+  ovl4:89FB  1172B  e82e00         call   cancel_path
   ovl4:89FE  1172E  e8d062         call   find_free_path_run
   ovl4:8A01  11731  8946fe         mov    word ptr [bp - 2], ax
   ovl4:8A04  11734  817efeffff     cmp    word ptr [bp - 2], 0xffff
@@ -29806,8 +29931,9 @@ start_move_order:
   ovl4:8A2A  1175A  5d             pop    bp
   ovl4:8A2B  1175B  c3             ret
 
-; ---- ovl4_8a2c   (called from 3 places)
-ovl4_8a2c:
+; ---- cancel_path   (called from 3 places)
+;      The selected squadron stops; its path is cleared
+cancel_path:
   ovl4:8A2C  1175C  55             push   bp
   ovl4:8A2D  1175D  8bec           mov    bp, sp
   ovl4:8A2F  1175F  33c0           xor    ax, ax
@@ -29820,7 +29946,7 @@ ovl4_8a2c:
   ovl4:8A44  11774  d1e2           shl    dx, 1
   ovl4:8A46  11776  03f2           add    si, dx
   ovl4:8A48  11778  8904           mov    word ptr [si], ax
-  ovl4:8A4A  1177A  e8fd85         call   rt_104a
+  ovl4:8A4A  1177A  e8fd85         call   erase_squadrons
   ovl4:8A4D  1177D  b80f27         mov    ax, 0x270f
   ovl4:8A50  11780  be1663         mov    si, 0x6316
   ovl4:8A53  11783  8b16fb62       mov    dx, word ptr [0x62fb]
@@ -29829,15 +29955,16 @@ ovl4_8a2c:
   ovl4:8A5B  1178B  8904           mov    word ptr [si], ax
   ovl4:8A5D  1178D  8106cb5c5000   add    word ptr [0x5ccb], 0x50
   ovl4:8A63  11793  ff06c95c       inc    word ptr [0x5cc9]
-  ovl4:8A67  11797  e81a86         call   rt_1084
+  ovl4:8A67  11797  e81a86         call   redraw_squadrons
   ovl4:8A6A  1179A  ff36fb62       push   word ptr [0x62fb]
-  ovl4:8A6E  1179E  e8e484         call   rt_0f55
+  ovl4:8A6E  1179E  e8e484         call   clear_paths
   ovl4:8A71  117A1  8be5           mov    sp, bp
   ovl4:8A73  117A3  5d             pop    bp
   ovl4:8A74  117A4  c3             ret
 
-; ---- ovl4_8a75   (called from 2 places)
-ovl4_8a75:
+; ---- end_trace   (called from 2 places)
+;      M while tracing: 99 ends the path, full sail, the destination mark
+end_trace:
   ovl4:8A75  117A5  55             push   bp
   ovl4:8A76  117A6  8bec           mov    bp, sp
   ovl4:8A78  117A8  83ec02         sub    sp, 2
@@ -29849,7 +29976,7 @@ ovl4_8a75:
   ovl4:8A89  117B9  8b04           mov    ax, word ptr [si]
   ovl4:8A8B  117BB  3b06f762       cmp    ax, word ptr [0x62f7]
   ovl4:8A8F  117BF  7519           jne    0x8aaa
-  ovl4:8A91  117C1  e898ff         call   ovl4_8a2c
+  ovl4:8A91  117C1  e898ff         call   cancel_path
   ovl4:8A94  117C4  e8d99d         call   restore_cursor_background
   ovl4:8A97  117C7  33c0           xor    ax, ax
   ovl4:8A99  117C9  8906aa65       mov    word ptr [0x65aa], ax
@@ -29859,7 +29986,7 @@ ovl4_8a75:
   ovl4:8AA6  117D6  8be5           mov    sp, bp
   ovl4:8AA8  117D8  5d             pop    bp
   ovl4:8AA9  117D9  c3             ret
-  ovl4:8AAA  117DA  e89d85         call   rt_104a
+  ovl4:8AAA  117DA  e89d85         call   erase_squadrons
   ovl4:8AAD  117DD  8106cb5c5000   add    word ptr [0x5ccb], 0x50
   ovl4:8AB3  117E3  ff06c95c       inc    word ptr [0x5cc9]
   ovl4:8AB7  117E7  33c0           xor    ax, ax
@@ -29876,7 +30003,7 @@ ovl4_8a75:
   ovl4:8AD7  11807  d1e2           shl    dx, 1
   ovl4:8AD9  11809  03f2           add    si, dx
   ovl4:8ADB  1180B  8904           mov    word ptr [si], ax
-  ovl4:8ADD  1180D  e8a485         call   rt_1084
+  ovl4:8ADD  1180D  e8a485         call   redraw_squadrons
   ovl4:8AE0  11810  ff36f762       push   word ptr [0x62f7]
   ovl4:8AE4  11814  e8d58e         call   path_next_slot
   ovl4:8AE7  11817  5f             pop    di
@@ -29939,7 +30066,7 @@ ovl4_8a75:
   ovl4:8B7F  118AF  8a04           mov    al, byte ptr [si]
   ovl4:8B81  118B1  98             cwde
   ovl4:8B82  118B2  50             push   ax
-  ovl4:8B83  118B3  e8b60e         call   ovl4_9a3c
+  ovl4:8B83  118B3  e8b60e         call   step_heading
   ovl4:8B86  118B6  5f             pop    di
   ovl4:8B87  118B7  bed55f         mov    si, 0x5fd5
   ovl4:8B8A  118BA  8b16fb62       mov    dx, word ptr [0x62fb]
@@ -29971,8 +30098,9 @@ ovl4_8a75:
   ovl4:8BCB  118FB  5d             pop    bp
   ovl4:8BCC  118FC  c3             ret
 
-; ---- ovl4_8bcd   (called from 2 places)
-ovl4_8bcd:
+; ---- encounters   (called from 2 places)
+;      Every tick: your squadrons and merchants against the enemy's and merchants: encounters (C5B9), merchants met (BB29) or taken (BACD), sighting (rule 64B7)
+encounters:
   ovl4:8BCD  118FD  55             push   bp
   ovl4:8BCE  118FE  8bec           mov    bp, sp
   ovl4:8BD0  11900  83ec08         sub    sp, 8
@@ -30107,13 +30235,13 @@ ovl4_8bcd:
   ovl4:8D06  11A36  e97b01         jmp    0x8e84
   ovl4:8D09  11A39  ff76fa         push   word ptr [bp - 6]
   ovl4:8D0C  11A3C  ff76f8         push   word ptr [bp - 8]
-  ovl4:8D0F  11A3F  e8a738         call   ovl4_c5b9
+  ovl4:8D0F  11A3F  e8a738         call   close_to
   ovl4:8D12  11A42  5f             pop    di
   ovl4:8D13  11A43  5f             pop    di
   ovl4:8D14  11A44  0bc0           or     ax, ax
   ovl4:8D16  11A46  7503           jne    0x8d1b
   ovl4:8D18  11A48  e90701         jmp    0x8e22
-  ovl4:8D1B  11A4B  e82c83         call   rt_104a
+  ovl4:8D1B  11A4B  e82c83         call   erase_squadrons
   ovl4:8D1E  11A4E  bedd5c         mov    si, 0x5cdd
   ovl4:8D21  11A51  8b46fa         mov    ax, word ptr [bp - 6]
   ovl4:8D24  11A54  d1e0           shl    ax, 1
@@ -30127,7 +30255,7 @@ ovl4_8bcd:
   ovl4:8D36  11A66  750e           jne    0x8d46
   ovl4:8D38  11A68  ff76fa         push   word ptr [bp - 6]
   ovl4:8D3B  11A6B  ff76f8         push   word ptr [bp - 8]
-  ovl4:8D3E  11A6E  e8e82d         call   ovl4_bb29
+  ovl4:8D3E  11A6E  e8e82d         call   meet_merchant
   ovl4:8D41  11A71  5f             pop    di
   ovl4:8D42  11A72  5f             pop    di
   ovl4:8D43  11A73  e9d700         jmp    0x8e1d
@@ -30139,7 +30267,7 @@ ovl4_8bcd:
   ovl4:8D52  11A82  740e           je     0x8d62
   ovl4:8D54  11A84  ff76fa         push   word ptr [bp - 6]
   ovl4:8D57  11A87  ff76f8         push   word ptr [bp - 8]
-  ovl4:8D5A  11A8A  e8702d         call   ovl4_bacd
+  ovl4:8D5A  11A8A  e8702d         call   take_merchant
   ovl4:8D5D  11A8D  5f             pop    di
   ovl4:8D5E  11A8E  5f             pop    di
   ovl4:8D5F  11A8F  e9bb00         jmp    0x8e1d
@@ -30151,7 +30279,7 @@ ovl4_8bcd:
   ovl4:8D6E  11A9E  740e           je     0x8d7e
   ovl4:8D70  11AA0  ff76f8         push   word ptr [bp - 8]
   ovl4:8D73  11AA3  ff76fa         push   word ptr [bp - 6]
-  ovl4:8D76  11AA6  e8542d         call   ovl4_bacd
+  ovl4:8D76  11AA6  e8542d         call   take_merchant
   ovl4:8D79  11AA9  5f             pop    di
   ovl4:8D7A  11AAA  5f             pop    di
   ovl4:8D7B  11AAB  e99f00         jmp    0x8e1d
@@ -30221,7 +30349,7 @@ ovl4_8bcd:
   ovl4:8E17  11B47  d1e2           shl    dx, 1
   ovl4:8E19  11B49  03f2           add    si, dx
   ovl4:8E1B  11B4B  8904           mov    word ptr [si], ax
-  ovl4:8E1D  11B4D  e86482         call   rt_1084
+  ovl4:8E1D  11B4D  e86482         call   redraw_squadrons
   ovl4:8E20  11B50  eb68           jmp    0x8e8a
   ovl4:8E22  11B52  8b069a68       mov    ax, word ptr [0x689a]
   ovl4:8E26  11B56  3b06b764       cmp    ax, word ptr [0x64b7]
@@ -30257,7 +30385,7 @@ ovl4_8bcd:
   ovl4:8E79  11BA9  09c0           or     ax, ax
   ovl4:8E7B  11BAB  7507           jne    0x8e84
   ovl4:8E7D  11BAD  ff76fa         push   word ptr [bp - 6]
-  ovl4:8E80  11BB0  e88f27         call   ovl4_b612
+  ovl4:8E80  11BB0  e88f27         call   msg_sighted
   ovl4:8E83  11BB3  5f             pop    di
   ovl4:8E84  11BB4  ff46fa         inc    word ptr [bp - 6]
   ovl4:8E87  11BB7  e9e3fd         jmp    0x8c6d
@@ -30297,8 +30425,9 @@ ovl4_8bcd:
   ovl4:8EDC  11C0C  5d             pop    bp
   ovl4:8EDD  11C0D  c3             ret
 
-; ---- ovl4_8ede   (called from 1 place)
-ovl4_8ede:
+; ---- map_battles   (called from 1 place)
+;      Every iteration: encounters count up to the fight delay [6851], then are fought out on the map (9154)
+map_battles:
   ovl4:8EDE  11C0E  55             push   bp
   ovl4:8EDF  11C0F  8bec           mov    bp, sp
   ovl4:8EE1  11C11  83ec0c         sub    sp, 0xc
@@ -30359,7 +30488,7 @@ ovl4_8ede:
   ovl4:8F6F  11C9F  8b14           mov    dx, word ptr [si]
   ovl4:8F71  11CA1  3bd0           cmp    dx, ax
   ovl4:8F73  11CA3  7d51           jge    0x8fc6
-  ovl4:8F75  11CA5  e89701         call   ovl4_910f
+  ovl4:8F75  11CA5  e89701         call   enemy_count
   ovl4:8F78  11CA8  8946f8         mov    word ptr [bp - 8], ax
   ovl4:8F7B  11CAB  817ef80500     cmp    word ptr [bp - 8], 5
   ovl4:8F80  11CB0  7e05           jle    0x8f87
@@ -30422,7 +30551,7 @@ ovl4_8ede:
   ovl4:901B  11D4B  7509           jne    0x9026
   ovl4:901D  11D4D  b80100         mov    ax, 1
   ovl4:9020  11D50  8946fa         mov    word ptr [bp - 6], ax
-  ovl4:9023  11D53  e82480         call   rt_104a
+  ovl4:9023  11D53  e82480         call   erase_squadrons
   ovl4:9026  11D56  e8e49e         call   random
   ovl4:9029  11D59  83f828         cmp    ax, 0x28
   ovl4:902C  11D5C  7c03           jl     0x9031
@@ -30430,7 +30559,7 @@ ovl4_8ede:
   ovl4:9031  11D61  33c0           xor    ax, ax
   ovl4:9033  11D63  50             push   ax
   ovl4:9034  11D64  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:9037  11D67  e81a01         call   ovl4_9154
+  ovl4:9037  11D67  e81a01         call   battle_hit
   ovl4:903A  11D6A  5f             pop    di
   ovl4:903B  11D6B  5f             pop    di
   ovl4:903C  11D6C  0bc0           or     ax, ax
@@ -30496,7 +30625,7 @@ ovl4_8ede:
   ovl4:90C6  11DF6  e8bf75         call   mark_flagship_squadrons
   ovl4:90C9  11DF9  ff76f6         push   word ptr [bp - 0xa]
   ovl4:90CC  11DFC  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:90CF  11DFF  e87d0d         call   ovl4_9e4f
+  ovl4:90CF  11DFF  e87d0d         call   end_check
   ovl4:90D2  11E02  5f             pop    di
   ovl4:90D3  11E03  5f             pop    di
   ovl4:90D4  11E04  8946f8         mov    word ptr [bp - 8], ax
@@ -30520,14 +30649,15 @@ ovl4_8ede:
   ovl4:90FF  11E2F  8b46fa         mov    ax, word ptr [bp - 6]
   ovl4:9102  11E32  0bc0           or     ax, ax
   ovl4:9104  11E34  7403           je     0x9109
-  ovl4:9106  11E36  e87b7f         call   rt_1084
+  ovl4:9106  11E36  e87b7f         call   redraw_squadrons
   ovl4:9109  11E39  33c0           xor    ax, ax
   ovl4:910B  11E3B  8be5           mov    sp, bp
   ovl4:910D  11E3D  5d             pop    bp
   ovl4:910E  11E3E  c3             ret
 
-; ---- ovl4_910f   (called from 1 place)
-ovl4_910f:
+; ---- enemy_count   (called from 1 place)
+;      The enemy's squadrons
+enemy_count:
   ovl4:910F  11E3F  55             push   bp
   ovl4:9110  11E40  8bec           mov    bp, sp
   ovl4:9112  11E42  83ec04         sub    sp, 4
@@ -30558,8 +30688,9 @@ ovl4_910f:
   ovl4:9152  11E82  5d             pop    bp
   ovl4:9153  11E83  c3             ret
 
-; ---- ovl4_9154   (called from 1 place)
-ovl4_9154:
+; ---- battle_hit   (called from 1 place)
+;      battle_hit(sq, way): a ship of sq may be damaged; 1 when its last ship is lost
+battle_hit:
   ovl4:9154  11E84  55             push   bp
   ovl4:9155  11E85  8bec           mov    bp, sp
   ovl4:9157  11E87  83ec08         sub    sp, 8
@@ -30585,7 +30716,7 @@ ovl4_9154:
   ovl4:918B  11EBB  03f0           add    si, ax
   ovl4:918D  11EBD  ff34           push   word ptr [si]
   ovl4:918F  11EBF  ff7604         push   word ptr [bp + 4]
-  ovl4:9192  11EC2  e8e889         call   rt_1b7d
+  ovl4:9192  11EC2  e8e889         call   crown_beside
   ovl4:9195  11EC5  5f             pop    di
   ovl4:9196  11EC6  5f             pop    di
   ovl4:9197  11EC7  83f8ff         cmp    ax, -1
@@ -30609,7 +30740,7 @@ ovl4_9154:
   ovl4:91C3  11EF3  8946fa         mov    word ptr [bp - 6], ax
   ovl4:91C6  11EF6  817efaffff     cmp    word ptr [bp - 6], 0xffff
   ovl4:91CB  11EFB  7505           jne    0x91d2
-  ovl4:91CD  11EFD  e8c079         call   rt_0b90
+  ovl4:91CD  11EFD  e8c079         call   debug_hook
   ovl4:91D0  11F00  ebda           jmp    0x91ac
   ovl4:91D2  11F02  be955e         mov    si, 0x5e95
   ovl4:91D5  11F05  0376fa         add    si, word ptr [bp - 6]
@@ -30677,16 +30808,16 @@ ovl4_9154:
   ovl4:9269  11F99  83f8ff         cmp    ax, -1
   ovl4:926C  11F9C  7509           jne    0x9277
   ovl4:926E  11F9E  ff7604         push   word ptr [bp + 4]
-  ovl4:9271  11FA1  e81726         call   ovl4_b88b
+  ovl4:9271  11FA1  e81726         call   msg_flag_taken
   ovl4:9274  11FA4  5f             pop    di
   ovl4:9275  11FA5  eb07           jmp    0x927e
   ovl4:9277  11FA7  ff7604         push   word ptr [bp + 4]
-  ovl4:927A  11FAA  e87926         call   ovl4_b8f6
+  ovl4:927A  11FAA  e87926         call   msg_enemy_flag
   ovl4:927D  11FAD  5f             pop    di
   ovl4:927E  11FAE  ff7606         push   word ptr [bp + 6]
   ovl4:9281  11FB1  ff7604         push   word ptr [bp + 4]
   ovl4:9284  11FB4  ff76fa         push   word ptr [bp - 6]
-  ovl4:9287  11FB7  e82d00         call   ovl4_92b7
+  ovl4:9287  11FB7  e82d00         call   count_loss
   ovl4:928A  11FBA  83c406         add    sp, 6
   ovl4:928D  11FBD  b8ffff         mov    ax, 0xffff
   ovl4:9290  11FC0  be455e         mov    si, 0x5e45
@@ -30708,8 +30839,9 @@ ovl4_9154:
   ovl4:92B5  11FE5  5d             pop    bp
   ovl4:92B6  11FE6  c3             ret
 
-; ---- ovl4_92b7   (called from 2 places)
-ovl4_92b7:
+; ---- count_loss   (called from 2 places)
+;      count_loss(ship, sq, way): 64A5/64A9 yours, 64A7/64AB theirs (way 0: by 5EE5 = -1)
+count_loss:
   ovl4:92B7  11FE7  55             push   bp
   ovl4:92B8  11FE8  8bec           mov    bp, sp
   ovl4:92BA  11FEA  8b4608         mov    ax, word ptr [bp + 8]
@@ -30768,8 +30900,9 @@ ovl4_92b7:
   ovl4:9343  12073  5d             pop    bp
   ovl4:9344  12074  c3             ret
 
-; ---- ovl4_9345   (called from 2 places)
-ovl4_9345:
+; ---- eat   (called from 2 places)
+;      eat(sq): supplies used (rule 64B5 or opponent 6059), hunger damage, and an anchored squadron's supplies and repairs from a port or crown
+eat:
   ovl4:9345  12075  55             push   bp
   ovl4:9346  12076  8bec           mov    bp, sp
   ovl4:9348  12078  83ec0c         sub    sp, 0xc
@@ -30907,7 +31040,7 @@ ovl4_9345:
   ovl4:9489  121B9  50             push   ax
   ovl4:948A  121BA  ff76fa         push   word ptr [bp - 6]
   ovl4:948D  121BD  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:9490  121C0  e8b640         call   ovl4_d549
+  ovl4:9490  121C0  e8b640         call   count_at_cell
   ovl4:9493  121C3  83c406         add    sp, 6
   ovl4:9496  121C6  0bc0           or     ax, ax
   ovl4:9498  121C8  7404           je     0x949e
@@ -30917,7 +31050,7 @@ ovl4_9345:
   ovl4:949E  121CE  b8ffff         mov    ax, 0xffff
   ovl4:94A1  121D1  50             push   ax
   ovl4:94A2  121D2  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:94A5  121D5  e8d586         call   rt_1b7d
+  ovl4:94A5  121D5  e8d586         call   crown_beside
   ovl4:94A8  121D8  5f             pop    di
   ovl4:94A9  121D9  5f             pop    di
   ovl4:94AA  121DA  83f8ff         cmp    ax, -1
@@ -30929,7 +31062,7 @@ ovl4_9345:
   ovl4:94B8  121E8  33c0           xor    ax, ax
   ovl4:94BA  121EA  50             push   ax
   ovl4:94BB  121EB  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:94BE  121EE  e8bc86         call   rt_1b7d
+  ovl4:94BE  121EE  e8bc86         call   crown_beside
   ovl4:94C1  121F1  5f             pop    di
   ovl4:94C2  121F2  5f             pop    di
   ovl4:94C3  121F3  83f8ff         cmp    ax, -1
@@ -30942,7 +31075,7 @@ ovl4_9345:
   ovl4:94D3  12203  eb03           jmp    0x94d8
   ovl4:94D5  12205  b80100         mov    ax, 1
   ovl4:94D8  12208  8946fe         mov    word ptr [bp - 2], ax
-  ovl4:94DB  1220B  e86c7b         call   rt_104a
+  ovl4:94DB  1220B  e86c7b         call   erase_squadrons
   ovl4:94DE  1220E  8b76f4         mov    si, word ptr [bp - 0xc]
   ovl4:94E1  12211  8a04           mov    al, byte ptr [si]
   ovl4:94E3  12213  98             cwde
@@ -30952,7 +31085,7 @@ ovl4_9345:
   ovl4:94EC  1221C  b80100         mov    ax, 1
   ovl4:94EF  1221F  50             push   ax
   ovl4:94F0  12220  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:94F3  12223  e8e084         call   rt_19d6
+  ovl4:94F3  12223  e8e084         call   supply_port_beside
   ovl4:94F6  12226  5f             pop    di
   ovl4:94F7  12227  5f             pop    di
   ovl4:94F8  12228  8946fa         mov    word ptr [bp - 6], ax
@@ -30961,7 +31094,7 @@ ovl4_9345:
   ovl4:9500  12230  b8ffff         mov    ax, 0xffff
   ovl4:9503  12233  50             push   ax
   ovl4:9504  12234  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:9507  12237  e87386         call   rt_1b7d
+  ovl4:9507  12237  e87386         call   crown_beside
   ovl4:950A  1223A  5f             pop    di
   ovl4:950B  1223B  5f             pop    di
   ovl4:950C  1223C  8946fa         mov    word ptr [bp - 6], ax
@@ -30970,7 +31103,7 @@ ovl4_9345:
   ovl4:9514  12244  33c0           xor    ax, ax
   ovl4:9516  12246  50             push   ax
   ovl4:9517  12247  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:951A  1224A  e86086         call   rt_1b7d
+  ovl4:951A  1224A  e86086         call   crown_beside
   ovl4:951D  1224D  5f             pop    di
   ovl4:951E  1224E  5f             pop    di
   ovl4:951F  1224F  8946fa         mov    word ptr [bp - 6], ax
@@ -30994,16 +31127,16 @@ ovl4_9345:
   ovl4:954F  1227F  09c0           or     ax, ax
   ovl4:9551  12281  7f0a           jg     0x955d
   ovl4:9553  12283  ff76fa         push   word ptr [bp - 6]
-  ovl4:9556  12286  e8032e         call   ovl4_c35c
+  ovl4:9556  12286  e8032e         call   invert_cell
   ovl4:9559  12289  5f             pop    di
-  ovl4:955A  1228A  e81f30         call   ovl4_c57c
+  ovl4:955A  1228A  e81f30         call   port_empty_sound
   ovl4:955D  1228D  bedd5c         mov    si, 0x5cdd
   ovl4:9560  12290  8b4604         mov    ax, word ptr [bp + 4]
   ovl4:9563  12293  d1e0           shl    ax, 1
   ovl4:9565  12295  03f0           add    si, ax
   ovl4:9567  12297  ff34           push   word ptr [si]
   ovl4:9569  12299  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:956C  1229C  e81728         call   ovl4_bd86
+  ovl4:956C  1229C  e81728         call   port_call
   ovl4:956F  1229F  5f             pop    di
   ovl4:9570  122A0  5f             pop    di
   ovl4:9571  122A1  b80500         mov    ax, 5
@@ -31029,7 +31162,7 @@ ovl4_9345:
   ovl4:959F  122CF  b80100         mov    ax, 1
   ovl4:95A2  122D2  50             push   ax
   ovl4:95A3  122D3  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:95A6  122D6  e8ff84         call   rt_1aa8
+  ovl4:95A6  122D6  e8ff84         call   repair_port_beside
   ovl4:95A9  122D9  5f             pop    di
   ovl4:95AA  122DA  5f             pop    di
   ovl4:95AB  122DB  8946fa         mov    word ptr [bp - 6], ax
@@ -31038,7 +31171,7 @@ ovl4_9345:
   ovl4:95B3  122E3  b8ffff         mov    ax, 0xffff
   ovl4:95B6  122E6  50             push   ax
   ovl4:95B7  122E7  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:95BA  122EA  e8c085         call   rt_1b7d
+  ovl4:95BA  122EA  e8c085         call   crown_beside
   ovl4:95BD  122ED  5f             pop    di
   ovl4:95BE  122EE  5f             pop    di
   ovl4:95BF  122EF  8946fa         mov    word ptr [bp - 6], ax
@@ -31047,7 +31180,7 @@ ovl4_9345:
   ovl4:95C7  122F7  33c0           xor    ax, ax
   ovl4:95C9  122F9  50             push   ax
   ovl4:95CA  122FA  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:95CD  122FD  e8ad85         call   rt_1b7d
+  ovl4:95CD  122FD  e8ad85         call   crown_beside
   ovl4:95D0  12300  5f             pop    di
   ovl4:95D1  12301  5f             pop    di
   ovl4:95D2  12302  8946fa         mov    word ptr [bp - 6], ax
@@ -31098,16 +31231,16 @@ ovl4_9345:
   ovl4:9647  12377  09c0           or     ax, ax
   ovl4:9649  12379  7f0a           jg     0x9655
   ovl4:964B  1237B  ff76fa         push   word ptr [bp - 6]
-  ovl4:964E  1237E  e80b2d         call   ovl4_c35c
+  ovl4:964E  1237E  e80b2d         call   invert_cell
   ovl4:9651  12381  5f             pop    di
-  ovl4:9652  12382  e8272f         call   ovl4_c57c
+  ovl4:9652  12382  e8272f         call   port_empty_sound
   ovl4:9655  12385  bedd5c         mov    si, 0x5cdd
   ovl4:9658  12388  8b4604         mov    ax, word ptr [bp + 4]
   ovl4:965B  1238B  d1e0           shl    ax, 1
   ovl4:965D  1238D  03f0           add    si, ax
   ovl4:965F  1238F  ff34           push   word ptr [si]
   ovl4:9661  12391  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:9664  12394  e81f27         call   ovl4_bd86
+  ovl4:9664  12394  e81f27         call   port_call
   ovl4:9667  12397  5f             pop    di
   ovl4:9668  12398  5f             pop    di
   ovl4:9669  12399  be6d5e         mov    si, 0x5e6d
@@ -31130,22 +31263,23 @@ ovl4_9345:
   ovl4:9691  123C1  fe0c           dec    byte ptr [si]
   ovl4:9693  123C3  ff46f8         inc    word ptr [bp - 8]
   ovl4:9696  123C6  e94bff         jmp    0x95e4
-  ovl4:9699  123C9  e8e879         call   rt_1084
+  ovl4:9699  123C9  e8e879         call   redraw_squadrons
   ovl4:969C  123CC  8be5           mov    sp, bp
   ovl4:969E  123CE  5d             pop    bp
   ovl4:969F  123CF  c3             ret
 
-; ---- ovl4_96a0   (called from 1 place)
-ovl4_96a0:
+; ---- move_squadrons   (called from 1 place)
+;      Every tick: squadrons on paths step when their countdown runs out; the marker follows the selected one
+move_squadrons:
   ovl4:96A0  123D0  55             push   bp
   ovl4:96A1  123D1  8bec           mov    bp, sp
   ovl4:96A3  123D3  83ec12         sub    sp, 0x12
   ovl4:96A6  123D6  33c0           xor    ax, ax
   ovl4:96A8  123D8  8946f4         mov    word ptr [bp - 0xc], ax
-  ovl4:96AB  123DB  e89c79         call   rt_104a
+  ovl4:96AB  123DB  e89c79         call   erase_squadrons
   ovl4:96AE  123DE  b80100         mov    ax, 1
   ovl4:96B1  123E1  50             push   ax
-  ovl4:96B2  123E2  e8fd03         call   ovl4_9ab2
+  ovl4:96B2  123E2  e8fd03         call   set_move_delays
   ovl4:96B5  123E5  5f             pop    di
   ovl4:96B6  123E6  8946ee         mov    word ptr [bp - 0x12], ax
   ovl4:96B9  123E9  0bc0           or     ax, ax
@@ -31256,7 +31390,7 @@ ovl4_96a0:
   ovl4:97BD  124ED  7502           jne    0x97c1
   ovl4:97BF  124EF  eb4c           jmp    0x980d
   ovl4:97C1  124F1  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:97C4  124F4  e87502         call   ovl4_9a3c
+  ovl4:97C4  124F4  e87502         call   step_heading
   ovl4:97C7  124F7  5f             pop    di
   ovl4:97C8  124F8  8946f2         mov    word ptr [bp - 0xe], ax
   ovl4:97CB  124FB  817ef00100     cmp    word ptr [bp - 0x10], 1
@@ -31388,11 +31522,11 @@ ovl4_96a0:
   ovl4:991E  1264E  e86480         call   squadron_cell
   ovl4:9921  12651  5f             pop    di
   ovl4:9922  12652  50             push   ax
-  ovl4:9923  12653  e86024         call   ovl4_bd86
+  ovl4:9923  12653  e86024         call   port_call
   ovl4:9926  12656  5f             pop    di
   ovl4:9927  12657  5f             pop    di
   ovl4:9928  12658  ff76ee         push   word ptr [bp - 0x12]
-  ovl4:992B  1265B  e8202b         call   ovl4_c44e
+  ovl4:992B  1265B  e8202b         call   crown_check
   ovl4:992E  1265E  5f             pop    di
   ovl4:992F  1265F  0bc0           or     ax, ax
   ovl4:9931  12661  7406           je     0x9939
@@ -31488,7 +31622,7 @@ ovl4_96a0:
   ovl4:9A17  12747  8906c95c       mov    word ptr [0x5cc9], ax
   ovl4:9A1B  1274B  ff46ee         inc    word ptr [bp - 0x12]
   ovl4:9A1E  1274E  e9a8fc         jmp    0x96c9
-  ovl4:9A21  12751  e86076         call   rt_1084
+  ovl4:9A21  12751  e86076         call   redraw_squadrons
   ovl4:9A24  12754  8b46f4         mov    ax, word ptr [bp - 0xc]
   ovl4:9A27  12757  0bc0           or     ax, ax
   ovl4:9A29  12759  740b           je     0x9a36
@@ -31500,28 +31634,65 @@ ovl4_96a0:
   ovl4:9A3A  1276A  5d             pop    bp
   ovl4:9A3B  1276B  c3             ret
 
-; ---- ovl4_9a3c   (called from 3 places)
-ovl4_9a3c:
+; ---- step_heading   (called from 3 places)
+;      The heading (0-15) of a path step: -80 0, -79 3, 1 4, 81 5, 80 8, 79 11, -1 12, -81 13
+step_heading:
   ovl4:9A3C  1276C  55             push   bp
   ovl4:9A3D  1276D  8bec           mov    bp, sp
   ovl4:9A3F  1276F  8b4604         mov    ax, word ptr [bp + 4]
   ovl4:9A42  12772  eb3f           jmp    0x9a83
-  ; ---- data / unreached bytes (63 bytes)
-  ovl4:9A44  12774  db 33h, C0h, 89h, 46h, 04h, EBh, 60h, B8h, 03h, 00h, 89h, 46h, 04h, EBh, 58h, B8h                  ; 3..F..`....F..X.
-  ovl4:9A54  12784  db 04h, 00h, 89h, 46h, 04h, EBh, 50h, B8h, 05h, 00h, 89h, 46h, 04h, EBh, 48h, B8h                  ; ...F..P....F..H.
-  ovl4:9A64  12794  db 08h, 00h, 89h, 46h, 04h, EBh, 40h, B8h, 0Bh, 00h, 89h, 46h, 04h, EBh, 38h, B8h                  ; ...F..@....F..8.
-  ovl4:9A74  127A4  db 0Ch, 00h, 89h, 46h, 04h, EBh, 30h, B8h, 0Dh, 00h, 89h, 46h, 04h, EBh, 28h                       ; ...F..0....F..(
+  ovl4:9A44  12774  33c0           xor    ax, ax
+  ovl4:9A46  12776  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A49  12779  eb60           jmp    0x9aab
+  ovl4:9A4B  1277B  b80300         mov    ax, 3
+  ovl4:9A4E  1277E  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A51  12781  eb58           jmp    0x9aab
+  ovl4:9A53  12783  b80400         mov    ax, 4
+  ovl4:9A56  12786  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A59  12789  eb50           jmp    0x9aab
+  ovl4:9A5B  1278B  b80500         mov    ax, 5
+  ovl4:9A5E  1278E  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A61  12791  eb48           jmp    0x9aab
+  ovl4:9A63  12793  b80800         mov    ax, 8
+  ovl4:9A66  12796  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A69  12799  eb40           jmp    0x9aab
+  ovl4:9A6B  1279B  b80b00         mov    ax, 0xb
+  ovl4:9A6E  1279E  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A71  127A1  eb38           jmp    0x9aab
+  ovl4:9A73  127A3  b80c00         mov    ax, 0xc
+  ovl4:9A76  127A6  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A79  127A9  eb30           jmp    0x9aab
+  ovl4:9A7B  127AB  b80d00         mov    ax, 0xd
+  ovl4:9A7E  127AE  894604         mov    word ptr [bp + 4], ax
+  ovl4:9A81  127B1  eb28           jmp    0x9aab
   ovl4:9A83  127B3  50             push   ax
-  ovl4:9A84  127B4  e849d0         call   rt_6ad0
-  ovl4:9A87  127B7  0800           or     byte ptr [bx + si], al
-  ovl4:9A89  127B9  af             scasw  ax, word ptr es:[di]
-  ; ---- data / unreached bytes (40 bytes)
-  ovl4:9A8A  127BA  db FFh, FFh, FFh, 4Fh, 00h, 50h, 00h, 51h, 00h, 01h, 00h, B1h, FFh, B0h, FFh, ABh                  ; ...O.P.Q........
-  ovl4:9A9A  127CA  db 9Ah, 7Bh, 9Ah, 73h, 9Ah, 6Bh, 9Ah, 63h, 9Ah, 5Bh, 9Ah, 53h, 9Ah, 4Bh, 9Ah, 44h                  ; .{.s.k.c.[.S.K.D
-  ovl4:9AAA  127DA  db 9Ah, 8Bh, 46h, 04h, 8Bh, E5h, 5Dh, C3h                                                          ; ..F...].
+  ovl4:9A84  127B4  e849d0         call   sparse_switch
+  ovl4:9A87  127B7  dw 8                                                                    ; sparse switch table: 8 values, then 9 targets (the default first)
+  ovl4:9A89  127B9  dw -81                                                                  ; value 0
+  ovl4:9A8B  127BB  dw -1                                                                   ; value 1
+  ovl4:9A8D  127BD  dw 79                                                                   ; value 2
+  ovl4:9A8F  127BF  dw 80                                                                   ; value 3
+  ovl4:9A91  127C1  dw 81                                                                   ; value 4
+  ovl4:9A93  127C3  dw 1                                                                    ; value 5
+  ovl4:9A95  127C5  dw -79                                                                  ; value 6
+  ovl4:9A97  127C7  dw -80                                                                  ; value 7
+  ovl4:9A99  127C9  dw 9AABh                                                                 ; default
+  ovl4:9A9B  127CB  dw 9A7Bh                                                                 ; case -81
+  ovl4:9A9D  127CD  dw 9A73h                                                                 ; case -1
+  ovl4:9A9F  127CF  dw 9A6Bh                                                                 ; case 79
+  ovl4:9AA1  127D1  dw 9A63h                                                                 ; case 80
+  ovl4:9AA3  127D3  dw 9A5Bh                                                                 ; case 81
+  ovl4:9AA5  127D5  dw 9A53h                                                                 ; case 1
+  ovl4:9AA7  127D7  dw 9A4Bh                                                                 ; case -79
+  ovl4:9AA9  127D9  dw 9A44h                                                                 ; case -80
+  ovl4:9AAB  127DB  8b4604         mov    ax, word ptr [bp + 4]
+  ovl4:9AAE  127DE  8be5           mov    sp, bp
+  ovl4:9AB0  127E0  5d             pop    bp
+  ovl4:9AB1  127E1  c3             ret
 
-; ---- ovl4_9ab2   (called from 1 place)
-ovl4_9ab2:
+; ---- set_move_delays   (called from 1 place)
+;      Ticks per step: 3 - speed, doubled for ships of the line, torn sails, the wind (DS:0ECD); losses in rough and shallow water
+set_move_delays:
   ovl4:9AB2  127E2  55             push   bp
   ovl4:9AB3  127E3  8bec           mov    bp, sp
   ovl4:9AB5  127E5  83ec12         sub    sp, 0x12
@@ -31575,7 +31746,7 @@ ovl4_9ab2:
   ovl4:9B2D  1285D  8a04           mov    al, byte ptr [si]
   ovl4:9B2F  1285F  98             cwde
   ovl4:9B30  12860  50             push   ax
-  ovl4:9B31  12861  e8907a         call   rt_15c4
+  ovl4:9B31  12861  e8907a         call   tile_is_rough
   ovl4:9B34  12864  5f             pop    di
   ovl4:9B35  12865  8946fc         mov    word ptr [bp - 4], ax
   ovl4:9B38  12868  beff5b         mov    si, 0x5bff
@@ -31583,7 +31754,7 @@ ovl4_9ab2:
   ovl4:9B3E  1286E  8a04           mov    al, byte ptr [si]
   ovl4:9B40  12870  98             cwde
   ovl4:9B41  12871  50             push   ax
-  ovl4:9B42  12872  e8117b         call   rt_1656
+  ovl4:9B42  12872  e8117b         call   tile_is_shallow
   ovl4:9B45  12875  5f             pop    di
   ovl4:9B46  12876  8946fe         mov    word ptr [bp - 2], ax
   ovl4:9B49  12879  b80300         mov    ax, 3
@@ -31691,7 +31862,7 @@ ovl4_9ab2:
   ovl4:9C57  12987  ff76fa         push   word ptr [bp - 6]
   ovl4:9C5A  1298A  ff76f2         push   word ptr [bp - 0xe]
   ovl4:9C5D  1298D  ff76f0         push   word ptr [bp - 0x10]
-  ovl4:9C60  12990  e81b01         call   ovl4_9d7e
+  ovl4:9C60  12990  e81b01         call   lost_at_sea
   ovl4:9C63  12993  83c408         add    sp, 8
   ovl4:9C66  12996  8946f4         mov    word ptr [bp - 0xc], ax
   ovl4:9C69  12999  0bc0           or     ax, ax
@@ -31794,8 +31965,9 @@ ovl4_9ab2:
   ovl4:9D7C  12AAC  5d             pop    bp
   ovl4:9D7D  12AAD  c3             ret
 
-; ---- ovl4_9d7e   (called from 1 place)
-ovl4_9d7e:
+; ---- lost_at_sea   (called from 1 place)
+;      A ship lost in rough or shallow water
+lost_at_sea:
   ovl4:9D7E  12AAE  55             push   bp
   ovl4:9D7F  12AAF  8bec           mov    bp, sp
   ovl4:9D81  12AB1  83ec02         sub    sp, 2
@@ -31803,7 +31975,7 @@ ovl4_9d7e:
   ovl4:9D86  12AB6  50             push   ax
   ovl4:9D87  12AB7  ff760a         push   word ptr [bp + 0xa]
   ovl4:9D8A  12ABA  ff7606         push   word ptr [bp + 6]
-  ovl4:9D8D  12ABD  e827f5         call   ovl4_92b7
+  ovl4:9D8D  12ABD  e827f5         call   count_loss
   ovl4:9D90  12AC0  83c406         add    sp, 6
   ovl4:9D93  12AC3  ff760a         push   word ptr [bp + 0xa]
   ovl4:9D96  12AC6  beff5b         mov    si, 0x5bff
@@ -31812,10 +31984,10 @@ ovl4_9d7e:
   ovl4:9D9E  12ACE  98             cwde
   ovl4:9D9F  12ACF  50             push   ax
   ovl4:9DA0  12AD0  ff7606         push   word ptr [bp + 6]
-  ovl4:9DA3  12AD3  e8ea17         call   ovl4_b590
+  ovl4:9DA3  12AD3  e8ea17         call   msg_sunk
   ovl4:9DA6  12AD6  83c406         add    sp, 6
   ovl4:9DA9  12AD9  ff7606         push   word ptr [bp + 6]
-  ovl4:9DAC  12ADC  e85325         call   ovl4_c302
+  ovl4:9DAC  12ADC  e85325         call   promote_at_sea
   ovl4:9DAF  12ADF  5f             pop    di
   ovl4:9DB0  12AE0  b8ffff         mov    ax, 0xffff
   ovl4:9DB3  12AE3  be455e         mov    si, 0x5e45
@@ -31847,7 +32019,7 @@ ovl4_9d7e:
   ovl4:9DF7  12B27  8904           mov    word ptr [si], ax
   ovl4:9DF9  12B29  ff760a         push   word ptr [bp + 0xa]
   ovl4:9DFC  12B2C  ff760a         push   word ptr [bp + 0xa]
-  ovl4:9DFF  12B2F  e84d00         call   ovl4_9e4f
+  ovl4:9DFF  12B2F  e84d00         call   end_check
   ovl4:9E02  12B32  5f             pop    di
   ovl4:9E03  12B33  5f             pop    di
   ovl4:9E04  12B34  8946fe         mov    word ptr [bp - 2], ax
@@ -31859,13 +32031,13 @@ ovl4_9d7e:
   ovl4:9E11  12B41  c3             ret
   ovl4:9E12  12B42  e8ed03         call   check_cursor_over_squadron
   ovl4:9E15  12B45  e87068         call   mark_flagship_squadrons
-  ovl4:9E18  12B48  e8ae25         call   ovl4_c3c9
+  ovl4:9E18  12B48  e8ae25         call   flags_check
   ovl4:9E1B  12B4B  89460a         mov    word ptr [bp + 0xa], ax
   ovl4:9E1E  12B4E  817e0a0100     cmp    word ptr [bp + 0xa], 1
   ovl4:9E23  12B53  750f           jne    0x9e34
   ovl4:9E25  12B55  b80100         mov    ax, 1
   ovl4:9E28  12B58  50             push   ax
-  ovl4:9E29  12B59  e8fd02         call   ovl4_a129
+  ovl4:9E29  12B59  e8fd02         call   game_over
   ovl4:9E2C  12B5C  5f             pop    di
   ovl4:9E2D  12B5D  b80a00         mov    ax, 0xa
   ovl4:9E30  12B60  89069f64       mov    word ptr [0x649f], ax
@@ -31873,7 +32045,7 @@ ovl4_9d7e:
   ovl4:9E39  12B69  750e           jne    0x9e49
   ovl4:9E3B  12B6B  b80200         mov    ax, 2
   ovl4:9E3E  12B6E  50             push   ax
-  ovl4:9E3F  12B6F  e8e702         call   ovl4_a129
+  ovl4:9E3F  12B6F  e8e702         call   game_over
   ovl4:9E42  12B72  5f             pop    di
   ovl4:9E43  12B73  33c0           xor    ax, ax
   ovl4:9E45  12B75  89069f64       mov    word ptr [0x649f], ax
@@ -31882,8 +32054,9 @@ ovl4_9d7e:
   ovl4:9E4D  12B7D  5d             pop    bp
   ovl4:9E4E  12B7E  c3             ret
 
-; ---- ovl4_9e4f   (called from 5 places)
-ovl4_9e4f:
+; ---- end_check   (called from 5 places)
+;      After a loss: the counts, the opponent's values, crown, last ship, last flagship, the offer to surrender
+end_check:
   ovl4:9E4F  12B7F  55             push   bp
   ovl4:9E50  12B80  8bec           mov    bp, sp
   ovl4:9E52  12B82  83ec08         sub    sp, 8
@@ -31910,7 +32083,7 @@ ovl4_9e4f:
   ovl4:9E8B  12BBB  8b4606         mov    ax, word ptr [bp + 6]
   ovl4:9E8E  12BBE  8946fe         mov    word ptr [bp - 2], ax
   ovl4:9E91  12BC1  ff76f8         push   word ptr [bp - 8]
-  ovl4:9E94  12BC4  e8be70         call   rt_0f55
+  ovl4:9E94  12BC4  e8be70         call   clear_paths
   ovl4:9E97  12BC7  5f             pop    di
   ovl4:9E98  12BC8  b8feff         mov    ax, 0xfffe
   ovl4:9E9B  12BCB  bee55e         mov    si, 0x5ee5
@@ -32011,7 +32184,7 @@ ovl4_9e4f:
   ovl4:9F85  12CB5  3b4606         cmp    ax, word ptr [bp + 6]
   ovl4:9F88  12CB8  7411           je     0x9f9b
   ovl4:9F8A  12CBA  ff76fe         push   word ptr [bp - 2]
-  ovl4:9F8D  12CBD  e8be24         call   ovl4_c44e
+  ovl4:9F8D  12CBD  e8be24         call   crown_check
   ovl4:9F90  12CC0  5f             pop    di
   ovl4:9F91  12CC1  0bc0           or     ax, ax
   ovl4:9F93  12CC3  7406           je     0x9f9b
@@ -32024,7 +32197,7 @@ ovl4_9e4f:
   ovl4:9FA3  12CD3  7525           jne    0x9fca
   ovl4:9FA5  12CD5  b80100         mov    ax, 1
   ovl4:9FA8  12CD8  50             push   ax
-  ovl4:9FA9  12CD9  e87d01         call   ovl4_a129
+  ovl4:9FA9  12CD9  e87d01         call   game_over
   ovl4:9FAC  12CDC  5f             pop    di
   ovl4:9FAD  12CDD  b80c00         mov    ax, 0xc
   ovl4:9FB0  12CE0  89069f64       mov    word ptr [0x649f], ax
@@ -32041,7 +32214,7 @@ ovl4_9e4f:
   ovl4:9FCF  12CFF  7525           jne    0x9ff6
   ovl4:9FD1  12D01  b80200         mov    ax, 2
   ovl4:9FD4  12D04  50             push   ax
-  ovl4:9FD5  12D05  e85101         call   ovl4_a129
+  ovl4:9FD5  12D05  e85101         call   game_over
   ovl4:9FD8  12D08  5f             pop    di
   ovl4:9FD9  12D09  b80200         mov    ax, 2
   ovl4:9FDC  12D0C  89069f64       mov    word ptr [0x649f], ax
@@ -32054,13 +32227,13 @@ ovl4_9e4f:
   ovl4:9FF2  12D22  8be5           mov    sp, bp
   ovl4:9FF4  12D24  5d             pop    bp
   ovl4:9FF5  12D25  c3             ret
-  ovl4:9FF6  12D26  e8d023         call   ovl4_c3c9
+  ovl4:9FF6  12D26  e8d023         call   flags_check
   ovl4:9FF9  12D29  8946f8         mov    word ptr [bp - 8], ax
   ovl4:9FFC  12D2C  817ef80100     cmp    word ptr [bp - 8], 1
   ovl4:A001  12D31  7515           jne    0xa018
   ovl4:A003  12D33  b80100         mov    ax, 1
   ovl4:A006  12D36  50             push   ax
-  ovl4:A007  12D37  e81f01         call   ovl4_a129
+  ovl4:A007  12D37  e81f01         call   game_over
   ovl4:A00A  12D3A  5f             pop    di
   ovl4:A00B  12D3B  b80a00         mov    ax, 0xa
   ovl4:A00E  12D3E  89069f64       mov    word ptr [0x649f], ax
@@ -32072,7 +32245,7 @@ ovl4_9e4f:
   ovl4:A01D  12D4D  7512           jne    0xa031
   ovl4:A01F  12D4F  b80200         mov    ax, 2
   ovl4:A022  12D52  50             push   ax
-  ovl4:A023  12D53  e80301         call   ovl4_a129
+  ovl4:A023  12D53  e80301         call   game_over
   ovl4:A026  12D56  5f             pop    di
   ovl4:A027  12D57  33c0           xor    ax, ax
   ovl4:A029  12D59  89069f64       mov    word ptr [0x649f], ax
@@ -32103,7 +32276,7 @@ ovl4_9e4f:
   ovl4:A066  12D96  b80100         mov    ax, 1
   ovl4:A069  12D99  be7360         mov    si, 0x6073
   ovl4:A06C  12D9C  8904           mov    word ptr [si], ax
-  ovl4:A06E  12D9E  e87190         call   rt_30e2
+  ovl4:A06E  12D9E  e87190         call   beep_message
   ovl4:A071  12DA1  b80300         mov    ax, 3
   ovl4:A074  12DA4  50             push   ax
   ovl4:A075  12DA5  e8d08b         call   clear_text_row
@@ -32191,15 +32364,16 @@ ovl4_9e4f:
   ovl4:A127  12E57  5d             pop    bp
   ovl4:A128  12E58  c3             ret
 
-; ---- ovl4_a129   (called from 8 places)
-ovl4_a129:
+; ---- game_over   (called from 8 places)
+;      You Lost (1) / You Won blinks until a key; all squadrons shown
+game_over:
   ovl4:A129  12E59  55             push   bp
   ovl4:A12A  12E5A  8bec           mov    bp, sp
   ovl4:A12C  12E5C  e86522         call   play_end_sound
-  ovl4:A12F  12E5F  e8186f         call   rt_104a
+  ovl4:A12F  12E5F  e8186f         call   erase_squadrons
   ovl4:A132  12E62  b85000         mov    ax, 0x50
   ovl4:A135  12E65  8906b764       mov    word ptr [0x64b7], ax
-  ovl4:A139  12E69  e8486f         call   rt_1084
+  ovl4:A139  12E69  e8486f         call   redraw_squadrons
   ovl4:A13C  12E6C  33c0           xor    ax, ax
   ovl4:A13E  12E6E  50             push   ax
   ovl4:A13F  12E6F  e8806a         call   text_rows_add
@@ -32285,7 +32459,7 @@ ovl4_a129:
   ovl4:A1E9  12F19  50             push   ax
   ovl4:A1EA  12F1A  b82b06         mov    ax, 0x62b
   ovl4:A1ED  12F1D  50             push   ax
-  ovl4:A1EE  12F1E  e8d38a         call   rt_2cc4
+  ovl4:A1EE  12F1E  e8d38a         call   draw_icon
   ovl4:A1F1  12F21  83c406         add    sp, 6
   ovl4:A1F4  12F24  b8581b         mov    ax, 0x1b58
   ovl4:A1F7  12F27  50             push   ax
@@ -32424,12 +32598,13 @@ check_cursor_over_squadron:
   ovl4:A345  13075  5d             pop    bp
   ovl4:A346  13076  c3             ret
 
-; ---- ovl4_a347   (called from 2 places)
-ovl4_a347:
+; ---- detach_join   (called from 2 places)
+;      D or J: the two squadrons' ships side by side; + and - mark one, S switches it, E ends
+detach_join:
   ovl4:A347  13077  55             push   bp
   ovl4:A348  13078  8bec           mov    bp, sp
   ovl4:A34A  1307A  83ec0a         sub    sp, 0xa
-  ovl4:A34D  1307D  e8fa6c         call   rt_104a
+  ovl4:A34D  1307D  e8fa6c         call   erase_squadrons
   ovl4:A350  13080  33c0           xor    ax, ax
   ovl4:A352  13082  8946fc         mov    word ptr [bp - 4], ax
   ovl4:A355  13085  8946fa         mov    word ptr [bp - 6], ax
@@ -32507,7 +32682,7 @@ ovl4_a347:
   ovl4:A405  13135  b80100         mov    ax, 1
   ovl4:A408  13138  8946fe         mov    word ptr [bp - 2], ax
   ovl4:A40B  1313B  e82468         call   beep_low
-  ovl4:A40E  1313E  e8158a         call   rt_2e26
+  ovl4:A40E  1313E  e8158a         call   clear_detach_panel
   ovl4:A411  13141  b80800         mov    ax, 8
   ovl4:A414  13144  50             push   ax
   ovl4:A415  13145  b009           mov    al, 9
@@ -32568,7 +32743,7 @@ ovl4_a347:
   ovl4:A481  131B1  50             push   ax
   ovl4:A482  131B2  e81087         call   draw_hline
   ovl4:A485  131B5  83c406         add    sp, 6
-  ovl4:A488  131B8  e8c704         call   ovl4_a952
+  ovl4:A488  131B8  e8c704         call   detach_names
   ovl4:A48B  131BB  b81700         mov    ax, 0x17
   ovl4:A48E  131BE  50             push   ax
   ovl4:A48F  131BF  e8b687         call   clear_text_row
@@ -32588,7 +32763,7 @@ ovl4_a347:
   ovl4:A4AB  131DB  50             push   ax
   ovl4:A4AC  131DC  b84d06         mov    ax, 0x64d
   ovl4:A4AF  131DF  50             push   ax
-  ovl4:A4B0  131E0  e81188         call   rt_2cc4
+  ovl4:A4B0  131E0  e81188         call   draw_icon
   ovl4:A4B3  131E3  83c406         add    sp, 6
   ovl4:A4B6  131E6  b80400         mov    ax, 4
   ovl4:A4B9  131E9  50             push   ax
@@ -32596,7 +32771,7 @@ ovl4_a347:
   ovl4:A4BC  131EC  50             push   ax
   ovl4:A4BD  131ED  b86f06         mov    ax, 0x66f
   ovl4:A4C0  131F0  50             push   ax
-  ovl4:A4C1  131F1  e80088         call   rt_2cc4
+  ovl4:A4C1  131F1  e80088         call   draw_icon
   ovl4:A4C4  131F4  83c406         add    sp, 6
   ovl4:A4C7  131F7  b81800         mov    ax, 0x18
   ovl4:A4CA  131FA  50             push   ax
@@ -32642,7 +32817,7 @@ ovl4_a347:
   ovl4:A51F  1324F  0346fc         add    ax, word ptr [bp - 4]
   ovl4:A522  13252  058b0c         add    ax, 0xc8b
   ovl4:A525  13255  50             push   ax
-  ovl4:A526  13256  e89f88         call   rt_2dc8
+  ovl4:A526  13256  e89f88         call   invert_block
   ovl4:A529  13259  83c406         add    sp, 6
   ovl4:A52C  1325C  b80100         mov    ax, 1
   ovl4:A52F  1325F  0bc0           or     ax, ax
@@ -32664,7 +32839,7 @@ ovl4_a347:
   ovl4:A55B  1328B  058b0c         add    ax, 0xc8b
   ovl4:A55E  1328E  0346fc         add    ax, word ptr [bp - 4]
   ovl4:A561  13291  50             push   ax
-  ovl4:A562  13292  e86388         call   rt_2dc8
+  ovl4:A562  13292  e86388         call   invert_block
   ovl4:A565  13295  83c406         add    sp, 6
   ovl4:A568  13298  ff46fa         inc    word ptr [bp - 6]
   ovl4:A56B  1329B  8b46fa         mov    ax, word ptr [bp - 6]
@@ -32726,7 +32901,7 @@ ovl4_a347:
   ovl4:A5F9  13329  0346fc         add    ax, word ptr [bp - 4]
   ovl4:A5FC  1332C  058b0c         add    ax, 0xc8b
   ovl4:A5FF  1332F  50             push   ax
-  ovl4:A600  13330  e8c587         call   rt_2dc8
+  ovl4:A600  13330  e8c587         call   invert_block
   ovl4:A603  13333  83c406         add    sp, 6
   ovl4:A606  13336  e82966         call   beep_low
   ovl4:A609  13339  33c0           xor    ax, ax
@@ -32748,7 +32923,7 @@ ovl4_a347:
   ovl4:A638  13368  0346fc         add    ax, word ptr [bp - 4]
   ovl4:A63B  1336B  058b0c         add    ax, 0xc8b
   ovl4:A63E  1336E  50             push   ax
-  ovl4:A63F  1336F  e88687         call   rt_2dc8
+  ovl4:A63F  1336F  e88687         call   invert_block
   ovl4:A642  13372  83c406         add    sp, 6
   ovl4:A645  13375  ff4efa         dec    word ptr [bp - 6]
   ovl4:A648  13378  8b46fa         mov    ax, word ptr [bp - 6]
@@ -32804,7 +32979,7 @@ ovl4_a347:
   ovl4:A6C5  133F5  0346fc         add    ax, word ptr [bp - 4]
   ovl4:A6C8  133F8  058b0c         add    ax, 0xc8b
   ovl4:A6CB  133FB  50             push   ax
-  ovl4:A6CC  133FC  e8f986         call   rt_2dc8
+  ovl4:A6CC  133FC  e8f986         call   invert_block
   ovl4:A6CF  133FF  83c406         add    sp, 6
   ovl4:A6D2  13402  e85d65         call   beep_low
   ovl4:A6D5  13405  33c0           xor    ax, ax
@@ -32825,7 +33000,7 @@ ovl4_a347:
   ovl4:A700  13430  0346fc         add    ax, word ptr [bp - 4]
   ovl4:A703  13433  058b0c         add    ax, 0xc8b
   ovl4:A706  13436  50             push   ax
-  ovl4:A707  13437  e8be86         call   rt_2dc8
+  ovl4:A707  13437  e8be86         call   invert_block
   ovl4:A70A  1343A  83c406         add    sp, 6
   ovl4:A70D  1343D  817efc0000     cmp    word ptr [bp - 4], 0
   ovl4:A712  13442  7403           je     0xa717
@@ -32951,7 +33126,7 @@ ovl4_a347:
   ovl4:A83F  1356F  8804           mov    byte ptr [si], al
   ovl4:A841  13571  ff46f8         inc    word ptr [bp - 8]
   ovl4:A844  13574  ebc2           jmp    0xa808
-  ovl4:A846  13576  e80901         call   ovl4_a952
+  ovl4:A846  13576  e80901         call   detach_names
   ovl4:A849  13579  e909fe         jmp    0xa655
   ovl4:A84C  1357C  813e96681200   cmp    word ptr [0x6896], 0x12
   ovl4:A852  13582  7408           je     0xa85c
@@ -33017,11 +33192,11 @@ ovl4_a347:
   ovl4:A8E6  13616  50             push   ax
   ovl4:A8E7  13617  ff36fd62       push   word ptr [0x62fd]
   ovl4:A8EB  1361B  ff36fb62       push   word ptr [0x62fb]
-  ovl4:A8EF  1361F  e83b76         call   rt_1f2d
+  ovl4:A8EF  1361F  e83b76         call   place_detached
   ovl4:A8F2  13622  83c408         add    sp, 8
   ovl4:A8F5  13625  eb18           jmp    0xa90f
   ovl4:A8F7  13627  ff36fd62       push   word ptr [0x62fd]
-  ovl4:A8FB  1362B  e85766         call   rt_0f55
+  ovl4:A8FB  1362B  e85766         call   clear_paths
   ovl4:A8FE  1362E  5f             pop    di
   ovl4:A8FF  1362F  b80f27         mov    ax, 0x270f
   ovl4:A902  13632  be2d5d         mov    si, 0x5d2d
@@ -33035,7 +33210,7 @@ ovl4_a347:
   ovl4:A915  13645  83f8ff         cmp    ax, -1
   ovl4:A918  13648  751a           jne    0xa934
   ovl4:A91A  1364A  ff36fb62       push   word ptr [0x62fb]
-  ovl4:A91E  1364E  e83466         call   rt_0f55
+  ovl4:A91E  1364E  e83466         call   clear_paths
   ovl4:A921  13651  5f             pop    di
   ovl4:A922  13652  b80f27         mov    ax, 0x270f
   ovl4:A925  13655  be2d5d         mov    si, 0x5d2d
@@ -33047,7 +33222,7 @@ ovl4_a347:
   ovl4:A934  13664  33c0           xor    ax, ax
   ovl4:A936  13666  89068c68       mov    word ptr [0x688c], ax
   ovl4:A93A  1366A  e84b5d         call   mark_flagship_squadrons
-  ovl4:A93D  1366D  e84467         call   rt_1084
+  ovl4:A93D  1366D  e84467         call   redraw_squadrons
   ovl4:A940  13670  e8bff8         call   check_cursor_over_squadron
   ovl4:A943  13673  b81700         mov    ax, 0x17
   ovl4:A946  13676  50             push   ax
@@ -33058,8 +33233,9 @@ ovl4_a347:
   ovl4:A950  13680  5d             pop    bp
   ovl4:A951  13681  c3             ret
 
-; ---- ovl4_a952   (called from 2 places)
-ovl4_a952:
+; ---- detach_names   (called from 2 places)
+;      The two columns of ship names
+detach_names:
   ovl4:A952  13682  55             push   bp
   ovl4:A953  13683  8bec           mov    bp, sp
   ovl4:A955  13685  83ec04         sub    sp, 4
@@ -33269,7 +33445,7 @@ show_time_setting:
   ovl4:AAFE  1382E  5d             pop    bp
   ovl4:AAFF  1382F  c3             ret
 
-; ---- show_clear_or_pause   (called from 3 places)
+; ---- show_clear_or_pause   (called from 4 places)
 ;      "Clear" if there are messages, else "Pause"
 show_clear_or_pause:
   ovl4:AB00  13830  55             push   bp
@@ -33326,7 +33502,7 @@ select_squad:
   ovl4:AB72  138A2  ff0efd62       dec    word ptr [0x62fd]
   ovl4:AB76  138A6  ebe0           jmp    0xab58
   ovl4:AB78  138A8  e80700         call   squadron_command_line
-  ovl4:AB7B  138AB  e84fe0         call   ovl4_8bcd
+  ovl4:AB7B  138AB  e84fe0         call   encounters
   ovl4:AB7E  138AE  8be5           mov    sp, bp
   ovl4:AB80  138B0  5d             pop    bp
   ovl4:AB81  138B1  c3             ret
@@ -33474,8 +33650,9 @@ squadron_command_line:
   ovl4:ACD8  13A08  5d             pop    bp
   ovl4:ACD9  13A09  c3             ret
 
-; ---- ovl4_acda   (called from 1 place)
-ovl4_acda:
+; ---- trace_prompt   (called from 1 place)
+;      Trace path to destination and press [M]; the marker becomes a box
+trace_prompt:
   ovl4:ACDA  13A0A  55             push   bp
   ovl4:ACDB  13A0B  8bec           mov    bp, sp
   ovl4:ACDD  13A0D  e8305f         call   text_area_reset
@@ -33490,7 +33667,7 @@ ovl4_acda:
   ovl4:ACF1  13A21  50             push   ax
   ovl4:ACF2  13A22  b89106         mov    ax, 0x691
   ovl4:ACF5  13A25  50             push   ax
-  ovl4:ACF6  13A26  e8cb7f         call   rt_2cc4
+  ovl4:ACF6  13A26  e8cb7f         call   draw_icon
   ovl4:ACF9  13A29  83c406         add    sp, 6
   ovl4:ACFC  13A2C  b81800         mov    ax, 0x18
   ovl4:ACFF  13A2F  50             push   ax
@@ -33678,8 +33855,9 @@ show_fleet:
   ovl4:AEAC  13BDC  5d             pop    bp
   ovl4:AEAD  13BDD  c3             ret
 
-; ---- ovl4_aeae   (called from 5 places)
-ovl4_aeae:
+; ---- cell_mid_x   (called from 5 places)
+;      The middle byte of a cell, with the shore's slant
+cell_mid_x:
   ovl4:AEAE  13BDE  55             push   bp
   ovl4:AEAF  13BDF  8bec           mov    bp, sp
   ovl4:AEB1  13BE1  83ec04         sub    sp, 4
@@ -33717,8 +33895,9 @@ ovl4_aeae:
   ovl4:AF06  13C36  5d             pop    bp
   ovl4:AF07  13C37  c3             ret
 
-; ---- ovl4_af08   (called from 5 places)
-ovl4_af08:
+; ---- cell_mid_y   (called from 5 places)
+;      The middle line pair of a cell, with the shore's slant
+cell_mid_y:
   ovl4:AF08  13C38  55             push   bp
   ovl4:AF09  13C39  8bec           mov    bp, sp
   ovl4:AF0B  13C3B  83ec04         sub    sp, 4
@@ -34079,7 +34258,7 @@ route_free_run:
   ovl4:B251  13F81  c3             ret
 
 ; ---- join_partner   (called from 3 places)
-;      A squadron of the same side within 3 bytes and 7 line pairs (index+1, or 0); only a one-ship squadron
+;      A squadron of the same side within 3 bytes and 7 line pairs (index+1, or 0); not for a squadron of three ships ([6458] = -1)
 join_partner:
   ovl4:B252  13F82  55             push   bp
   ovl4:B253  13F83  8bec           mov    bp, sp
@@ -34251,8 +34430,9 @@ init_heading_sprites:
   ovl4:B3E3  14113  5d             pop    bp
   ovl4:B3E4  14114  c3             ret
 
-; ---- ovl4_b3e5   (called from 5 places)
-ovl4_b3e5:
+; ---- trace_blocked   (called from 5 places)
+;      May the tracing box move this way? 77 if not (land tiles, land bytes in the buffer, the shore's slant)
+trace_blocked:
   ovl4:B3E5  14115  55             push   bp
   ovl4:B3E6  14116  8bec           mov    bp, sp
   ovl4:B3E8  14118  83ec10         sub    sp, 0x10
@@ -34312,12 +34492,12 @@ ovl4_b3e5:
   ovl4:B468  14198  33c0           xor    ax, ax
   ovl4:B46A  1419A  8946f6         mov    word ptr [bp - 0xa], ax
   ovl4:B46D  1419D  ff76f0         push   word ptr [bp - 0x10]
-  ovl4:B470  141A0  e83360         call   tile_is_battle_p7
+  ovl4:B470  141A0  e83360         call   tile_is_land
   ovl4:B473  141A3  5f             pop    di
   ovl4:B474  141A4  0bc0           or     ax, ax
   ovl4:B476  141A6  750b           jne    0xb483
   ovl4:B478  141A8  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:B47B  141AB  e82860         call   tile_is_battle_p7
+  ovl4:B47B  141AB  e82860         call   tile_is_land
   ovl4:B47E  141AE  5f             pop    di
   ovl4:B47F  141AF  0bc0           or     ax, ax
   ovl4:B481  141B1  7408           je     0xb48b
@@ -34356,7 +34536,7 @@ ovl4_b3e5:
   ovl4:B4D4  14204  8b46fe         mov    ax, word ptr [bp - 2]
   ovl4:B4D7  14207  0346f0         add    ax, word ptr [bp - 0x10]
   ovl4:B4DA  1420A  50             push   ax
-  ovl4:B4DB  1420B  e86a79         call   rt_2e48
+  ovl4:B4DB  1420B  e86a79         call   buf_byte_is
   ovl4:B4DE  1420E  5f             pop    di
   ovl4:B4DF  1420F  5f             pop    di
   ovl4:B4E0  14210  0bc0           or     ax, ax
@@ -34366,7 +34546,7 @@ ovl4_b3e5:
   ovl4:B4E8  14218  8b46fe         mov    ax, word ptr [bp - 2]
   ovl4:B4EB  1421B  0346f0         add    ax, word ptr [bp - 0x10]
   ovl4:B4EE  1421E  50             push   ax
-  ovl4:B4EF  1421F  e85679         call   rt_2e48
+  ovl4:B4EF  1421F  e85679         call   buf_byte_is
   ovl4:B4F2  14222  5f             pop    di
   ovl4:B4F3  14223  5f             pop    di
   ovl4:B4F4  14224  0bc0           or     ax, ax
@@ -34380,13 +34560,13 @@ ovl4_b3e5:
   ovl4:B508  14238  0bc0           or     ax, ax
   ovl4:B50A  1423A  757d           jne    0xb589
   ovl4:B50C  1423C  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:B50F  1423F  e89cf9         call   ovl4_aeae
+  ovl4:B50F  1423F  e89cf9         call   cell_mid_x
   ovl4:B512  14242  5f             pop    di
   ovl4:B513  14243  8b56fa         mov    dx, word ptr [bp - 6]
   ovl4:B516  14246  2bd0           sub    dx, ax
   ovl4:B518  14248  8956fa         mov    word ptr [bp - 6], dx
   ovl4:B51B  1424B  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:B51E  1424E  e8e7f9         call   ovl4_af08
+  ovl4:B51E  1424E  e8e7f9         call   cell_mid_y
   ovl4:B521  14251  5f             pop    di
   ovl4:B522  14252  8b56fc         mov    dx, word ptr [bp - 4]
   ovl4:B525  14255  2bd0           sub    dx, ax
@@ -34431,14 +34611,15 @@ ovl4_b3e5:
   ovl4:B58E  142BE  5d             pop    bp
   ovl4:B58F  142BF  c3             ret
 
-; ---- ovl4_b590   (called from 1 place)
-ovl4_b590:
+; ---- msg_sunk   (called from 1 place)
+;      name / ENEMY FRIGATE / ENEMY SHIP SUNK IN ROUGH WATERS / LOST IN SHALLOW WATER
+msg_sunk:
   ovl4:B590  142C0  55             push   bp
   ovl4:B591  142C1  8bec           mov    bp, sp
   ovl4:B593  142C3  33c0           xor    ax, ax
   ovl4:B595  142C5  89069068       mov    word ptr [0x6890], ax
-  ovl4:B599  142C9  e8467b         call   rt_30e2
-  ovl4:B59C  142CC  e81d06         call   ovl4_bbbc
+  ovl4:B599  142C9  e8467b         call   beep_message
+  ovl4:B59C  142CC  e81d06         call   message_row
   ovl4:B59F  142CF  bedd5c         mov    si, 0x5cdd
   ovl4:B5A2  142D2  8b4608         mov    ax, word ptr [bp + 8]
   ovl4:B5A5  142D5  d1e0           shl    ax, 1
@@ -34458,7 +34639,7 @@ ovl4_b590:
   ovl4:B5C3  142F3  5f             pop    di
   ovl4:B5C4  142F4  eb1d           jmp    0xb5e3
   ovl4:B5C6  142F6  ff7606         push   word ptr [bp + 6]
-  ovl4:B5C9  142F9  e8f85f         call   rt_15c4
+  ovl4:B5C9  142F9  e8f85f         call   tile_is_rough
   ovl4:B5CC  142FC  5f             pop    di
   ovl4:B5CD  142FD  0bc0           or     ax, ax
   ovl4:B5CF  142FF  740a           je     0xb5db
@@ -34476,7 +34657,7 @@ ovl4_b590:
   ovl4:B5E7  14317  e8ea7c         call   rt_32d4
   ovl4:B5EA  1431A  5f             pop    di
   ovl4:B5EB  1431B  ff7606         push   word ptr [bp + 6]
-  ovl4:B5EE  1431E  e8d35f         call   rt_15c4
+  ovl4:B5EE  1431E  e8d35f         call   tile_is_rough
   ovl4:B5F1  14321  5f             pop    di
   ovl4:B5F2  14322  0bc0           or     ax, ax
   ovl4:B5F4  14324  740d           je     0xb603
@@ -34495,8 +34676,9 @@ ovl4_b590:
   ovl4:B610  14340  5d             pop    bp
   ovl4:B611  14341  c3             ret
 
-; ---- ovl4_b612   (called from 1 place)
-ovl4_b612:
+; ---- msg_sighted   (called from 1 place)
+;      ALERT - ENEMY SIGHTED IN THE ...
+msg_sighted:
   ovl4:B612  14342  55             push   bp
   ovl4:B613  14343  8bec           mov    bp, sp
   ovl4:B615  14345  83ec02         sub    sp, 2
@@ -34528,7 +34710,7 @@ ovl4_b612:
   ovl4:B653  14383  89069068       mov    word ptr [0x6890], ax
   ovl4:B657  14387  b81400         mov    ax, 0x14
   ovl4:B65A  1438A  89060d63       mov    word ptr [0x630d], ax
-  ovl4:B65E  1438E  e85b05         call   ovl4_bbbc
+  ovl4:B65E  1438E  e85b05         call   message_row
   ovl4:B661  14391  b8f54a         mov    ax, 0x4af5
   ovl4:B664  14394  05ea00         add    ax, 0xea
   ovl4:B667  14397  50             push   ax
@@ -34557,7 +34739,7 @@ msg_encounter:
   ovl4:B68D  143BD  8bec           mov    bp, sp
   ovl4:B68F  143BF  33c0           xor    ax, ax
   ovl4:B691  143C1  89069068       mov    word ptr [0x6890], ax
-  ovl4:B695  143C5  e82405         call   ovl4_bbbc
+  ovl4:B695  143C5  e82405         call   message_row
   ovl4:B698  143C8  b8f54a         mov    ax, 0x4af5
   ovl4:B69B  143CB  050001         add    ax, 0x100
   ovl4:B69E  143CE  50             push   ax
@@ -34590,8 +34772,9 @@ msg_encounter:
   ovl4:B6E3  14413  5d             pop    bp
   ovl4:B6E4  14414  c3             ret
 
-; ---- ovl4_b6e5   (called from 1 place)
-ovl4_b6e5:
+; ---- msg_merchant_taken   (called from 1 place)
+;      NOTICE - MERCHANT LOST / ENEMY MERCHANT CAPTURED
+msg_merchant_taken:
   ovl4:B6E5  14415  55             push   bp
   ovl4:B6E6  14416  8bec           mov    bp, sp
   ovl4:B6E8  14418  83ec02         sub    sp, 2
@@ -34619,7 +34802,7 @@ ovl4_b6e5:
   ovl4:B720  14450  8be5           mov    sp, bp
   ovl4:B722  14452  5d             pop    bp
   ovl4:B723  14453  c3             ret
-  ovl4:B724  14454  e89504         call   ovl4_bbbc
+  ovl4:B724  14454  e89504         call   message_row
   ovl4:B727  14457  bedd5c         mov    si, 0x5cdd
   ovl4:B72A  1445A  8b4604         mov    ax, word ptr [bp + 4]
   ovl4:B72D  1445D  d1e0           shl    ax, 1
@@ -34678,13 +34861,14 @@ ovl4_b6e5:
   ovl4:B7AE  144DE  5d             pop    bp
   ovl4:B7AF  144DF  c3             ret
 
-; ---- ovl4_b7b0   (called from 1 place)
-ovl4_b7b0:
+; ---- msg_resupplied   (called from 1 place)
+;      MERCHANT SUPPLIES SQUAD
+msg_resupplied:
   ovl4:B7B0  144E0  55             push   bp
   ovl4:B7B1  144E1  8bec           mov    bp, sp
   ovl4:B7B3  144E3  33c0           xor    ax, ax
   ovl4:B7B5  144E5  89069068       mov    word ptr [0x6890], ax
-  ovl4:B7B9  144E9  e80004         call   ovl4_bbbc
+  ovl4:B7B9  144E9  e80004         call   message_row
   ovl4:B7BC  144EC  b87f02         mov    ax, 0x27f                    ; DS:027F "MERCHANT SUPPLIES SQUAD"
   ovl4:B7BF  144EF  50             push   ax
   ovl4:B7C0  144F0  e8927b         call   print_string
@@ -34722,7 +34906,7 @@ msg_fighting:
   ovl4:B7FA  1452A  c3             ret
   ovl4:B7FB  1452B  33c0           xor    ax, ax
   ovl4:B7FD  1452D  89069068       mov    word ptr [0x6890], ax
-  ovl4:B801  14531  e8b803         call   ovl4_bbbc
+  ovl4:B801  14531  e8b803         call   message_row
   ovl4:B804  14534  b8f54a         mov    ax, 0x4af5
   ovl4:B807  14537  051401         add    ax, 0x114
   ovl4:B80A  1453A  50             push   ax
@@ -34755,7 +34939,7 @@ msg_battle_result:
   ovl4:B83C  1456C  8bec           mov    bp, sp
   ovl4:B83E  1456E  33c0           xor    ax, ax
   ovl4:B840  14570  89069068       mov    word ptr [0x6890], ax
-  ovl4:B844  14574  e87503         call   ovl4_bbbc
+  ovl4:B844  14574  e87503         call   message_row
   ovl4:B847  14577  b8f54a         mov    ax, 0x4af5
   ovl4:B84A  1457A  052a01         add    ax, 0x12a
   ovl4:B84D  1457D  50             push   ax
@@ -34789,8 +34973,9 @@ msg_battle_result:
   ovl4:B889  145B9  5d             pop    bp
   ovl4:B88A  145BA  c3             ret
 
-; ---- ovl4_b88b   (called from 1 place)
-ovl4_b88b:
+; ---- msg_flag_taken   (called from 1 place)
+;      URGENT - FLAG TAKEN
+msg_flag_taken:
   ovl4:B88B  145BB  55             push   bp
   ovl4:B88C  145BC  8bec           mov    bp, sp
   ovl4:B88E  145BE  83ec02         sub    sp, 2
@@ -34817,7 +35002,7 @@ ovl4_b88b:
   ovl4:B8C0  145F0  c3             ret
   ovl4:B8C1  145F1  8b46fe         mov    ax, word ptr [bp - 2]
   ovl4:B8C4  145F4  89069068       mov    word ptr [0x6890], ax
-  ovl4:B8C8  145F8  e8f102         call   ovl4_bbbc
+  ovl4:B8C8  145F8  e8f102         call   message_row
   ovl4:B8CB  145FB  b8f54a         mov    ax, 0x4af5
   ovl4:B8CE  145FE  054701         add    ax, 0x147
   ovl4:B8D1  14601  50             push   ax
@@ -34839,8 +35024,9 @@ ovl4_b88b:
   ovl4:B8F4  14624  5d             pop    bp
   ovl4:B8F5  14625  c3             ret
 
-; ---- ovl4_b8f6   (called from 1 place)
-ovl4_b8f6:
+; ---- msg_enemy_flag   (called from 1 place)
+;      ENEMY FLAG CAPTURED
+msg_enemy_flag:
   ovl4:B8F6  14626  55             push   bp
   ovl4:B8F7  14627  8bec           mov    bp, sp
   ovl4:B8F9  14629  83ec02         sub    sp, 2
@@ -34867,7 +35053,7 @@ ovl4_b8f6:
   ovl4:B92B  1465B  c3             ret
   ovl4:B92C  1465C  8b46fe         mov    ax, word ptr [bp - 2]
   ovl4:B92F  1465F  89069068       mov    word ptr [0x6890], ax
-  ovl4:B933  14663  e88602         call   ovl4_bbbc
+  ovl4:B933  14663  e88602         call   message_row
   ovl4:B936  14666  b8f54a         mov    ax, 0x4af5
   ovl4:B939  14669  055b01         add    ax, 0x15b
   ovl4:B93C  1466C  50             push   ax
@@ -34889,13 +35075,14 @@ ovl4_b8f6:
   ovl4:B95F  1468F  5d             pop    bp
   ovl4:B960  14690  c3             ret
 
-; ---- ovl4_b961   (called from 1 place)
-ovl4_b961:
+; ---- msg_crown   (called from 1 place)
+;      WHITE / BLACK CROWN CAPTURED; the crown flashes to a tune with the sound on
+msg_crown:
   ovl4:B961  14691  55             push   bp
   ovl4:B962  14692  8bec           mov    bp, sp
   ovl4:B964  14694  83ec02         sub    sp, 2
-  ovl4:B967  14697  e85202         call   ovl4_bbbc
-  ovl4:B96A  1469A  e81757         call   rt_1084
+  ovl4:B967  14697  e85202         call   message_row
+  ovl4:B96A  1469A  e81757         call   redraw_squadrons
   ovl4:B96D  1469D  817e060000     cmp    word ptr [bp + 6], 0
   ovl4:B972  146A2  750a           jne    0xb97e
   ovl4:B974  146A4  b8a002         mov    ax, 0x2a0                    ; DS:02A0 "WHITE"
@@ -34932,7 +35119,7 @@ ovl4_b961:
   ovl4:B9B6  146E6  5f             pop    di
   ovl4:B9B7  146E7  8946fe         mov    word ptr [bp - 2], ax
   ovl4:B9BA  146EA  ff76fe         push   word ptr [bp - 2]
-  ovl4:B9BD  146ED  e89c09         call   ovl4_c35c
+  ovl4:B9BD  146ED  e89c09         call   invert_cell
   ovl4:B9C0  146F0  5f             pop    di
   ovl4:B9C1  146F1  ff365964       push   word ptr [0x6459]
   ovl4:B9C5  146F5  e84d6d         call   rt_2715
@@ -35012,7 +35199,7 @@ ovl4_b961:
   ovl4:BA63  14793  5f             pop    di
   ovl4:BA64  14794  e80075         call   rt_2f67
   ovl4:BA67  14797  ff76fe         push   word ptr [bp - 2]
-  ovl4:BA6A  1479A  e8ef08         call   ovl4_c35c
+  ovl4:BA6A  1479A  e8ef08         call   invert_cell
   ovl4:BA6D  1479D  5f             pop    di
   ovl4:BA6E  1479E  b88813         mov    ax, 0x1388
   ovl4:BA71  147A1  50             push   ax
@@ -35022,7 +35209,7 @@ ovl4_b961:
   ovl4:BA7A  147AA  e8986c         call   rt_2715
   ovl4:BA7D  147AD  5f             pop    di
   ovl4:BA7E  147AE  ff76fe         push   word ptr [bp - 2]
-  ovl4:BA81  147B1  e8d808         call   ovl4_c35c
+  ovl4:BA81  147B1  e8d808         call   invert_cell
   ovl4:BA84  147B4  5f             pop    di
   ovl4:BA85  147B5  b88813         mov    ax, 0x1388
   ovl4:BA88  147B8  50             push   ax
@@ -35032,7 +35219,7 @@ ovl4_b961:
   ovl4:BA91  147C1  e8816c         call   rt_2715
   ovl4:BA94  147C4  5f             pop    di
   ovl4:BA95  147C5  ff76fe         push   word ptr [bp - 2]
-  ovl4:BA98  147C8  e8c108         call   ovl4_c35c
+  ovl4:BA98  147C8  e8c108         call   invert_cell
   ovl4:BA9B  147CB  5f             pop    di
   ovl4:BA9C  147CC  b88813         mov    ax, 0x1388
   ovl4:BA9F  147CF  50             push   ax
@@ -35054,7 +35241,7 @@ ovl4_bab0:
   ovl4:BAB7  147E7  e8b474         call   delay
   ovl4:BABA  147EA  5f             pop    di
   ovl4:BABB  147EB  ff7604         push   word ptr [bp + 4]
-  ovl4:BABE  147EE  e89b08         call   ovl4_c35c
+  ovl4:BABE  147EE  e89b08         call   invert_cell
   ovl4:BAC1  147F1  5f             pop    di
   ovl4:BAC2  147F2  ff365964       push   word ptr [0x6459]
   ovl4:BAC6  147F6  e84c6c         call   rt_2715
@@ -35062,12 +35249,13 @@ ovl4_bab0:
   ovl4:BACB  147FB  5d             pop    bp
   ovl4:BACC  147FC  c3             ret
 
-; ---- ovl4_bacd   (called from 2 places)
-ovl4_bacd:
+; ---- take_merchant   (called from 2 places)
+;      take_merchant(m, w): w takes merchant m: +10 supplies
+take_merchant:
   ovl4:BACD  147FD  55             push   bp
   ovl4:BACE  147FE  8bec           mov    bp, sp
   ovl4:BAD0  14800  ff7604         push   word ptr [bp + 4]
-  ovl4:BAD3  14803  e80ffc         call   ovl4_b6e5
+  ovl4:BAD3  14803  e80ffc         call   msg_merchant_taken
   ovl4:BAD6  14806  5f             pop    di
   ovl4:BAD7  14807  b80a00         mov    ax, 0xa
   ovl4:BADA  1480A  be1d5e         mov    si, 0x5e1d
@@ -35100,14 +35288,15 @@ ovl4_bacd:
   ovl4:BB19  14849  8904           mov    word ptr [si], ax
   ovl4:BB1B  1484B  ff7606         push   word ptr [bp + 6]
   ovl4:BB1E  1484E  ff7604         push   word ptr [bp + 4]
-  ovl4:BB21  14851  e82be3         call   ovl4_9e4f
+  ovl4:BB21  14851  e82be3         call   end_check
   ovl4:BB24  14854  5f             pop    di
   ovl4:BB25  14855  8be5           mov    sp, bp
   ovl4:BB27  14857  5d             pop    bp
   ovl4:BB28  14858  c3             ret
 
-; ---- ovl4_bb29   (called from 1 place)
-ovl4_bb29:
+; ---- meet_merchant   (called from 1 place)
+;      A merchant meets a warship of its side: supplies 20; used up if it had less than 10
+meet_merchant:
   ovl4:BB29  14859  55             push   bp
   ovl4:BB2A  1485A  8bec           mov    bp, sp
   ovl4:BB2C  1485C  83ec04         sub    sp, 4
@@ -35139,7 +35328,7 @@ ovl4_bb29:
   ovl4:BB6F  1489F  83f812         cmp    ax, 0x12
   ovl4:BB72  148A2  7d07           jge    0xbb7b
   ovl4:BB74  148A4  ff7604         push   word ptr [bp + 4]
-  ovl4:BB77  148A7  e836fc         call   ovl4_b7b0
+  ovl4:BB77  148A7  e836fc         call   msg_resupplied
   ovl4:BB7A  148AA  5f             pop    di
   ovl4:BB7B  148AB  be1d5e         mov    si, 0x5e1d
   ovl4:BB7E  148AE  0376fc         add    si, word ptr [bp - 4]
@@ -35159,7 +35348,7 @@ ovl4_bb29:
   ovl4:BBA0  148D0  8904           mov    word ptr [si], ax
   ovl4:BBA2  148D2  ff76fe         push   word ptr [bp - 2]
   ovl4:BBA5  148D5  ff76fc         push   word ptr [bp - 4]
-  ovl4:BBA8  148D8  e8a4e2         call   ovl4_9e4f
+  ovl4:BBA8  148D8  e8a4e2         call   end_check
   ovl4:BBAB  148DB  5f             pop    di
   ovl4:BBAC  148DC  5f             pop    di
   ovl4:BBAD  148DD  b81400         mov    ax, 0x14
@@ -35170,8 +35359,9 @@ ovl4_bb29:
   ovl4:BBBA  148EA  5d             pop    bp
   ovl4:BBBB  148EB  c3             ret
 
-; ---- ovl4_bbbc   (called from 11 places)
-ovl4_bbbc:
+; ---- message_row   (called from 11 places)
+;      A message row: up to two, then they scroll
+message_row:
   ovl4:BBBC  148EC  55             push   bp
   ovl4:BBBD  148ED  8bec           mov    bp, sp
   ovl4:BBBF  148EF  813e5d640200   cmp    word ptr [0x645d], 2
@@ -35227,7 +35417,7 @@ print_map_region:
   ovl4:BC2D  1495D  55             push   bp
   ovl4:BC2E  1495E  8bec           mov    bp, sp
   ovl4:BC30  14960  83ec02         sub    sp, 2
-  ovl4:BC33  14963  e8ac74         call   rt_30e2
+  ovl4:BC33  14963  e8ac74         call   beep_message
   ovl4:BC36  14966  b8f54a         mov    ax, 0x4af5
   ovl4:BC39  14969  059d02         add    ax, 0x29d
   ovl4:BC3C  1496C  50             push   ax
@@ -35291,8 +35481,9 @@ print_map_region:
   ovl4:BCD0  14A00  5d             pop    bp
   ovl4:BCD1  14A01  c3             ret
 
-; ---- ovl4_bcd2   (called from 1 place)
-ovl4_bcd2:
+; ---- restock_ports   (called from 1 place)
+;      Tick 10: ports with 2 or less left call for a merchant
+restock_ports:
   ovl4:BCD2  14A02  55             push   bp
   ovl4:BCD3  14A03  8bec           mov    bp, sp
   ovl4:BCD5  14A05  83ec08         sub    sp, 8
@@ -35322,24 +35513,25 @@ ovl4_bcd2:
   ovl4:BD13  14A43  83f802         cmp    ax, 2
   ovl4:BD16  14A46  7f1b           jg     0xbd33
   ovl4:BD18  14A48  ff76f8         push   word ptr [bp - 8]
-  ovl4:BD1B  14A4B  e81e00         call   ovl4_bd3c
+  ovl4:BD1B  14A4B  e81e00         call   port_side
   ovl4:BD1E  14A4E  5f             pop    di
   ovl4:BD1F  14A4F  8946fe         mov    word ptr [bp - 2], ax
-  ovl4:BD22  14A52  e82553         call   rt_104a
+  ovl4:BD22  14A52  e82553         call   erase_squadrons
   ovl4:BD25  14A55  ff76fe         push   word ptr [bp - 2]
   ovl4:BD28  14A58  ff76f8         push   word ptr [bp - 8]
-  ovl4:BD2B  14A5B  e85800         call   ovl4_bd86
+  ovl4:BD2B  14A5B  e85800         call   port_call
   ovl4:BD2E  14A5E  5f             pop    di
   ovl4:BD2F  14A5F  5f             pop    di
-  ovl4:BD30  14A60  e85153         call   rt_1084
+  ovl4:BD30  14A60  e85153         call   redraw_squadrons
   ovl4:BD33  14A63  ff46fa         inc    word ptr [bp - 6]
   ovl4:BD36  14A66  eba5           jmp    0xbcdd
   ovl4:BD38  14A68  8be5           mov    sp, bp
   ovl4:BD3A  14A6A  5d             pop    bp
   ovl4:BD3B  14A6B  c3             ret
 
-; ---- ovl4_bd3c   (called from 1 place)
-ovl4_bd3c:
+; ---- port_side   (called from 1 place)
+;      The side of a port's merchant, from the strength map DS:4645
+port_side:
   ovl4:BD3C  14A6C  55             push   bp
   ovl4:BD3D  14A6D  8bec           mov    bp, sp
   ovl4:BD3F  14A6F  83ec04         sub    sp, 4
@@ -35373,15 +35565,16 @@ ovl4_bd3c:
   ovl4:BD84  14AB4  5d             pop    bp
   ovl4:BD85  14AB5  c3             ret
 
-; ---- ovl4_bd86   (called from 5 places)
-ovl4_bd86:
+; ---- port_call   (called from 5 places)
+;      A port was used: restocked at once beside a crown or with no sea way; else a merchant sets out (BEE3)
+port_call:
   ovl4:BD86  14AB6  55             push   bp
   ovl4:BD87  14AB7  8bec           mov    bp, sp
   ovl4:BD89  14AB9  83ec0e         sub    sp, 0xe
   ovl4:BD8C  14ABC  b8ffff         mov    ax, 0xffff
   ovl4:BD8F  14ABF  50             push   ax
   ovl4:BD90  14AC0  ff7604         push   word ptr [bp + 4]
-  ovl4:BD93  14AC3  e8e75d         call   rt_1b7d
+  ovl4:BD93  14AC3  e8e75d         call   crown_beside
   ovl4:BD96  14AC6  5f             pop    di
   ovl4:BD97  14AC7  5f             pop    di
   ovl4:BD98  14AC8  83f8ff         cmp    ax, -1
@@ -35393,7 +35586,7 @@ ovl4_bd86:
   ovl4:BDA6  14AD6  33c0           xor    ax, ax
   ovl4:BDA8  14AD8  50             push   ax
   ovl4:BDA9  14AD9  ff7604         push   word ptr [bp + 4]
-  ovl4:BDAC  14ADC  e8ce5d         call   rt_1b7d
+  ovl4:BDAC  14ADC  e8ce5d         call   crown_beside
   ovl4:BDAF  14ADF  5f             pop    di
   ovl4:BDB0  14AE0  5f             pop    di
   ovl4:BDB1  14AE1  83f8ff         cmp    ax, -1
@@ -35414,7 +35607,7 @@ ovl4_bd86:
   ovl4:BDD6  14B06  7503           jne    0xbddb
   ovl4:BDD8  14B08  e99d02         jmp    0xc078
   ovl4:BDDB  14B0B  ff7604         push   word ptr [bp + 4]
-  ovl4:BDDE  14B0E  e86003         call   ovl4_c141
+  ovl4:BDDE  14B0E  e86003         call   merchant_bound
   ovl4:BDE1  14B11  5f             pop    di
   ovl4:BDE2  14B12  0bc0           or     ax, ax
   ovl4:BDE4  14B14  7404           je     0xbdea
@@ -35424,14 +35617,14 @@ ovl4_bd86:
   ovl4:BDEA  14B1A  33c0           xor    ax, ax
   ovl4:BDEC  14B1C  50             push   ax
   ovl4:BDED  14B1D  ff7604         push   word ptr [bp + 4]
-  ovl4:BDF0  14B20  e8b55c         call   rt_1aa8
+  ovl4:BDF0  14B20  e8b55c         call   repair_port_beside
   ovl4:BDF3  14B23  5f             pop    di
   ovl4:BDF4  14B24  5f             pop    di
   ovl4:BDF5  14B25  8946f6         mov    word ptr [bp - 0xa], ax
   ovl4:BDF8  14B28  33c0           xor    ax, ax
   ovl4:BDFA  14B2A  50             push   ax
   ovl4:BDFB  14B2B  ff7604         push   word ptr [bp + 4]
-  ovl4:BDFE  14B2E  e8d55b         call   rt_19d6
+  ovl4:BDFE  14B2E  e8d55b         call   supply_port_beside
   ovl4:BE01  14B31  5f             pop    di
   ovl4:BE02  14B32  5f             pop    di
   ovl4:BE03  14B33  8946f8         mov    word ptr [bp - 8], ax
@@ -35474,7 +35667,7 @@ ovl4_bd86:
   ovl4:BE61  14B91  817ef6ffff     cmp    word ptr [bp - 0xa], 0xffff
   ovl4:BE66  14B96  7413           je     0xbe7b
   ovl4:BE68  14B98  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:BE6B  14B9B  e8e02f         call   ovl4_ee4e
+  ovl4:BE6B  14B9B  e8e02f         call   worst_damage
   ovl4:BE6E  14B9E  5f             pop    di
   ovl4:BE6F  14B9F  0bc0           or     ax, ax
   ovl4:BE71  14BA1  7408           je     0xbe7b
@@ -35497,7 +35690,7 @@ ovl4_bd86:
   ovl4:BE9A  14BCA  5d             pop    bp
   ovl4:BE9B  14BCB  c3             ret
   ovl4:BE9C  14BCC  ff7604         push   word ptr [bp + 4]
-  ovl4:BE9F  14BCF  e86002         call   ovl4_c102
+  ovl4:BE9F  14BCF  e86002         call   port_source_of
   ovl4:BEA2  14BD2  5f             pop    di
   ovl4:BEA3  14BD3  8946fc         mov    word ptr [bp - 4], ax
   ovl4:BEA6  14BD6  3b4604         cmp    ax, word ptr [bp + 4]
@@ -35515,7 +35708,7 @@ ovl4_bd86:
   ovl4:BEC5  14BF5  09c0           or     ax, ax
   ovl4:BEC7  14BF7  7507           jne    0xbed0
   ovl4:BEC9  14BF9  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:BECC  14BFC  e88d04         call   ovl4_c35c
+  ovl4:BECC  14BFC  e88d04         call   invert_cell
   ovl4:BECF  14BFF  5f             pop    di
   ovl4:BED0  14C00  b81400         mov    ax, 0x14
   ovl4:BED3  14C03  be6549         mov    si, 0x4965
@@ -35585,7 +35778,7 @@ ovl4_bd86:
   ovl4:BF70  14CA0  03f2           add    si, dx
   ovl4:BF72  14CA2  8904           mov    word ptr [si], ax
   ovl4:BF74  14CA4  ff76fc         push   word ptr [bp - 4]
-  ovl4:BF77  14CA7  e834ef         call   ovl4_aeae
+  ovl4:BF77  14CA7  e834ef         call   cell_mid_x
   ovl4:BF7A  14CAA  5f             pop    di
   ovl4:BF7B  14CAB  be7d5d         mov    si, 0x5d7d
   ovl4:BF7E  14CAE  8b56f4         mov    dx, word ptr [bp - 0xc]
@@ -35593,7 +35786,7 @@ ovl4_bd86:
   ovl4:BF83  14CB3  03f2           add    si, dx
   ovl4:BF85  14CB5  8904           mov    word ptr [si], ax
   ovl4:BF87  14CB7  ff76fc         push   word ptr [bp - 4]
-  ovl4:BF8A  14CBA  e87bef         call   ovl4_af08
+  ovl4:BF8A  14CBA  e87bef         call   cell_mid_y
   ovl4:BF8D  14CBD  5f             pop    di
   ovl4:BF8E  14CBE  becd5d         mov    si, 0x5dcd
   ovl4:BF91  14CC1  8b56f4         mov    dx, word ptr [bp - 0xc]
@@ -35690,8 +35883,9 @@ ovl4_bd86:
   ovl4:C07A  14DAA  5d             pop    bp
   ovl4:C07B  14DAB  c3             ret
 
-; ---- ovl4_c07c   (called from 1 place)
-ovl4_c07c:
+; ---- port_sources   (called from 1 place)
+;      The ports merchants can reach (DS:689C) and where they come from (6932)
+port_sources:
   ovl4:C07C  14DAC  55             push   bp
   ovl4:C07D  14DAD  8bec           mov    bp, sp
   ovl4:C07F  14DAF  83ec06         sub    sp, 6
@@ -35713,7 +35907,7 @@ ovl4_c07c:
   ovl4:C0A9  14DD9  8a04           mov    al, byte ptr [si]
   ovl4:C0AB  14DDB  98             cwde
   ovl4:C0AC  14DDC  50             push   ax
-  ovl4:C0AD  14DDD  e8f653         call   tile_is_battle_p7
+  ovl4:C0AD  14DDD  e8f653         call   tile_is_land
   ovl4:C0B0  14DE0  5f             pop    di
   ovl4:C0B1  14DE1  0bc0           or     ax, ax
   ovl4:C0B3  14DE3  7544           jne    0xc0f9
@@ -35723,7 +35917,7 @@ ovl4_c07c:
   ovl4:C0BC  14DEC  83f8ff         cmp    ax, -1
   ovl4:C0BF  14DEF  7438           je     0xc0f9
   ovl4:C0C1  14DF1  ff76fa         push   word ptr [bp - 6]
-  ovl4:C0C4  14DF4  e8f824         call   ovl4_e5bf
+  ovl4:C0C4  14DF4  e8f824         call   sea_way
   ovl4:C0C7  14DF7  5f             pop    di
   ovl4:C0C8  14DF8  8946fe         mov    word ptr [bp - 2], ax
   ovl4:C0CB  14DFB  83f8ff         cmp    ax, -1
@@ -35750,8 +35944,9 @@ ovl4_c07c:
   ovl4:C100  14E30  5d             pop    bp
   ovl4:C101  14E31  c3             ret
 
-; ---- ovl4_c102   (called from 1 place)
-ovl4_c102:
+; ---- port_source_of   (called from 1 place)
+;      Where a port's merchants come from
+port_source_of:
   ovl4:C102  14E32  55             push   bp
   ovl4:C103  14E33  8bec           mov    bp, sp
   ovl4:C105  14E35  83ec02         sub    sp, 2
@@ -35781,8 +35976,9 @@ ovl4_c102:
   ovl4:C13F  14E6F  5d             pop    bp
   ovl4:C140  14E70  c3             ret
 
-; ---- ovl4_c141   (called from 1 place)
-ovl4_c141:
+; ---- merchant_bound   (called from 1 place)
+;      Is a merchant sailing for this port?
+merchant_bound:
   ovl4:C141  14E71  55             push   bp
   ovl4:C142  14E72  8bec           mov    bp, sp
   ovl4:C144  14E74  83ec02         sub    sp, 2
@@ -35822,8 +36018,9 @@ ovl4_c141:
   ovl4:C195  14EC5  5d             pop    bp
   ovl4:C196  14EC6  c3             ret
 
-; ---- ovl4_c197   (called from 1 place)
-ovl4_c197:
+; ---- port_supplies   (called from 1 place)
+;      At the start: repair ports rule 64AF, supply ports and crowns twice that
+port_supplies:
   ovl4:C197  14EC7  55             push   bp
   ovl4:C198  14EC8  8bec           mov    bp, sp
   ovl4:C19A  14ECA  83ec04         sub    sp, 4
@@ -35876,8 +36073,9 @@ ovl4_c197:
   ovl4:C21A  14F4A  5d             pop    bp
   ovl4:C21B  14F4B  c3             ret
 
-; ---- ovl4_c21c   (called from 1 place)
-ovl4_c21c:
+; ---- invert_empty_ports   (called from 1 place)
+;      Ports with nothing are drawn inverted
+invert_empty_ports:
   ovl4:C21C  14F4C  55             push   bp
   ovl4:C21D  14F4D  8bec           mov    bp, sp
   ovl4:C21F  14F4F  83ec04         sub    sp, 4
@@ -35902,7 +36100,7 @@ ovl4_c21c:
   ovl4:C254  14F84  09c0           or     ax, ax
   ovl4:C256  14F86  7507           jne    0xc25f
   ovl4:C258  14F88  ff76fc         push   word ptr [bp - 4]
-  ovl4:C25B  14F8B  e8fe00         call   ovl4_c35c
+  ovl4:C25B  14F8B  e8fe00         call   invert_cell
   ovl4:C25E  14F8E  5f             pop    di
   ovl4:C25F  14F8F  ff46fc         inc    word ptr [bp - 4]
   ovl4:C262  14F92  ebc3           jmp    0xc227
@@ -35919,14 +36117,14 @@ port_of_cell:
   ovl4:C26E  14F9E  33c0           xor    ax, ax
   ovl4:C270  14FA0  50             push   ax
   ovl4:C271  14FA1  ff7604         push   word ptr [bp + 4]
-  ovl4:C274  14FA4  e83158         call   rt_1aa8
+  ovl4:C274  14FA4  e83158         call   repair_port_beside
   ovl4:C277  14FA7  5f             pop    di
   ovl4:C278  14FA8  5f             pop    di
   ovl4:C279  14FA9  8946fc         mov    word ptr [bp - 4], ax
   ovl4:C27C  14FAC  33c0           xor    ax, ax
   ovl4:C27E  14FAE  50             push   ax
   ovl4:C27F  14FAF  ff7604         push   word ptr [bp + 4]
-  ovl4:C282  14FB2  e85157         call   rt_19d6
+  ovl4:C282  14FB2  e85157         call   supply_port_beside
   ovl4:C285  14FB5  5f             pop    di
   ovl4:C286  14FB6  5f             pop    di
   ovl4:C287  14FB7  8946fe         mov    word ptr [bp - 2], ax
@@ -35937,7 +36135,7 @@ port_of_cell:
   ovl4:C298  14FC8  33c0           xor    ax, ax
   ovl4:C29A  14FCA  50             push   ax
   ovl4:C29B  14FCB  ff7604         push   word ptr [bp + 4]
-  ovl4:C29E  14FCE  e8dc58         call   rt_1b7d
+  ovl4:C29E  14FCE  e8dc58         call   crown_beside
   ovl4:C2A1  14FD1  5f             pop    di
   ovl4:C2A2  14FD2  5f             pop    di
   ovl4:C2A3  14FD3  8946fe         mov    word ptr [bp - 2], ax
@@ -35946,7 +36144,7 @@ port_of_cell:
   ovl4:C2AB  14FDB  b8ffff         mov    ax, 0xffff
   ovl4:C2AE  14FDE  50             push   ax
   ovl4:C2AF  14FDF  ff7604         push   word ptr [bp + 4]
-  ovl4:C2B2  14FE2  e8c858         call   rt_1b7d
+  ovl4:C2B2  14FE2  e8c858         call   crown_beside
   ovl4:C2B5  14FE5  5f             pop    di
   ovl4:C2B6  14FE6  5f             pop    di
   ovl4:C2B7  14FE7  8946fe         mov    word ptr [bp - 2], ax
@@ -35979,8 +36177,9 @@ port_of_cell:
   ovl4:C300  15030  5d             pop    bp
   ovl4:C301  15031  c3             ret
 
-; ---- ovl4_c302   (called from 1 place)
-ovl4_c302:
+; ---- promote_at_sea   (called from 1 place)
+;      After a loss at sea the squadron's first other ship of the line becomes a flagship
+promote_at_sea:
   ovl4:C302  15032  55             push   bp
   ovl4:C303  15033  8bec           mov    bp, sp
   ovl4:C305  15035  83ec04         sub    sp, 4
@@ -36019,8 +36218,9 @@ ovl4_c302:
   ovl4:C35A  1508A  5d             pop    bp
   ovl4:C35B  1508B  c3             ret
 
-; ---- ovl4_c35c   (called from 11 places)
-ovl4_c35c:
+; ---- invert_cell   (called from 11 places)
+;      invert_tile_buf for a map cell
+invert_cell:
   ovl4:C35C  1508C  55             push   bp
   ovl4:C35D  1508D  8bec           mov    bp, sp
   ovl4:C35F  1508F  83ec02         sub    sp, 2
@@ -36046,7 +36246,7 @@ ovl4_c35c:
   ovl4:C385  150B5  03c2           add    ax, dx
   ovl4:C387  150B7  8946fe         mov    word ptr [bp - 2], ax
   ovl4:C38A  150BA  ff76fe         push   word ptr [bp - 2]
-  ovl4:C38D  150BD  e8d16a         call   rt_2e61
+  ovl4:C38D  150BD  e8d16a         call   invert_tile_buf
   ovl4:C390  150C0  8be5           mov    sp, bp
   ovl4:C392  150C2  5d             pop    bp
   ovl4:C393  150C3  c3             ret
@@ -36080,8 +36280,9 @@ play_end_sound:
   ovl4:C3C7  150F7  5d             pop    bp
   ovl4:C3C8  150F8  c3             ret
 
-; ---- ovl4_c3c9   (called from 3 places)
-ovl4_c3c9:
+; ---- flags_check   (called from 3 places)
+;      1: you have no flagship left, 2: they have none (unless 65BA / 65BB: no flagships at the start but a crown)
+flags_check:
   ovl4:C3C9  150F9  55             push   bp
   ovl4:C3CA  150FA  8bec           mov    bp, sp
   ovl4:C3CC  150FC  83ec06         sub    sp, 6
@@ -36140,8 +36341,9 @@ ovl4_c3c9:
   ovl4:C44C  1517C  5d             pop    bp
   ovl4:C44D  1517D  c3             ret
 
-; ---- ovl4_c44e   (called from 3 places)
-ovl4_c44e:
+; ---- crown_check   (called from 3 places)
+;      A squadron beside the other side's crown takes it unless a squadron of that side is in its cell: the game ends
+crown_check:
   ovl4:C44E  1517E  55             push   bp
   ovl4:C44F  1517F  8bec           mov    bp, sp
   ovl4:C451  15181  83ec02         sub    sp, 2
@@ -36175,7 +36377,7 @@ ovl4_c44e:
   ovl4:C493  151C3  e8ef54         call   squadron_cell
   ovl4:C496  151C6  5f             pop    di
   ovl4:C497  151C7  50             push   ax
-  ovl4:C498  151C8  e8e256         call   rt_1b7d
+  ovl4:C498  151C8  e8e256         call   crown_beside
   ovl4:C49B  151CB  5f             pop    di
   ovl4:C49C  151CC  5f             pop    di
   ovl4:C49D  151CD  83f8ff         cmp    ax, -1
@@ -36187,7 +36389,7 @@ ovl4_c44e:
   ovl4:C4AC  151DC  e8d654         call   squadron_cell
   ovl4:C4AF  151DF  5f             pop    di
   ovl4:C4B0  151E0  50             push   ax
-  ovl4:C4B1  151E1  e89510         call   ovl4_d549
+  ovl4:C4B1  151E1  e89510         call   count_at_cell
   ovl4:C4B4  151E4  83c406         add    sp, 6
   ovl4:C4B7  151E7  0bc0           or     ax, ax
   ovl4:C4B9  151E9  7559           jne    0xc514
@@ -36204,7 +36406,7 @@ ovl4_c44e:
   ovl4:C4D2  15202  03f0           add    si, ax
   ovl4:C4D4  15204  ff34           push   word ptr [si]
   ovl4:C4D6  15206  ff7604         push   word ptr [bp + 4]
-  ovl4:C4D9  15209  e885f4         call   ovl4_b961
+  ovl4:C4D9  15209  e885f4         call   msg_crown
   ovl4:C4DC  1520C  5f             pop    di
   ovl4:C4DD  1520D  5f             pop    di
   ovl4:C4DE  1520E  bedd5c         mov    si, 0x5cdd
@@ -36218,14 +36420,14 @@ ovl4_c44e:
   ovl4:C4F2  15222  89069f64       mov    word ptr [0x649f], ax
   ovl4:C4F6  15226  33c0           xor    ax, ax
   ovl4:C4F8  15228  50             push   ax
-  ovl4:C4F9  15229  e82ddc         call   ovl4_a129
+  ovl4:C4F9  15229  e82ddc         call   game_over
   ovl4:C4FC  1522C  5f             pop    di
   ovl4:C4FD  1522D  eb0e           jmp    0xc50d
   ovl4:C4FF  1522F  b80d00         mov    ax, 0xd
   ovl4:C502  15232  89069f64       mov    word ptr [0x649f], ax
   ovl4:C506  15236  b001           mov    al, 1
   ovl4:C508  15238  50             push   ax
-  ovl4:C509  15239  e81ddc         call   ovl4_a129
+  ovl4:C509  15239  e81ddc         call   game_over
   ovl4:C50C  1523C  5f             pop    di
   ovl4:C50D  1523D  b80100         mov    ax, 1
   ovl4:C510  15240  8be5           mov    sp, bp
@@ -36236,8 +36438,9 @@ ovl4_c44e:
   ovl4:C518  15248  5d             pop    bp
   ovl4:C519  15249  c3             ret
 
-; ---- ovl4_c51a   (called from 1 place)
-ovl4_c51a:
+; ---- crowns_check   (called from 1 place)
+;      Tick 20: crown_check for every squadron
+crowns_check:
   ovl4:C51A  1524A  55             push   bp
   ovl4:C51B  1524B  8bec           mov    bp, sp
   ovl4:C51D  1524D  83ec02         sub    sp, 2
@@ -36268,7 +36471,7 @@ ovl4_c51a:
   ovl4:C55B  1528B  7502           jne    0xc55f
   ovl4:C55D  1528D  eb12           jmp    0xc571
   ovl4:C55F  1528F  ff76fe         push   word ptr [bp - 2]
-  ovl4:C562  15292  e8e9fe         call   ovl4_c44e
+  ovl4:C562  15292  e8e9fe         call   crown_check
   ovl4:C565  15295  5f             pop    di
   ovl4:C566  15296  0bc0           or     ax, ax
   ovl4:C568  15298  7407           je     0xc571
@@ -36283,8 +36486,9 @@ ovl4_c51a:
   ovl4:C57A  152AA  5d             pop    bp
   ovl4:C57B  152AB  c3             ret
 
-; ---- ovl4_c57c   (called from 2 places)
-ovl4_c57c:
+; ---- port_empty_sound   (called from 2 places)
+;      Three notes: a port has nothing left
+port_empty_sound:
   ovl4:C57C  152AC  55             push   bp
   ovl4:C57D  152AD  8bec           mov    bp, sp
   ovl4:C57F  152AF  e8d769         call   speaker_on
@@ -36317,8 +36521,9 @@ ovl4_c57c:
   ovl4:C5B7  152E7  5d             pop    bp
   ovl4:C5B8  152E8  c3             ret
 
-; ---- ovl4_c5b9   (called from 2 places)
-ovl4_c5b9:
+; ---- close_to   (called from 2 places)
+;      close_to(a, b): |dx| < 3 and |dy| < 5; distance 2|dx| + |dy| into 689A
+close_to:
   ovl4:C5B9  152E9  55             push   bp
   ovl4:C5BA  152EA  8bec           mov    bp, sp
   ovl4:C5BC  152EC  83ec0c         sub    sp, 0xc
@@ -36381,8 +36586,9 @@ ovl4_c5b9:
   ovl4:C656  15386  5d             pop    bp
   ovl4:C657  15387  c3             ret
 
-; ---- ovl4_c658   (called from 3 places)
-ovl4_c658:
+; ---- wind_change   (called from 3 places)
+;      The wind (option 6865): a new direction and its message, or (1) just the face over tile 73
+wind_change:
   ovl4:C658  15388  55             push   bp
   ovl4:C659  15389  8bec           mov    bp, sp
   ovl4:C65B  1538B  83ec0a         sub    sp, 0xa
@@ -36413,39 +36619,107 @@ ovl4_c658:
   ovl4:C69A  153CA  8b069364       mov    ax, word ptr [0x6493]
   ovl4:C69E  153CE  0bc0           or     ax, ax
   ovl4:C6A0  153D0  7510           jne    0xc6b2
-  ovl4:C6A2  153D2  e817f5         call   ovl4_bbbc
+  ovl4:C6A2  153D2  e817f5         call   message_row
   ovl4:C6A5  153D5  b8d202         mov    ax, 0x2d2                    ; DS:02D2 "Wind is from the "
   ovl4:C6A8  153D8  50             push   ax
   ovl4:C6A9  153D9  e8a96c         call   print_string
   ovl4:C6AC  153DC  5f             pop    di
-  ovl4:C6AD  153DD  e8326a         call   rt_30e2
+  ovl4:C6AD  153DD  e8326a         call   beep_message
   ovl4:C6B0  153E0  eb06           jmp    0xc6b8
   ovl4:C6B2  153E2  b80100         mov    ax, 1
   ovl4:C6B5  153E5  894604         mov    word ptr [bp + 4], ax
   ovl4:C6B8  153E8  8b061463       mov    ax, word ptr [0x6314]
   ovl4:C6BC  153EC  eb5c           jmp    0xc71a
-  ; ---- data / unreached bytes (92 bytes)
-  ovl4:C6BE  153EE  db 8Bh, 46h, 04h, 0Bh, C0h, 75h, 08h, B8h, E4h, 02h, 50h, E8h, 89h, 6Ch, 5Fh, B8h                  ; .F...u....P..l_.
-  ovl4:C6CE  153FE  db A8h, 67h, 89h, 46h, FCh, EBh, 55h, 8Bh, 46h, 04h, 0Bh, C0h, 75h, 08h, B8h, EAh                  ; .g.F..U.F...u...
-  ovl4:C6DE  1540E  db 02h, 50h, E8h, 72h, 6Ch, 5Fh, B8h, BCh, 65h, 89h, 46h, FCh, EBh, 3Eh, 8Bh, 46h                  ; .P.rl_..e.F..>.F
-  ovl4:C6EE  1541E  db 04h, 0Bh, C0h, 75h, 08h, B8h, F0h, 02h, 50h, E8h, 5Bh, 6Ch, 5Fh, B8h, 60h, 66h                  ; ...u....P.[l_.`f
-  ovl4:C6FE  1542E  db 89h, 46h, FCh, EBh, 27h, 8Bh, 46h, 04h, 0Bh, C0h, 75h, 08h, B8h, F5h, 02h, 50h                  ; .F..'.F...u....P
-  ovl4:C70E  1543E  db E8h, 44h, 6Ch, 5Fh, B8h, 04h, 67h, 89h, 46h, FCh, EBh, 10h                                      ; .Dl_..g.F...
+  ovl4:C6BE  153EE  8b4604         mov    ax, word ptr [bp + 4]
+  ovl4:C6C1  153F1  0bc0           or     ax, ax
+  ovl4:C6C3  153F3  7508           jne    0xc6cd
+  ovl4:C6C5  153F5  b8e402         mov    ax, 0x2e4                    ; DS:02E4 "North"
+  ovl4:C6C8  153F8  50             push   ax
+  ovl4:C6C9  153F9  e8896c         call   print_string
+  ovl4:C6CC  153FC  5f             pop    di
+  ovl4:C6CD  153FD  b8a867         mov    ax, 0x67a8
+  ovl4:C6D0  15400  8946fc         mov    word ptr [bp - 4], ax
+  ovl4:C6D3  15403  eb55           jmp    0xc72a
+  ovl4:C6D5  15405  8b4604         mov    ax, word ptr [bp + 4]
+  ovl4:C6D8  15408  0bc0           or     ax, ax
+  ovl4:C6DA  1540A  7508           jne    0xc6e4
+  ovl4:C6DC  1540C  b8ea02         mov    ax, 0x2ea                    ; DS:02EA "South"
+  ovl4:C6DF  1540F  50             push   ax
+  ovl4:C6E0  15410  e8726c         call   print_string
+  ovl4:C6E3  15413  5f             pop    di
+  ovl4:C6E4  15414  b8bc65         mov    ax, 0x65bc
+  ovl4:C6E7  15417  8946fc         mov    word ptr [bp - 4], ax
+  ovl4:C6EA  1541A  eb3e           jmp    0xc72a
+  ovl4:C6EC  1541C  8b4604         mov    ax, word ptr [bp + 4]
+  ovl4:C6EF  1541F  0bc0           or     ax, ax
+  ovl4:C6F1  15421  7508           jne    0xc6fb
+  ovl4:C6F3  15423  b8f002         mov    ax, 0x2f0                    ; DS:02F0 "East"
+  ovl4:C6F6  15426  50             push   ax
+  ovl4:C6F7  15427  e85b6c         call   print_string
+  ovl4:C6FA  1542A  5f             pop    di
+  ovl4:C6FB  1542B  b86066         mov    ax, 0x6660
+  ovl4:C6FE  1542E  8946fc         mov    word ptr [bp - 4], ax
+  ovl4:C701  15431  eb27           jmp    0xc72a
+  ovl4:C703  15433  8b4604         mov    ax, word ptr [bp + 4]
+  ovl4:C706  15436  0bc0           or     ax, ax
+  ovl4:C708  15438  7508           jne    0xc712
+  ovl4:C70A  1543A  b8f502         mov    ax, 0x2f5                    ; DS:02F5 "West"
+  ovl4:C70D  1543D  50             push   ax
+  ovl4:C70E  1543E  e8446c         call   print_string
+  ovl4:C711  15441  5f             pop    di
+  ovl4:C712  15442  b80467         mov    ax, 0x6704
+  ovl4:C715  15445  8946fc         mov    word ptr [bp - 4], ax
+  ovl4:C718  15448  eb10           jmp    0xc72a
   ovl4:C71A  1544A  50             push   ax
-  ovl4:C71B  1544B  e8e6a3         call   rt_6b04
-  ovl4:C71E  1544E  0000           add    byte ptr [bx + si], al
-  ovl4:C720  15450  0300           add    ax, word ptr [bx + si]
-  ovl4:C722  15452  03c7           add    ax, di
-  ovl4:C724  15454  bec6ec         mov    si, 0xecc6
-  ; ---- data / unreached bytes (115 bytes)
-  ovl4:C727  15457  db C6h, D5h, C6h, 8Bh, 46h, 04h, 0Bh, C0h, 75h, 03h, E8h, CCh, E3h, 8Bh, 06h, 37h                  ; ....F...u......7
-  ovl4:C737  15467  db 3Fh, 89h, 46h, FEh, 33h, C0h, 89h, 46h, F6h, E8h, 07h, 49h, 33h, C0h, 89h, 46h                  ; ?.F.3..F...I3..F
-  ovl4:C747  15477  db F8h, 81h, 7Eh, F8h, C8h, 00h, 7Dh, 44h, BEh, FFh, 5Bh, 03h, 76h, F8h, 8Ah, 04h                  ; ..~...}D..[.v...
-  ovl4:C757  15487  db 98h, 83h, F8h, 49h, 75h, 0Bh, FFh, 76h, FEh, FFh, 76h, FCh, E8h, C8h, 62h, 5Fh                  ; ...Iu..v..v...b_
-  ovl4:C767  15497  db 5Fh, B8h, 08h, 00h, 8Bh, 56h, FEh, 03h, D0h, 89h, 56h, FEh, FFh, 46h, F6h, 8Bh                  ; _....V....V..F..
-  ovl4:C777  154A7  db 46h, F6h, 83h, F8h, 09h, 7Eh, 10h, B8h, D0h, 02h, 8Bh, 56h, FEh, 03h, D0h, 89h                  ; F....~.....V....
-  ovl4:C787  154B7  db 56h, FEh, 33h, C0h, 89h, 46h, F6h, FFh, 46h, F8h, EBh, B5h, E8h, EEh, 48h, 8Bh                  ; V.3..F..F.....H.
-  ovl4:C797  154C7  db E5h, 5Dh, C3h                                                                                   ; .].
+  ovl4:C71B  1544B  e8e6a3         call   switch_helper
+  ovl4:C71E  1544E  dw 0, 3, C703h                                                       ; switch table: lowest case 0, 3 cases, default C703
+  ovl4:C724  15454  dw C6BEh                                                                 ; case 0
+  ovl4:C726  15456  dw C6ECh                                                                 ; case 1
+  ovl4:C728  15458  dw C6D5h                                                                 ; case 2
+  ovl4:C72A  1545A  8b4604         mov    ax, word ptr [bp + 4]
+  ovl4:C72D  1545D  0bc0           or     ax, ax
+  ovl4:C72F  1545F  7503           jne    0xc734
+  ovl4:C731  15461  e8cce3         call   show_clear_or_pause
+  ovl4:C734  15464  8b06373f       mov    ax, word ptr [0x3f37]
+  ovl4:C738  15468  8946fe         mov    word ptr [bp - 2], ax
+  ovl4:C73B  1546B  33c0           xor    ax, ax
+  ovl4:C73D  1546D  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl4:C740  15470  e80749         call   erase_squadrons
+  ovl4:C743  15473  33c0           xor    ax, ax
+  ovl4:C745  15475  8946f8         mov    word ptr [bp - 8], ax
+  ovl4:C748  15478  817ef8c800     cmp    word ptr [bp - 8], 0xc8
+  ovl4:C74D  1547D  7d44           jge    0xc793
+  ovl4:C74F  1547F  beff5b         mov    si, 0x5bff
+  ovl4:C752  15482  0376f8         add    si, word ptr [bp - 8]
+  ovl4:C755  15485  8a04           mov    al, byte ptr [si]
+  ovl4:C757  15487  98             cwde
+  ovl4:C758  15488  83f849         cmp    ax, 0x49
+  ovl4:C75B  1548B  750b           jne    0xc768
+  ovl4:C75D  1548D  ff76fe         push   word ptr [bp - 2]
+  ovl4:C760  15490  ff76fc         push   word ptr [bp - 4]
+  ovl4:C763  15493  e8c862         call   draw_tile
+  ovl4:C766  15496  5f             pop    di
+  ovl4:C767  15497  5f             pop    di
+  ovl4:C768  15498  b80800         mov    ax, 8
+  ovl4:C76B  1549B  8b56fe         mov    dx, word ptr [bp - 2]
+  ovl4:C76E  1549E  03d0           add    dx, ax
+  ovl4:C770  154A0  8956fe         mov    word ptr [bp - 2], dx
+  ovl4:C773  154A3  ff46f6         inc    word ptr [bp - 0xa]
+  ovl4:C776  154A6  8b46f6         mov    ax, word ptr [bp - 0xa]
+  ovl4:C779  154A9  83f809         cmp    ax, 9
+  ovl4:C77C  154AC  7e10           jle    0xc78e
+  ovl4:C77E  154AE  b8d002         mov    ax, 0x2d0
+  ovl4:C781  154B1  8b56fe         mov    dx, word ptr [bp - 2]
+  ovl4:C784  154B4  03d0           add    dx, ax
+  ovl4:C786  154B6  8956fe         mov    word ptr [bp - 2], dx
+  ovl4:C789  154B9  33c0           xor    ax, ax
+  ovl4:C78B  154BB  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl4:C78E  154BE  ff46f8         inc    word ptr [bp - 8]
+  ovl4:C791  154C1  ebb5           jmp    0xc748
+  ovl4:C793  154C3  e8ee48         call   redraw_squadrons
+  ovl4:C796  154C6  8be5           mov    sp, bp
+  ovl4:C798  154C8  5d             pop    bp
+  ovl4:C799  154C9  c3             ret
 
 ; ---- ovl4_c79a   (called from 2 places)
 ovl4_c79a:
@@ -36560,7 +36834,7 @@ ovl4_c88a:
   ovl4:C89B  155CB  b8ffff         mov    ax, 0xffff
   ovl4:C89E  155CE  50             push   ax
   ovl4:C89F  155CF  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:C8A2  155D2  e8d852         call   rt_1b7d
+  ovl4:C8A2  155D2  e8d852         call   crown_beside
   ovl4:C8A5  155D5  5f             pop    di
   ovl4:C8A6  155D6  5f             pop    di
   ovl4:C8A7  155D7  83f8ff         cmp    ax, -1
@@ -36572,7 +36846,7 @@ ovl4_c88a:
   ovl4:C8B5  155E5  33c0           xor    ax, ax
   ovl4:C8B7  155E7  50             push   ax
   ovl4:C8B8  155E8  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:C8BB  155EB  e8bf52         call   rt_1b7d
+  ovl4:C8BB  155EB  e8bf52         call   crown_beside
   ovl4:C8BE  155EE  5f             pop    di
   ovl4:C8BF  155EF  5f             pop    di
   ovl4:C8C0  155F0  83f8ff         cmp    ax, -1
@@ -36621,7 +36895,7 @@ ovl4_c88a:
   ovl4:C922  15652  7503           jne    0xc927
   ovl4:C924  15654  e98701         jmp    0xcaae
   ovl4:C927  15657  ff36ff62       push   word ptr [0x62ff]
-  ovl4:C92B  1565B  e8d720         call   ovl4_ea05
+  ovl4:C92B  1565B  e8d720         call   has_flagship
   ovl4:C92E  1565E  5f             pop    di
   ovl4:C92F  1565F  0bc0           or     ax, ax
   ovl4:C931  15661  7403           je     0xc936
@@ -36665,13 +36939,13 @@ ovl4_c88a:
   ovl4:C98A  156BA  31c0           xor    ax, ax
   ovl4:C98C  156BC  8946fe         mov    word ptr [bp - 2], ax
   ovl4:C98F  156BF  ff36ff62       push   word ptr [0x62ff]
-  ovl4:C993  156C3  e8b824         call   ovl4_ee4e
+  ovl4:C993  156C3  e8b824         call   worst_damage
   ovl4:C996  156C6  5f             pop    di
   ovl4:C997  156C7  8946f6         mov    word ptr [bp - 0xa], ax
   ovl4:C99A  156CA  b80100         mov    ax, 1
   ovl4:C99D  156CD  50             push   ax
   ovl4:C99E  156CE  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:C9A1  156D1  e83250         call   rt_19d6
+  ovl4:C9A1  156D1  e83250         call   supply_port_beside
   ovl4:C9A4  156D4  5f             pop    di
   ovl4:C9A5  156D5  5f             pop    di
   ovl4:C9A6  156D6  8946f8         mov    word ptr [bp - 8], ax
@@ -36711,7 +36985,7 @@ ovl4_c88a:
   ovl4:C9F1  15721  b80100         mov    ax, 1
   ovl4:C9F4  15724  50             push   ax
   ovl4:C9F5  15725  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:C9F8  15728  e8ad50         call   rt_1aa8
+  ovl4:C9F8  15728  e8ad50         call   repair_port_beside
   ovl4:C9FB  1572B  5f             pop    di
   ovl4:C9FC  1572C  5f             pop    di
   ovl4:C9FD  1572D  8946f8         mov    word ptr [bp - 8], ax
@@ -36782,7 +37056,7 @@ ovl4_c88a:
   ovl4:CA93  157C3  eb14           jmp    0xcaa9
   ovl4:CA95  157C5  ff76f6         push   word ptr [bp - 0xa]
   ovl4:CA98  157C8  ff36ff62       push   word ptr [0x62ff]
-  ovl4:CA9C  157CC  e81afb         call   ovl4_c5b9
+  ovl4:CA9C  157CC  e81afb         call   close_to
   ovl4:CA9F  157CF  5f             pop    di
   ovl4:CAA0  157D0  5f             pop    di
   ovl4:CAA1  157D1  0bc0           or     ax, ax
@@ -36795,7 +37069,7 @@ ovl4_c88a:
   ovl4:CAAE  157DE  b8ffff         mov    ax, 0xffff
   ovl4:CAB1  157E1  50             push   ax
   ovl4:CAB2  157E2  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:CAB5  157E5  e8c550         call   rt_1b7d
+  ovl4:CAB5  157E5  e8c550         call   crown_beside
   ovl4:CAB8  157E8  5f             pop    di
   ovl4:CAB9  157E9  5f             pop    di
   ovl4:CABA  157EA  83f8ff         cmp    ax, -1
@@ -36806,7 +37080,7 @@ ovl4_c88a:
   ovl4:CAC6  157F6  50             push   ax
   ovl4:CAC7  157F7  50             push   ax
   ovl4:CAC8  157F8  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:CACB  157FB  e87b0a         call   ovl4_d549
+  ovl4:CACB  157FB  e87b0a         call   count_at_cell
   ovl4:CACE  157FE  83c406         add    sp, 6
   ovl4:CAD1  15801  5a             pop    dx
   ovl4:CAD2  15802  3bc2           cmp    ax, dx
@@ -36840,11 +37114,11 @@ ovl4_caea:
   ovl4:CB0A  1583A  7403           je     0xcb0f
   ovl4:CB0C  1583C  e96601         jmp    0xcc75
   ovl4:CB0F  1583F  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:CB12  15842  e8f3e3         call   ovl4_af08
+  ovl4:CB12  15842  e8f3e3         call   cell_mid_y
   ovl4:CB15  15845  5f             pop    di
   ovl4:CB16  15846  8946f0         mov    word ptr [bp - 0x10], ax
   ovl4:CB19  15849  ff76f4         push   word ptr [bp - 0xc]
-  ovl4:CB1C  1584C  e88fe3         call   ovl4_aeae
+  ovl4:CB1C  1584C  e88fe3         call   cell_mid_x
   ovl4:CB1F  1584F  5f             pop    di
   ovl4:CB20  15850  8946f2         mov    word ptr [bp - 0xe], ax
   ovl4:CB23  15853  be7d5d         mov    si, 0x5d7d
@@ -36946,7 +37220,7 @@ ovl4_caea:
   ovl4:CC35  15965  8a04           mov    al, byte ptr [si]
   ovl4:CC37  15967  98             cwde
   ovl4:CC38  15968  50             push   ax
-  ovl4:CC39  15969  e88146         call   rt_12bd
+  ovl4:CC39  15969  e88146         call   tile_is_sea
   ovl4:CC3C  1596C  5f             pop    di
   ovl4:CC3D  1596D  0bc0           or     ax, ax
   ovl4:CC3F  1596F  7417           je     0xcc58
@@ -37001,7 +37275,7 @@ ovl4_caea:
   ovl4:CCC3  159F3  be5f60         mov    si, 0x605f
   ovl4:CCC6  159F6  ff34           push   word ptr [si]
   ovl4:CCC8  159F8  ff36ff62       push   word ptr [0x62ff]
-  ovl4:CCCC  159FC  e87f21         call   ovl4_ee4e
+  ovl4:CCCC  159FC  e87f21         call   worst_damage
   ovl4:CCCF  159FF  5f             pop    di
   ovl4:CCD0  15A00  5a             pop    dx
   ovl4:CCD1  15A01  3bc2           cmp    ax, dx
@@ -37057,7 +37331,7 @@ ovl4_caea:
   ovl4:CD5C  15A8C  8a04           mov    al, byte ptr [si]
   ovl4:CD5E  15A8E  98             cwde
   ovl4:CD5F  15A8F  50             push   ax
-  ovl4:CD60  15A90  e84347         call   tile_is_battle_p7
+  ovl4:CD60  15A90  e84347         call   tile_is_land
   ovl4:CD63  15A93  5f             pop    di
   ovl4:CD64  15A94  0bc0           or     ax, ax
   ovl4:CD66  15A96  7509           jne    0xcd71
@@ -37326,11 +37600,11 @@ ovl4_cfef:
   ovl4:D000  15D30  b80500         mov    ax, 5
   ovl4:D003  15D33  8906d764       mov    word ptr [0x64d7], ax
   ovl4:D007  15D37  ff76f8         push   word ptr [bp - 8]
-  ovl4:D00A  15D3A  e8fbde         call   ovl4_af08
+  ovl4:D00A  15D3A  e8fbde         call   cell_mid_y
   ovl4:D00D  15D3D  5f             pop    di
   ovl4:D00E  15D3E  8946fc         mov    word ptr [bp - 4], ax
   ovl4:D011  15D41  ff76f8         push   word ptr [bp - 8]
-  ovl4:D014  15D44  e897de         call   ovl4_aeae
+  ovl4:D014  15D44  e897de         call   cell_mid_x
   ovl4:D017  15D47  5f             pop    di
   ovl4:D018  15D48  8946fa         mov    word ptr [bp - 6], ax
   ovl4:D01B  15D4B  beff5b         mov    si, 0x5bff
@@ -37338,7 +37612,7 @@ ovl4_cfef:
   ovl4:D021  15D51  8a04           mov    al, byte ptr [si]
   ovl4:D023  15D53  98             cwde
   ovl4:D024  15D54  50             push   ax
-  ovl4:D025  15D55  e87e44         call   tile_is_battle_p7
+  ovl4:D025  15D55  e87e44         call   tile_is_land
   ovl4:D028  15D58  5f             pop    di
   ovl4:D029  15D59  0bc0           or     ax, ax
   ovl4:D02B  15D5B  7535           jne    0xd062
@@ -37393,7 +37667,7 @@ ovl4_cfef:
   ovl4:D0A9  15DD9  d1e0           shl    ax, 1
   ovl4:D0AB  15DDB  03f0           add    si, ax
   ovl4:D0AD  15DDD  ff34           push   word ptr [si]
-  ovl4:D0AF  15DDF  e8cb4a         call   rt_1b7d
+  ovl4:D0AF  15DDF  e8cb4a         call   crown_beside
   ovl4:D0B2  15DE2  5f             pop    di
   ovl4:D0B3  15DE3  5f             pop    di
   ovl4:D0B4  15DE4  83f8ff         cmp    ax, -1
@@ -37406,7 +37680,7 @@ ovl4_cfef:
   ovl4:D0C6  15DF6  d1e0           shl    ax, 1
   ovl4:D0C8  15DF8  03f0           add    si, ax
   ovl4:D0CA  15DFA  ff34           push   word ptr [si]
-  ovl4:D0CC  15DFC  e8ae4a         call   rt_1b7d
+  ovl4:D0CC  15DFC  e8ae4a         call   crown_beside
   ovl4:D0CF  15DFF  5f             pop    di
   ovl4:D0D0  15E00  5f             pop    di
   ovl4:D0D1  15E01  83f8ff         cmp    ax, -1
@@ -37444,7 +37718,7 @@ ovl4_cfef:
   ovl4:D125  15E55  be5f60         mov    si, 0x605f
   ovl4:D128  15E58  ff34           push   word ptr [si]
   ovl4:D12A  15E5A  ff36ff62       push   word ptr [0x62ff]
-  ovl4:D12E  15E5E  e81d1d         call   ovl4_ee4e
+  ovl4:D12E  15E5E  e81d1d         call   worst_damage
   ovl4:D131  15E61  5f             pop    di
   ovl4:D132  15E62  5a             pop    dx
   ovl4:D133  15E63  3bc2           cmp    ax, dx
@@ -37481,7 +37755,7 @@ ovl4_cfef:
   ovl4:D186  15EB6  8b04           mov    ax, word ptr [si]
   ovl4:D188  15EB8  8946fc         mov    word ptr [bp - 4], ax
   ovl4:D18B  15EBB  ff36ff62       push   word ptr [0x62ff]
-  ovl4:D18F  15EBF  e8c33d         call   rt_0f55
+  ovl4:D18F  15EBF  e8c33d         call   clear_paths
   ovl4:D192  15EC2  5f             pop    di
   ovl4:D193  15EC3  b86300         mov    ax, 0x63
   ovl4:D196  15EC6  be2f54         mov    si, 0x542f
@@ -37588,7 +37862,7 @@ ovl4_cfef:
   ovl4:D29E  15FCE  be5f60         mov    si, 0x605f
   ovl4:D2A1  15FD1  ff34           push   word ptr [si]
   ovl4:D2A3  15FD3  ff36ff62       push   word ptr [0x62ff]
-  ovl4:D2A7  15FD7  e8a41b         call   ovl4_ee4e
+  ovl4:D2A7  15FD7  e8a41b         call   worst_damage
   ovl4:D2AA  15FDA  5f             pop    di
   ovl4:D2AB  15FDB  5a             pop    dx
   ovl4:D2AC  15FDC  3bc2           cmp    ax, dx
@@ -37639,7 +37913,7 @@ ovl4_cfef:
   ovl4:D322  16052  b8ffff         mov    ax, 0xffff
   ovl4:D325  16055  50             push   ax
   ovl4:D326  16056  ff76f8         push   word ptr [bp - 8]
-  ovl4:D329  16059  e85148         call   rt_1b7d
+  ovl4:D329  16059  e85148         call   crown_beside
   ovl4:D32C  1605C  5f             pop    di
   ovl4:D32D  1605D  5f             pop    di
   ovl4:D32E  1605E  8946fe         mov    word ptr [bp - 2], ax
@@ -37648,11 +37922,11 @@ ovl4_cfef:
   ovl4:D338  16068  33c0           xor    ax, ax
   ovl4:D33A  1606A  50             push   ax
   ovl4:D33B  1606B  ff76f8         push   word ptr [bp - 8]
-  ovl4:D33E  1606E  e83c48         call   rt_1b7d
+  ovl4:D33E  1606E  e83c48         call   crown_beside
   ovl4:D341  16071  5f             pop    di
   ovl4:D342  16072  5f             pop    di
   ovl4:D343  16073  8946fe         mov    word ptr [bp - 2], ax
-  ovl4:D346  16076  e8013d         call   rt_104a
+  ovl4:D346  16076  e8013d         call   erase_squadrons
   ovl4:D349  16079  bebd5e         mov    si, 0x5ebd
   ovl4:D34C  1607C  0336ff62       add    si, word ptr [0x62ff]
   ovl4:D350  16080  8a04           mov    al, byte ptr [si]
@@ -37663,7 +37937,7 @@ ovl4_cfef:
   ovl4:D35B  1608B  33c0           xor    ax, ax
   ovl4:D35D  1608D  50             push   ax
   ovl4:D35E  1608E  ff76f8         push   word ptr [bp - 8]
-  ovl4:D361  16091  e87246         call   rt_19d6
+  ovl4:D361  16091  e87246         call   supply_port_beside
   ovl4:D364  16094  5f             pop    di
   ovl4:D365  16095  5f             pop    di
   ovl4:D366  16096  8946f2         mov    word ptr [bp - 0xe], ax
@@ -37681,7 +37955,7 @@ ovl4_cfef:
   ovl4:D387  160B7  09c0           or     ax, ax
   ovl4:D389  160B9  7507           jne    0xd392
   ovl4:D38B  160BB  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:D38E  160BE  e8cbef         call   ovl4_c35c
+  ovl4:D38E  160BE  e8cbef         call   invert_cell
   ovl4:D391  160C1  5f             pop    di
   ovl4:D392  160C2  8b06af64       mov    ax, word ptr [0x64af]
   ovl4:D396  160C6  d1e0           shl    ax, 1
@@ -37693,7 +37967,7 @@ ovl4_cfef:
   ovl4:D3A4  160D4  33c0           xor    ax, ax
   ovl4:D3A6  160D6  50             push   ax
   ovl4:D3A7  160D7  ff76f8         push   word ptr [bp - 8]
-  ovl4:D3AA  160DA  e8fb46         call   rt_1aa8
+  ovl4:D3AA  160DA  e8fb46         call   repair_port_beside
   ovl4:D3AD  160DD  5f             pop    di
   ovl4:D3AE  160DE  5f             pop    di
   ovl4:D3AF  160DF  8946f2         mov    word ptr [bp - 0xe], ax
@@ -37711,7 +37985,7 @@ ovl4_cfef:
   ovl4:D3D0  16100  09c0           or     ax, ax
   ovl4:D3D2  16102  7507           jne    0xd3db
   ovl4:D3D4  16104  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:D3D7  16107  e882ef         call   ovl4_c35c
+  ovl4:D3D7  16107  e882ef         call   invert_cell
   ovl4:D3DA  1610A  5f             pop    di
   ovl4:D3DB  1610B  8b06af64       mov    ax, word ptr [0x64af]
   ovl4:D3DF  1610F  be6549         mov    si, 0x4965
@@ -37805,10 +38079,10 @@ ovl4_cfef:
   ovl4:D4D0  16200  03f0           add    si, ax
   ovl4:D4D2  16202  ff34           push   word ptr [si]
   ovl4:D4D4  16204  ff76f8         push   word ptr [bp - 8]
-  ovl4:D4D7  16207  e8ace8         call   ovl4_bd86
+  ovl4:D4D7  16207  e8ace8         call   port_call
   ovl4:D4DA  1620A  5f             pop    di
   ovl4:D4DB  1620B  5f             pop    di
-  ovl4:D4DC  1620C  e8a53b         call   rt_1084
+  ovl4:D4DC  1620C  e8a53b         call   redraw_squadrons
   ovl4:D4DF  1620F  8be5           mov    sp, bp
   ovl4:D4E1  16211  5d             pop    bp
   ovl4:D4E2  16212  c3             ret
@@ -37826,13 +38100,13 @@ ovl4_cfef:
   ovl4:D4FF  1622F  8b46f6         mov    ax, word ptr [bp - 0xa]
   ovl4:D502  16232  0346f8         add    ax, word ptr [bp - 8]
   ovl4:D505  16235  50             push   ax
-  ovl4:D506  16236  e8ffd9         call   ovl4_af08
+  ovl4:D506  16236  e8ffd9         call   cell_mid_y
   ovl4:D509  16239  5f             pop    di
   ovl4:D50A  1623A  50             push   ax
   ovl4:D50B  1623B  8b46f6         mov    ax, word ptr [bp - 0xa]
   ovl4:D50E  1623E  0346f8         add    ax, word ptr [bp - 8]
   ovl4:D511  16241  50             push   ax
-  ovl4:D512  16242  e899d9         call   ovl4_aeae
+  ovl4:D512  16242  e899d9         call   cell_mid_x
   ovl4:D515  16245  5f             pop    di
   ovl4:D516  16246  50             push   ax
   ovl4:D517  16247  e88404         call   ovl4_d99e
@@ -37857,8 +38131,9 @@ ovl4_cfef:
   ovl4:D547  16277  5d             pop    bp
   ovl4:D548  16278  c3             ret
 
-; ---- ovl4_d549   (called from 5 places)
-ovl4_d549:
+; ---- count_at_cell   (called from 5 places)
+;      count_at_cell(cell, side, any): squadrons (anchored, or any) of a side in a cell
+count_at_cell:
   ovl4:D549  16279  55             push   bp
   ovl4:D54A  1627A  8bec           mov    bp, sp
   ovl4:D54C  1627C  83ec04         sub    sp, 4
@@ -37924,11 +38199,11 @@ ovl4_d5c2:
   ovl4:D5D6  16306  8906d764       mov    word ptr [0x64d7], ax
   ovl4:D5DA  1630A  8946ee         mov    word ptr [bp - 0x12], ax
   ovl4:D5DD  1630D  ff36ff62       push   word ptr [0x62ff]
-  ovl4:D5E1  16311  e82114         call   ovl4_ea05
+  ovl4:D5E1  16311  e82114         call   has_flagship
   ovl4:D5E4  16314  5f             pop    di
   ovl4:D5E5  16315  8946fa         mov    word ptr [bp - 6], ax
   ovl4:D5E8  16318  ff36ff62       push   word ptr [0x62ff]
-  ovl4:D5EC  1631C  e8d912         call   ovl4_e8c8
+  ovl4:D5EC  1631C  e8d912         call   squadron_strength
   ovl4:D5EF  1631F  5f             pop    di
   ovl4:D5F0  16320  be6560         mov    si, 0x6065
   ovl4:D5F3  16323  0304           add    ax, word ptr [si]
@@ -38000,7 +38275,7 @@ ovl4_d5c2:
   ovl4:D695  163C5  7e03           jle    0xd69a
   ovl4:D697  163C7  e9ee00         jmp    0xd788
   ovl4:D69A  163CA  ff76ec         push   word ptr [bp - 0x14]
-  ovl4:D69D  163CD  e86513         call   ovl4_ea05
+  ovl4:D69D  163CD  e86513         call   has_flagship
   ovl4:D6A0  163D0  5f             pop    di
   ovl4:D6A1  163D1  0bc0           or     ax, ax
   ovl4:D6A3  163D3  7534           jne    0xd6d9
@@ -38008,7 +38283,7 @@ ovl4_d5c2:
   ovl4:D6A8  163D8  0bc0           or     ax, ax
   ovl4:D6AA  163DA  752d           jne    0xd6d9
   ovl4:D6AC  163DC  ff76ec         push   word ptr [bp - 0x14]
-  ovl4:D6AF  163DF  e81612         call   ovl4_e8c8
+  ovl4:D6AF  163DF  e81612         call   squadron_strength
   ovl4:D6B2  163E2  5f             pop    di
   ovl4:D6B3  163E3  3b46f8         cmp    ax, word ptr [bp - 8]
   ovl4:D6B6  163E6  7e03           jle    0xd6bb
@@ -38050,7 +38325,7 @@ ovl4_d5c2:
   ovl4:D709  16439  33c0           xor    ax, ax
   ovl4:D70B  1643B  50             push   ax
   ovl4:D70C  1643C  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:D70F  1643F  e837fe         call   ovl4_d549
+  ovl4:D70F  1643F  e837fe         call   count_at_cell
   ovl4:D712  16442  83c406         add    sp, 6
   ovl4:D715  16445  83f802         cmp    ax, 2
   ovl4:D718  16448  7f07           jg     0xd721
@@ -38113,7 +38388,7 @@ ovl4_d799:
   ovl4:D7A5  164D5  8a04           mov    al, byte ptr [si]
   ovl4:D7A7  164D7  98             cwde
   ovl4:D7A8  164D8  50             push   ax
-  ovl4:D7A9  164D9  e8113b         call   rt_12bd
+  ovl4:D7A9  164D9  e8113b         call   tile_is_sea
   ovl4:D7AC  164DC  5f             pop    di
   ovl4:D7AD  164DD  0bc0           or     ax, ax
   ovl4:D7AF  164DF  7507           jne    0xd7b8
@@ -38288,7 +38563,7 @@ ovl4_d799:
   ovl4:D94A  1667A  98             cwde
   ovl4:D94B  1667B  8946e8         mov    word ptr [bp - 0x18], ax
   ovl4:D94E  1667E  ff76e8         push   word ptr [bp - 0x18]
-  ovl4:D951  16681  e86939         call   rt_12bd
+  ovl4:D951  16681  e86939         call   tile_is_sea
   ovl4:D954  16684  5f             pop    di
   ovl4:D955  16685  0bc0           or     ax, ax
   ovl4:D957  16687  7507           jne    0xd960
@@ -38300,7 +38575,7 @@ ovl4_d799:
   ovl4:D963  16693  0bc0           or     ax, ax
   ovl4:D965  16695  7412           je     0xd979
   ovl4:D967  16697  ff76e8         push   word ptr [bp - 0x18]
-  ovl4:D96A  1669A  e8573c         call   rt_15c4
+  ovl4:D96A  1669A  e8573c         call   tile_is_rough
   ovl4:D96D  1669D  5f             pop    di
   ovl4:D96E  1669E  0bc0           or     ax, ax
   ovl4:D970  166A0  7407           je     0xd979
@@ -38312,7 +38587,7 @@ ovl4_d799:
   ovl4:D97C  166AC  0bc0           or     ax, ax
   ovl4:D97E  166AE  7412           je     0xd992
   ovl4:D980  166B0  ff76e8         push   word ptr [bp - 0x18]
-  ovl4:D983  166B3  e8d03c         call   rt_1656
+  ovl4:D983  166B3  e8d03c         call   tile_is_shallow
   ovl4:D986  166B6  5f             pop    di
   ovl4:D987  166B7  0bc0           or     ax, ax
   ovl4:D989  166B9  7407           je     0xd992
@@ -38432,7 +38707,7 @@ ovl4_d99e:
   ovl4:DAA0  167D0  8a04           mov    al, byte ptr [si]
   ovl4:DAA2  167D2  98             cwde
   ovl4:DAA3  167D3  50             push   ax
-  ovl4:DAA4  167D4  e895bf         call   ovl4_9a3c
+  ovl4:DAA4  167D4  e895bf         call   step_heading
   ovl4:DAA7  167D7  5f             pop    di
   ovl4:DAA8  167D8  bed55f         mov    si, 0x5fd5
   ovl4:DAAB  167DB  8b16ff62       mov    dx, word ptr [0x62ff]
@@ -38763,7 +39038,7 @@ ovl4_db21:
   ovl4:DDE5  16B15  ff76de         push   word ptr [bp - 0x22]
   ovl4:DDE8  16B18  ff76ea         push   word ptr [bp - 0x16]
   ovl4:DDEB  16B1B  ff76e0         push   word ptr [bp - 0x20]
-  ovl4:DDEE  16B1E  e81f40         call   rt_1e10
+  ovl4:DDEE  16B1E  e81f40         call   way_blocked
   ovl4:DDF1  16B21  83c406         add    sp, 6
   ovl4:DDF4  16B24  0bc0           or     ax, ax
   ovl4:DDF6  16B26  7403           je     0xddfb
@@ -38771,7 +39046,7 @@ ovl4_db21:
   ovl4:DDFB  16B2B  ff76e0         push   word ptr [bp - 0x20]
   ovl4:DDFE  16B2E  ff76de         push   word ptr [bp - 0x22]
   ovl4:DE01  16B31  ff76ea         push   word ptr [bp - 0x16]
-  ovl4:DE04  16B34  e84b3e         call   rt_1c52
+  ovl4:DE04  16B34  e84b3e         call   off_map
   ovl4:DE07  16B37  83c406         add    sp, 6
   ovl4:DE0A  16B3A  0bc0           or     ax, ax
   ovl4:DE0C  16B3C  7403           je     0xde11
@@ -38793,7 +39068,7 @@ ovl4_db21:
   ovl4:DE34  16B64  e9e300         jmp    0xdf1a
   ovl4:DE37  16B67  ff76e4         push   word ptr [bp - 0x1c]
   ovl4:DE3A  16B6A  ff76e0         push   word ptr [bp - 0x20]
-  ovl4:DE3D  16B6D  e8b440         call   rt_1ef4
+  ovl4:DE3D  16B6D  e8b440         call   coast_pass
   ovl4:DE40  16B70  5f             pop    di
   ovl4:DE41  16B71  5f             pop    di
   ovl4:DE42  16B72  0bc0           or     ax, ax
@@ -38815,7 +39090,7 @@ ovl4_db21:
   ovl4:DE6A  16B9A  8a04           mov    al, byte ptr [si]
   ovl4:DE6C  16B9C  98             cwde
   ovl4:DE6D  16B9D  50             push   ax
-  ovl4:DE6E  16B9E  e8e537         call   rt_1656
+  ovl4:DE6E  16B9E  e8e537         call   tile_is_shallow
   ovl4:DE71  16BA1  5f             pop    di
   ovl4:DE72  16BA2  0bc0           or     ax, ax
   ovl4:DE74  16BA4  740d           je     0xde83
@@ -38829,7 +39104,7 @@ ovl4_db21:
   ovl4:DE89  16BB9  8a04           mov    al, byte ptr [si]
   ovl4:DE8B  16BBB  98             cwde
   ovl4:DE8C  16BBC  50             push   ax
-  ovl4:DE8D  16BBD  e83437         call   rt_15c4
+  ovl4:DE8D  16BBD  e83437         call   tile_is_rough
   ovl4:DE90  16BC0  5f             pop    di
   ovl4:DE91  16BC1  0bc0           or     ax, ax
   ovl4:DE93  16BC3  740d           je     0xdea2
@@ -39283,7 +39558,7 @@ ovl4_e103:
   ovl4:E314  17044  ff76dc         push   word ptr [bp - 0x24]
   ovl4:E317  17047  ff76e8         push   word ptr [bp - 0x18]
   ovl4:E31A  1704A  ff76de         push   word ptr [bp - 0x22]
-  ovl4:E31D  1704D  e8f03a         call   rt_1e10
+  ovl4:E31D  1704D  e8f03a         call   way_blocked
   ovl4:E320  17050  83c406         add    sp, 6
   ovl4:E323  17053  0bc0           or     ax, ax
   ovl4:E325  17055  7403           je     0xe32a
@@ -39291,7 +39566,7 @@ ovl4_e103:
   ovl4:E32A  1705A  ff76de         push   word ptr [bp - 0x22]
   ovl4:E32D  1705D  ff76dc         push   word ptr [bp - 0x24]
   ovl4:E330  17060  ff76e8         push   word ptr [bp - 0x18]
-  ovl4:E333  17063  e81c39         call   rt_1c52
+  ovl4:E333  17063  e81c39         call   off_map
   ovl4:E336  17066  83c406         add    sp, 6
   ovl4:E339  17069  0bc0           or     ax, ax
   ovl4:E33B  1706B  7403           je     0xe340
@@ -39313,7 +39588,7 @@ ovl4_e103:
   ovl4:E363  17093  e9b301         jmp    0xe519
   ovl4:E366  17096  ff76e2         push   word ptr [bp - 0x1e]
   ovl4:E369  17099  ff76de         push   word ptr [bp - 0x22]
-  ovl4:E36C  1709C  e8853b         call   rt_1ef4
+  ovl4:E36C  1709C  e8853b         call   coast_pass
   ovl4:E36F  1709F  5f             pop    di
   ovl4:E370  170A0  5f             pop    di
   ovl4:E371  170A1  0bc0           or     ax, ax
@@ -39330,7 +39605,7 @@ ovl4_e103:
   ovl4:E38D  170BD  8a04           mov    al, byte ptr [si]
   ovl4:E38F  170BF  98             cwde
   ovl4:E390  170C0  50             push   ax
-  ovl4:E391  170C1  e8c232         call   rt_1656
+  ovl4:E391  170C1  e8c232         call   tile_is_shallow
   ovl4:E394  170C4  5f             pop    di
   ovl4:E395  170C5  0bc0           or     ax, ax
   ovl4:E397  170C7  740d           je     0xe3a6
@@ -39344,7 +39619,7 @@ ovl4_e103:
   ovl4:E3AC  170DC  8a04           mov    al, byte ptr [si]
   ovl4:E3AE  170DE  98             cwde
   ovl4:E3AF  170DF  50             push   ax
-  ovl4:E3B0  170E0  e81132         call   rt_15c4
+  ovl4:E3B0  170E0  e81132         call   tile_is_rough
   ovl4:E3B3  170E3  5f             pop    di
   ovl4:E3B4  170E4  0bc0           or     ax, ax
   ovl4:E3B6  170E6  740d           je     0xe3c5
@@ -39389,7 +39664,7 @@ ovl4_e103:
   ovl4:E416  17146  33c0           xor    ax, ax
   ovl4:E418  17148  50             push   ax
   ovl4:E419  17149  ff76e2         push   word ptr [bp - 0x1e]
-  ovl4:E41C  1714C  e85e37         call   rt_1b7d
+  ovl4:E41C  1714C  e85e37         call   crown_beside
   ovl4:E41F  1714F  5f             pop    di
   ovl4:E420  17150  5f             pop    di
   ovl4:E421  17151  83f8ff         cmp    ax, -1
@@ -39399,7 +39674,7 @@ ovl4_e103:
   ovl4:E42B  1715B  b8ffff         mov    ax, 0xffff
   ovl4:E42E  1715E  50             push   ax
   ovl4:E42F  1715F  ff76e2         push   word ptr [bp - 0x1e]
-  ovl4:E432  17162  e84837         call   rt_1b7d
+  ovl4:E432  17162  e84837         call   crown_beside
   ovl4:E435  17165  5f             pop    di
   ovl4:E436  17166  5f             pop    di
   ovl4:E437  17167  83f8ff         cmp    ax, -1
@@ -39411,7 +39686,7 @@ ovl4_e103:
   ovl4:E449  17179  b80100         mov    ax, 1
   ovl4:E44C  1717C  50             push   ax
   ovl4:E44D  1717D  ff76e2         push   word ptr [bp - 0x1e]
-  ovl4:E450  17180  e85536         call   rt_1aa8
+  ovl4:E450  17180  e85536         call   repair_port_beside
   ovl4:E453  17183  5f             pop    di
   ovl4:E454  17184  5f             pop    di
   ovl4:E455  17185  50             push   ax
@@ -39426,7 +39701,7 @@ ovl4_e103:
   ovl4:E46B  1719B  b80100         mov    ax, 1
   ovl4:E46E  1719E  50             push   ax
   ovl4:E46F  1719F  ff76e2         push   word ptr [bp - 0x1e]
-  ovl4:E472  171A2  e86135         call   rt_19d6
+  ovl4:E472  171A2  e86135         call   supply_port_beside
   ovl4:E475  171A5  5f             pop    di
   ovl4:E476  171A6  5f             pop    di
   ovl4:E477  171A7  50             push   ax
@@ -39445,7 +39720,7 @@ ovl4_e103:
   ovl4:E496  171C6  b8ffff         mov    ax, 0xffff
   ovl4:E499  171C9  50             push   ax
   ovl4:E49A  171CA  ff76e2         push   word ptr [bp - 0x1e]
-  ovl4:E49D  171CD  e8a9f0         call   ovl4_d549
+  ovl4:E49D  171CD  e8a9f0         call   count_at_cell
   ovl4:E4A0  171D0  83c406         add    sp, 6
   ovl4:E4A3  171D3  d1e0           shl    ax, 1
   ovl4:E4A5  171D5  d1e0           shl    ax, 1
@@ -39560,8 +39835,9 @@ ovl4_e554:
   ovl4:E5BD  172ED  5d             pop    bp
   ovl4:E5BE  172EE  c3             ret
 
-; ---- ovl4_e5bf   (called from 1 place)
-ovl4_e5bf:
+; ---- sea_way   (called from 1 place)
+;      A way by sea from a port's cell to the edge of the map (the cell on the edge, or -1)
+sea_way:
   ovl4:E5BF  172EF  55             push   bp
   ovl4:E5C0  172F0  8bec           mov    bp, sp
   ovl4:E5C2  172F2  83ec12         sub    sp, 0x12
@@ -39659,7 +39935,7 @@ ovl4_e5bf:
   ovl4:E6AA  173DA  ff76ee         push   word ptr [bp - 0x12]
   ovl4:E6AD  173DD  ff76f6         push   word ptr [bp - 0xa]
   ovl4:E6B0  173E0  ff76f0         push   word ptr [bp - 0x10]
-  ovl4:E6B3  173E3  e85a37         call   rt_1e10
+  ovl4:E6B3  173E3  e85a37         call   way_blocked
   ovl4:E6B6  173E6  83c406         add    sp, 6
   ovl4:E6B9  173E9  0bc0           or     ax, ax
   ovl4:E6BB  173EB  7403           je     0xe6c0
@@ -39667,7 +39943,7 @@ ovl4_e5bf:
   ovl4:E6C0  173F0  ff76f0         push   word ptr [bp - 0x10]
   ovl4:E6C3  173F3  ff76ee         push   word ptr [bp - 0x12]
   ovl4:E6C6  173F6  ff76f6         push   word ptr [bp - 0xa]
-  ovl4:E6C9  173F9  e88635         call   rt_1c52
+  ovl4:E6C9  173F9  e88635         call   off_map
   ovl4:E6CC  173FC  83c406         add    sp, 6
   ovl4:E6CF  173FF  0bc0           or     ax, ax
   ovl4:E6D1  17401  7503           jne    0xe6d6
@@ -39747,7 +40023,7 @@ ovl4_e5bf:
   ovl4:E788  174B8  7440           je     0xe7ca
   ovl4:E78A  174BA  ff76f2         push   word ptr [bp - 0xe]
   ovl4:E78D  174BD  ff76f0         push   word ptr [bp - 0x10]
-  ovl4:E790  174C0  e86137         call   rt_1ef4
+  ovl4:E790  174C0  e86137         call   coast_pass
   ovl4:E793  174C3  5f             pop    di
   ovl4:E794  174C4  5f             pop    di
   ovl4:E795  174C5  0bc0           or     ax, ax
@@ -39793,8 +40069,9 @@ ovl4_e5bf:
   ovl4:E803  17533  5d             pop    bp
   ovl4:E804  17534  c3             ret
 
-; ---- ovl4_e805   (called from 2 places)
-ovl4_e805:
+; ---- strength_map   (called from 2 places)
+;      DS:4645: the strength of each side in each cell
+strength_map:
   ovl4:E805  17535  55             push   bp
   ovl4:E806  17536  8bec           mov    bp, sp
   ovl4:E808  17538  83ec06         sub    sp, 6
@@ -39830,7 +40107,7 @@ ovl4_e805:
   ovl4:E852  17582  5f             pop    di
   ovl4:E853  17583  8946fe         mov    word ptr [bp - 2], ax
   ovl4:E856  17586  ff76fa         push   word ptr [bp - 6]
-  ovl4:E859  17589  e8a901         call   ovl4_ea05
+  ovl4:E859  17589  e8a901         call   has_flagship
   ovl4:E85C  1758C  5f             pop    di
   ovl4:E85D  1758D  0bc0           or     ax, ax
   ovl4:E85F  1758F  741c           je     0xe87d
@@ -39854,7 +40131,7 @@ ovl4_e805:
   ovl4:E889  175B9  83f8f9         cmp    ax, -7
   ovl4:E88C  175BC  7430           je     0xe8be
   ovl4:E88E  175BE  ff76fa         push   word ptr [bp - 6]
-  ovl4:E891  175C1  e83400         call   ovl4_e8c8
+  ovl4:E891  175C1  e83400         call   squadron_strength
   ovl4:E894  175C4  5f             pop    di
   ovl4:E895  175C5  8946fc         mov    word ptr [bp - 4], ax
   ovl4:E898  175C8  ff76fa         push   word ptr [bp - 6]
@@ -39879,8 +40156,9 @@ ovl4_e805:
   ovl4:E8C6  175F6  5d             pop    bp
   ovl4:E8C7  175F7  c3             ret
 
-; ---- ovl4_e8c8   (called from 3 places)
-ovl4_e8c8:
+; ---- squadron_strength   (called from 3 places)
+;      Ship strengths less half their damage
+squadron_strength:
   ovl4:E8C8  175F8  55             push   bp
   ovl4:E8C9  175F9  8bec           mov    bp, sp
   ovl4:E8CB  175FB  83ec06         sub    sp, 6
@@ -40023,8 +40301,9 @@ ovl4_e9b8:
   ovl4:EA03  17733  5d             pop    bp
   ovl4:EA04  17734  c3             ret
 
-; ---- ovl4_ea05   (called from 4 places)
-ovl4_ea05:
+; ---- has_flagship   (called from 4 places)
+;      Has the squadron a flagship?
+has_flagship:
   ovl4:EA05  17735  55             push   bp
   ovl4:EA06  17736  8bec           mov    bp, sp
   ovl4:EA08  17738  83ec04         sub    sp, 4
@@ -40059,8 +40338,9 @@ ovl4_ea05:
   ovl4:EA4F  1777F  5d             pop    bp
   ovl4:EA50  17780  c3             ret
 
-; ---- ovl4_ea51   (called from 1 place)
-ovl4_ea51:
+; ---- port_value_map   (called from 1 place)
+;      DS:47D5: the value of the cells beside ports and crowns
+port_value_map:
   ovl4:EA51  17781  55             push   bp
   ovl4:EA52  17782  8bec           mov    bp, sp
   ovl4:EA54  17784  83ec0e         sub    sp, 0xe
@@ -40100,7 +40380,7 @@ ovl4_ea51:
   ovl4:EAAB  177DB  ff76f8         push   word ptr [bp - 8]
   ovl4:EAAE  177DE  ff76fc         push   word ptr [bp - 4]
   ovl4:EAB1  177E1  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:EAB4  177E4  e89b31         call   rt_1c52
+  ovl4:EAB4  177E4  e89b31         call   off_map
   ovl4:EAB7  177E7  83c406         add    sp, 6
   ovl4:EABA  177EA  0bc0           or     ax, ax
   ovl4:EABC  177EC  756d           jne    0xeb2b
@@ -40119,7 +40399,7 @@ ovl4_ea51:
   ovl4:EAE0  17810  816ef60800     sub    word ptr [bp - 0xa], 8
   ovl4:EAE5  17815  ff76f6         push   word ptr [bp - 0xa]
   ovl4:EAE8  17818  ff76fa         push   word ptr [bp - 6]
-  ovl4:EAEB  1781B  e81e31         call   rt_1c0c
+  ovl4:EAEB  1781B  e81e31         call   coast_blocks
   ovl4:EAEE  1781E  5f             pop    di
   ovl4:EAEF  1781F  5f             pop    di
   ovl4:EAF0  17820  0bc0           or     ax, ax
@@ -40129,14 +40409,14 @@ ovl4_ea51:
   ovl4:EAFA  1782A  8a04           mov    al, byte ptr [si]
   ovl4:EAFC  1782C  98             cwde
   ovl4:EAFD  1782D  50             push   ax
-  ovl4:EAFE  1782E  e8a529         call   tile_is_battle_p7
+  ovl4:EAFE  1782E  e8a529         call   tile_is_land
   ovl4:EB01  17831  5f             pop    di
   ovl4:EB02  17832  0bc0           or     ax, ax
   ovl4:EB04  17834  7525           jne    0xeb2b
   ovl4:EB06  17836  b80100         mov    ax, 1
   ovl4:EB09  17839  50             push   ax
   ovl4:EB0A  1783A  ff76fa         push   word ptr [bp - 6]
-  ovl4:EB0D  1783D  e8982f         call   rt_1aa8
+  ovl4:EB0D  1783D  e8982f         call   repair_port_beside
   ovl4:EB10  17840  5f             pop    di
   ovl4:EB11  17841  5f             pop    di
   ovl4:EB12  17842  83f8ff         cmp    ax, -1
@@ -40169,7 +40449,7 @@ ovl4_ea51:
   ovl4:EB5B  1788B  ff76f8         push   word ptr [bp - 8]
   ovl4:EB5E  1788E  ff76fc         push   word ptr [bp - 4]
   ovl4:EB61  17891  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:EB64  17894  e8eb30         call   rt_1c52
+  ovl4:EB64  17894  e8eb30         call   off_map
   ovl4:EB67  17897  83c406         add    sp, 6
   ovl4:EB6A  1789A  0bc0           or     ax, ax
   ovl4:EB6C  1789C  756d           jne    0xebdb
@@ -40188,7 +40468,7 @@ ovl4_ea51:
   ovl4:EB90  178C0  816ef60800     sub    word ptr [bp - 0xa], 8
   ovl4:EB95  178C5  ff76f6         push   word ptr [bp - 0xa]
   ovl4:EB98  178C8  ff76fa         push   word ptr [bp - 6]
-  ovl4:EB9B  178CB  e86e30         call   rt_1c0c
+  ovl4:EB9B  178CB  e86e30         call   coast_blocks
   ovl4:EB9E  178CE  5f             pop    di
   ovl4:EB9F  178CF  5f             pop    di
   ovl4:EBA0  178D0  0bc0           or     ax, ax
@@ -40198,14 +40478,14 @@ ovl4_ea51:
   ovl4:EBAA  178DA  8a04           mov    al, byte ptr [si]
   ovl4:EBAC  178DC  98             cwde
   ovl4:EBAD  178DD  50             push   ax
-  ovl4:EBAE  178DE  e8f528         call   tile_is_battle_p7
+  ovl4:EBAE  178DE  e8f528         call   tile_is_land
   ovl4:EBB1  178E1  5f             pop    di
   ovl4:EBB2  178E2  0bc0           or     ax, ax
   ovl4:EBB4  178E4  7525           jne    0xebdb
   ovl4:EBB6  178E6  b80100         mov    ax, 1
   ovl4:EBB9  178E9  50             push   ax
   ovl4:EBBA  178EA  ff76fa         push   word ptr [bp - 6]
-  ovl4:EBBD  178ED  e8162e         call   rt_19d6
+  ovl4:EBBD  178ED  e8162e         call   supply_port_beside
   ovl4:EBC0  178F0  5f             pop    di
   ovl4:EBC1  178F1  5f             pop    di
   ovl4:EBC2  178F2  83f8ff         cmp    ax, -1
@@ -40247,7 +40527,7 @@ ovl4_ea51:
   ovl4:EC26  17956  ff76f8         push   word ptr [bp - 8]
   ovl4:EC29  17959  ff76fc         push   word ptr [bp - 4]
   ovl4:EC2C  1795C  ff76f2         push   word ptr [bp - 0xe]
-  ovl4:EC2F  1795F  e82030         call   rt_1c52
+  ovl4:EC2F  1795F  e82030         call   off_map
   ovl4:EC32  17962  83c406         add    sp, 6
   ovl4:EC35  17965  0bc0           or     ax, ax
   ovl4:EC37  17967  7403           je     0xec3c
@@ -40267,7 +40547,7 @@ ovl4_ea51:
   ovl4:EC5E  1798E  816ef60800     sub    word ptr [bp - 0xa], 8
   ovl4:EC63  17993  ff76f6         push   word ptr [bp - 0xa]
   ovl4:EC66  17996  ff76fa         push   word ptr [bp - 6]
-  ovl4:EC69  17999  e8a02f         call   rt_1c0c
+  ovl4:EC69  17999  e8a02f         call   coast_blocks
   ovl4:EC6C  1799C  5f             pop    di
   ovl4:EC6D  1799D  5f             pop    di
   ovl4:EC6E  1799E  0bc0           or     ax, ax
@@ -40277,13 +40557,13 @@ ovl4_ea51:
   ovl4:EC78  179A8  8a04           mov    al, byte ptr [si]
   ovl4:EC7A  179AA  98             cwde
   ovl4:EC7B  179AB  50             push   ax
-  ovl4:EC7C  179AC  e82728         call   tile_is_battle_p7
+  ovl4:EC7C  179AC  e82728         call   tile_is_land
   ovl4:EC7F  179AF  5f             pop    di
   ovl4:EC80  179B0  0bc0           or     ax, ax
   ovl4:EC82  179B2  753b           jne    0xecbf
   ovl4:EC84  179B4  ff76fe         push   word ptr [bp - 2]
   ovl4:EC87  179B7  ff76fa         push   word ptr [bp - 6]
-  ovl4:EC8A  179BA  e8f02e         call   rt_1b7d
+  ovl4:EC8A  179BA  e8f02e         call   crown_beside
   ovl4:EC8D  179BD  5f             pop    di
   ovl4:EC8E  179BE  5f             pop    di
   ovl4:EC8F  179BF  83f8ff         cmp    ax, -1
@@ -40478,8 +40758,9 @@ ovl4_ed83:
   ovl4:EE4C  17B7C  5d             pop    bp
   ovl4:EE4D  17B7D  c3             ret
 
-; ---- ovl4_ee4e   (called from 5 places)
-ovl4_ee4e:
+; ---- worst_damage   (called from 5 places)
+;      The worst sail or hull damage among a squadron's ships
+worst_damage:
   ovl4:EE4E  17B7E  55             push   bp
   ovl4:EE4F  17B7F  8bec           mov    bp, sp
   ovl4:EE51  17B81  83ec06         sub    sp, 6
@@ -40587,14 +40868,14 @@ ovl4_ef2e:
   ovl4:EF36  17C66  8946fe         mov    word ptr [bp - 2], ax
   ovl4:EF39  17C69  817efe0a00     cmp    word ptr [bp - 2], 0xa
   ovl4:EF3E  17C6E  7d4e           jge    0xef8e
-  ovl4:EF40  17C70  e80721         call   rt_104a
+  ovl4:EF40  17C70  e80721         call   erase_squadrons
   ovl4:EF43  17C73  b8ffff         mov    ax, 0xffff
   ovl4:EF46  17C76  bedd5c         mov    si, 0x5cdd
   ovl4:EF49  17C79  8b5604         mov    dx, word ptr [bp + 4]
   ovl4:EF4C  17C7C  d1e2           shl    dx, 1
   ovl4:EF4E  17C7E  03f2           add    si, dx
   ovl4:EF50  17C80  8904           mov    word ptr [si], ax
-  ovl4:EF52  17C82  e82f21         call   rt_1084
+  ovl4:EF52  17C82  e82f21         call   redraw_squadrons
   ovl4:EF55  17C85  ff365964       push   word ptr [0x6459]
   ovl4:EF59  17C89  e8b937         call   rt_2715
   ovl4:EF5C  17C8C  5f             pop    di
@@ -40602,14 +40883,14 @@ ovl4_ef2e:
   ovl4:EF60  17C90  50             push   ax
   ovl4:EF61  17C91  e80a40         call   delay
   ovl4:EF64  17C94  5f             pop    di
-  ovl4:EF65  17C95  e8e220         call   rt_104a
+  ovl4:EF65  17C95  e8e220         call   erase_squadrons
   ovl4:EF68  17C98  33c0           xor    ax, ax
   ovl4:EF6A  17C9A  bedd5c         mov    si, 0x5cdd
   ovl4:EF6D  17C9D  8b5604         mov    dx, word ptr [bp + 4]
   ovl4:EF70  17CA0  d1e2           shl    dx, 1
   ovl4:EF72  17CA2  03f2           add    si, dx
   ovl4:EF74  17CA4  8904           mov    word ptr [si], ax
-  ovl4:EF76  17CA6  e80b21         call   rt_1084
+  ovl4:EF76  17CA6  e80b21         call   redraw_squadrons
   ovl4:EF79  17CA9  ff365964       push   word ptr [0x6459]
   ovl4:EF7D  17CAD  e89537         call   rt_2715
   ovl4:EF80  17CB0  5f             pop    di
@@ -41325,104 +41606,585 @@ ovl5_7ac6:
   ovl5:7BDC  1838C  8a46f6         mov    al, byte ptr [bp - 0xa]
   ovl5:7BDF  1838F  98             cwde
   ovl5:7BE0  18390  e9fc05         jmp    0x81df
-  ; ---- data / unreached bytes (1482 bytes)
-  ovl5:7BE3  18393  db E9h, E5h, 08h, BEh, A7h, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh, 04h                  ; .....j...i......
-  ovl5:7BF3  183A3  db 0Bh, C0h, 74h, 03h, B8h, 01h, 00h, 35h, 01h, 00h, BEh, A7h, 6Ah, 8Bh, 16h, D1h                  ; ..t....5....j...
-  ovl5:7C03  183B3  db 69h, D1h, E2h, 03h, F2h, 89h, 04h, B8h, 0Fh, 11h, 89h, 06h, 79h, 6Ch, BEh, A7h                  ; i...........yl..
-  ovl5:7C13  183C3  db 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh, 04h, 0Bh, C0h, 75h, 03h, E9h                  ; j...i........u..
-  ovl5:7C23  183D3  db 93h, 00h, B8h, 01h, 00h, 89h, 46h, F7h, 81h, 7Eh, F7h, 15h, 00h, 7Dh, 14h, FFh                  ; ......F..~...}..
-  ovl5:7C33  183E3  db 76h, F7h, E8h, 5Fh, EAh, 5Fh, B8h, E8h, 03h, 50h, E8h, 2Eh, B3h, 5Fh, FFh, 46h                  ; v.._._...P..._.F
-  ovl5:7C43  183F3  db F7h, EBh, E5h, 81h, 3Eh, 77h, 6Ch, 73h, 00h, 7Ch, 08h, 81h, 3Eh, 77h, 6Ch, 77h                  ; ....>wls.|..>wlw
-  ovl5:7C53  18403  db 00h, 7Eh, 07h, B8h, 73h, 00h, 89h, 06h, 77h, 6Ch, B8h, 14h, 00h, 89h, 06h, 7Bh                  ; .~..s...wl.....{
-  ovl5:7C63  18413  db 6Ch, B8h, BFh, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, C2h, 89h, 46h, FDh, 8Bh                  ; l..j...i.....F..
-  ovl5:7C73  18423  db 76h, FDh, 8Bh, 04h, 83h, F8h, 05h, 7Dh, 0Ah, B8h, 03h, 00h, 8Bh, 76h, FDh, 89h                  ; v......}.....v..
-  ovl5:7C83  18433  db 04h, EBh, 30h, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 08h, 7Dh, 0Ah, B8h, 06h, 00h                  ; ..0.v......}....
-  ovl5:7C93  18443  db 8Bh, 76h, FDh, 89h, 04h, EBh, 1Ch, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 0Ah, 7Dh                  ; .v......v......}
-  ovl5:7CA3  18453  db 0Ah, B8h, 0Ah, 00h, 8Bh, 76h, FDh, 89h, 04h, EBh, 08h, B8h, 0Ch, 00h, 8Bh, 76h                  ; .....v.........v
-  ovl5:7CB3  18463  db FDh, 89h, 04h, EBh, 4Fh, B8h, 13h, 00h, 89h, 46h, F7h, 81h, 7Eh, F7h, 00h, 00h                  ; ....O....F..~...
-  ovl5:7CC3  18473  db 7Ch, 14h, FFh, 76h, F7h, E8h, CCh, E9h, 5Fh, B8h, E8h, 03h, 50h, E8h, 9Bh, B2h                  ; |..v...._...P...
-  ovl5:7CD3  18483  db 5Fh, FFh, 4Eh, F7h, EBh, E5h, 81h, 3Eh, 77h, 6Ch, 61h, 00h, 7Ch, 08h, 81h, 3Eh                  ; _.N....>wla.|..>
-  ovl5:7CE3  18493  db 77h, 6Ch, 67h, 00h, 7Eh, 07h, B8h, 67h, 00h, 89h, 06h, 77h, 6Ch, 33h, C0h, 89h                  ; wlg.~..g...wl3..
-  ovl5:7CF3  184A3  db 06h, 7Bh, 6Ch, B8h, B3h, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, C2h, 89h, 46h                  ; .{l..j...i.....F
-  ovl5:7D03  184B3  db FDh, E9h, 6Bh, FFh, 81h, 3Eh, D3h, 69h, 41h, 00h, 75h, 09h, 33h, C0h, 89h, 06h                  ; ..k..>.iA.u.3...
-  ovl5:7D13  184C3  db D3h, 69h, E8h, 06h, F8h, E8h, 57h, F8h, E8h, 14h, 8Fh, E8h, D9h, F7h, B8h, 03h                  ; .i....W.........
-  ovl5:7D23  184D3  db 00h, 50h, B0h, 0Ah, 50h, E8h, F6h, 0Fh, 5Fh, 5Fh, 0Bh, C0h, 75h, 10h, B8h, 03h                  ; .P..P...__..u...
-  ovl5:7D33  184E3  db 00h, 50h, B0h, 0Eh, 50h, E8h, E6h, 0Fh, 5Fh, 5Fh, 0Bh, C0h, 74h, 06h, E8h, C9h                  ; .P..P...__..t...
-  ovl5:7D43  184F3  db 0Eh, E8h, B6h, 0Fh, E8h, 34h, F8h, E8h, E9h, F7h, E9h, 8Fh, 0Ah, BEh, 17h, 6Ah                  ; .....4.........j
-  ovl5:7D53  18503  db 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh, 04h, 83h, F8h, 01h, 74h, 16h, B8h                  ; ...i.........t..
-  ovl5:7D63  18513  db 01h, 00h, BEh, 17h, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h, 04h, E8h                  ; ....j...i.......
-  ovl5:7D73  18523  db 85h, F7h, E8h, FEh, F6h, E8h, C0h, 0Ah, B8h, 43h, 00h, 89h, 06h, D3h, 69h, E8h                  ; .........C....i.
-  ovl5:7D83  18533  db EDh, F7h, B8h, 02h, 00h, 50h, B0h, 1Ah, 50h, E8h, C4h, 0Ah, 5Fh, 5Fh, E9h, 4Bh                  ; .....P..P...__.K
-  ovl5:7D93  18543  db 0Ah, 81h, 3Eh, D3h, 69h, 53h, 00h, 75h, 08h, 33h, C0h, 89h, 46h, F7h, E9h, 75h                  ; ..>.iS.u.3..F..u
-  ovl5:7DA3  18553  db 08h, E8h, 94h, 0Ah, B8h, 53h, 00h, 89h, 06h, D3h, 69h, B0h, 03h, 50h, 33h, C0h                  ; .....S....i..P3.
-  ovl5:7DB3  18563  db 50h, E8h, 9Ch, 0Ah, 5Fh, 5Fh, E9h, 23h, 0Ah, E8h, 7Ch, 0Ah, B8h, 4Fh, 00h, 89h                  ; P...__.#..|..O..
-  ovl5:7DC3  18573  db 06h, D3h, 69h, E8h, A9h, F7h, B8h, 02h, 00h, 50h, B0h, 13h, 50h, E8h, 80h, 0Ah                  ; ..i......P..P...
-  ovl5:7DD3  18583  db 5Fh, 5Fh, E8h, 5Eh, F7h, B8h, 17h, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, C2h                  ; __.^...j...i....
-  ovl5:7DE3  18593  db 89h, 46h, FDh, B8h, 01h, 00h, 0Bh, C0h, 75h, 03h, E9h, 7Dh, 01h, E8h, F2h, 09h                  ; .F......u..}....
-  ovl5:7DF3  185A3  db 88h, 46h, F6h, 8Ah, 46h, F6h, 98h, 83h, F8h, 61h, 7Ch, 17h, 8Ah, 46h, F6h, 98h                  ; .F..F....a|..F..
-  ovl5:7E03  185B3  db 83h, F8h, 7Ah, 7Fh, 0Eh, B8h, 20h, 00h, 50h, 5Ah, 8Ah, 46h, F6h, 98h, 2Bh, C2h                  ; ..z... .PZ.F..+.
-  ovl5:7E13  185C3  db 88h, 46h, F6h, 8Ah, 46h, F6h, 98h, 83h, F8h, 0Ah, 74h, 09h, 8Ah, 46h, F6h, 98h                  ; .F..F.....t..F..
-  ovl5:7E23  185D3  db 83h, F8h, 0Dh, 75h, 02h, EBh, 09h, 8Ah, 46h, F6h, 98h, 83h, F8h, 53h, 75h, 02h                  ; ...u....F....Su.
-  ovl5:7E33  185E3  db EBh, 09h, 8Ah, 46h, F6h, 98h, 83h, F8h, 46h, 75h, 02h, EBh, 09h, 8Ah, 46h, F6h                  ; ...F....Fu....F.
-  ovl5:7E43  185F3  db 98h, 83h, F8h, 41h, 75h, 02h, EBh, 09h, 8Ah, 46h, F6h, 98h, 83h, F8h, 47h, 75h                  ; ...Au....F....Gu
-  ovl5:7E53  18603  db 03h, E9h, 16h, 01h, 8Ah, 46h, F6h, 98h, 83h, F8h, 43h, 75h, 0Dh, 8Bh, 76h, FDh                  ; .....F....Cu..v.
-  ovl5:7E63  18613  db 8Bh, 04h, 83h, F8h, 01h, 75h, 03h, E9h, 0Bh, FFh, 8Ah, 46h, F6h, 98h, 83h, F8h                  ; .....u.....F....
-  ovl5:7E73  18623  db 4Fh, 74h, 09h, 8Ah, 46h, F6h, 98h, 83h, F8h, 6Fh, 75h, 06h, B8h, 2Bh, 00h, 88h                  ; Ot..F....ou..+..
-  ovl5:7E83  18633  db 46h, F6h, 8Ah, 46h, F6h, 98h, 50h, E8h, FDh, F6h, 5Fh, 89h, 46h, F7h, 0Bh, C0h                  ; F..F..P..._.F...
-  ovl5:7E93  18643  db 75h, 03h, E9h, 4Eh, FFh, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 01h, 75h, 03h, E8h                  ; u..N..v......u..
-  ovl5:7EA3  18653  db 55h, F6h, B8h, 01h, 00h, 0Bh, C0h, 75h, 03h, E9h, 85h, 00h, 8Bh, 46h, F7h, 8Bh                  ; U......u.....F..
-  ovl5:7EB3  18663  db 76h, FDh, 8Bh, 14h, 03h, D0h, 89h, 14h, FFh, 36h, D1h, 69h, E8h, E9h, CAh, 5Fh                  ; v........6.i..._
-  ovl5:7EC3  18673  db 0Bh, C0h, 75h, 16h, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 02h, 74h, 0Ah, 8Bh, 76h                  ; ..u..v......t..v
-  ovl5:7ED3  18683  db FDh, 8Bh, 04h, 83h, F8h, 03h, 75h, 02h, EBh, C8h, 8Bh, 76h, FDh, 8Bh, 04h, 83h                  ; ......u....v....
-  ovl5:7EE3  18693  db F8h, 01h, 7Dh, 0Ah, B8h, 07h, 00h, 8Bh, 76h, FDh, 89h, 04h, EBh, B4h, 8Bh, 76h                  ; ..}.....v......v
-  ovl5:7EF3  186A3  db FDh, 8Bh, 04h, 83h, F8h, 06h, 7Fh, 11h, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 06h                  ; .........v......
-  ovl5:7F03  186B3  db 75h, 17h, E8h, AAh, C5h, 0Bh, C0h, 75h, 10h, 81h, 7Eh, F7h, 00h, 00h, 7Eh, 07h                  ; u......u..~...~.
-  ovl5:7F13  186C3  db 33h, C0h, 8Bh, 76h, FDh, 89h, 04h, EBh, 89h, 8Ah, 06h, A9h, 65h, 98h, 0Bh, C0h                  ; 3..v........e...
-  ovl5:7F23  186D3  db 74h, 0Dh, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 03h, 7Eh, 03h, E9h, 73h, FFh, EBh                  ; t..v......~..s..
-  ovl5:7F33  186E3  db 00h, E8h, 3Fh, F5h, E8h, C0h, F5h, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 04h, 75h                  ; ..?.....v......u
-  ovl5:7F43  186F3  db 0Ch, 33h, C0h, 50h, FFh, 36h, D1h, 69h, E8h, F0h, C3h, 5Fh, 5Fh, 8Bh, 76h, FDh                  ; .3.P.6.i...__.v.
-  ovl5:7F53  18703  db 8Bh, 04h, 83h, F8h, 06h, 75h, 0Dh, B8h, 02h, 00h, 50h, FFh, 36h, D1h, 69h, E8h                  ; .....u....P.6.i.
-  ovl5:7F63  18713  db D9h, C3h, 5Fh, 5Fh, E8h, 14h, F6h, E9h, 79h, FEh, B8h, 02h, 00h, 50h, B0h, 13h                  ; ..__....y....P..
-  ovl5:7F73  18723  db 50h, E8h, AAh, 0Dh, 5Fh, 5Fh, 0Bh, C0h, 75h, 03h, E8h, 16h, F6h, 33h, C0h, 89h                  ; P...__..u....3..
-  ovl5:7F83  18733  db 06h, D3h, 69h, E8h, 95h, F5h, E8h, F2h, F5h, 8Ah, 46h, F6h, 98h, 83h, F8h, 0Ah                  ; ..i.......F.....
-  ovl5:7F93  18743  db 74h, 0Ch, 8Ah, 46h, F6h, 98h, 83h, F8h, 0Dh, 74h, 03h, E9h, 51h, FBh, E8h, 8Eh                  ; t..F.....t..Q...
-  ovl5:7FA3  18753  db 8Ch, E9h, 38h, 08h, 81h, 3Eh, DDh, 69h, 02h, 00h, 75h, 09h, B8h, 03h, 00h, 89h                  ; ..8..>.i..u.....
-  ovl5:7FB3  18763  db 06h, DDh, 69h, EBh, 07h, B8h, 02h, 00h, 89h, 06h, DDh, 69h, 33h, C0h, 89h, 46h                  ; ..i........i3..F
-  ovl5:7FC3  18773  db F7h, 81h, 7Eh, F7h, 12h, 00h, 7Dh, 0Fh, 33h, C0h, BEh, 19h, 6Bh, 03h, 76h, F7h                  ; ..~...}.3...k.v.
-  ovl5:7FD3  18783  db 88h, 04h, FFh, 46h, F7h, EBh, EAh, 33h, C0h, 89h, 46h, F7h, 81h, 7Eh, F7h, 06h                  ; ...F...3..F..~..
-  ovl5:7FE3  18793  db 00h, 7Dh, 24h, BEh, E7h, 69h, 8Bh, 46h, F7h, D1h, E0h, 03h, F0h, 8Bh, 04h, 3Dh                  ; .}$..i.F.......=
-  ovl5:7FF3  187A3  db 19h, FCh, 74h, 0Eh, 33h, C0h, BEh, E3h, 6Ah, 8Bh, 56h, F7h, D1h, E2h, 03h, F2h                  ; ..t.3...j.V.....
-  ovl5:8003  187B3  db 89h, 04h, FFh, 46h, F7h, EBh, D5h, E8h, 95h, F5h, E8h, 57h, D3h, E8h, 9Fh, F4h                  ; ...F.......W....
-  ovl5:8013  187C3  db E8h, B0h, 2Fh, E8h, 19h, 8Ch, E8h, 62h, F5h, E9h, C0h, 07h, FFh, 0Eh, CFh, 69h                  ; ../....b.......i
-  ovl5:8023  187D3  db 8Bh, 06h, CFh, 69h, 09h, C0h, 7Dh, 07h, B8h, 04h, 00h, 89h, 06h, CFh, 69h, E8h                  ; ...i..}.......i.
-  ovl5:8033  187E3  db FDh, 8Bh, 8Bh, 06h, D3h, 69h, 0Bh, C0h, 75h, 03h, E8h, 6Eh, F5h, E8h, 3Bh, F5h                  ; .....i..u..n..;.
-  ovl5:8043  187F3  db E9h, E5h, 01h, E8h, 45h, AEh, E8h, E6h, 8Bh, 8Bh, 06h, D3h, 69h, 89h, 46h, FBh                  ; ....E.......i.F.
-  ovl5:8053  18803  db B8h, 50h, 00h, 89h, 06h, D3h, 69h, B0h, 18h, 50h, E8h, E8h, ABh, 5Fh, B8h, 73h                  ; .P....i..P..._.s
-  ovl5:8063  18813  db 16h, 50h, E8h, EDh, B2h, 5Fh, 8Bh, 06h, 8Dh, 64h, 0Bh, C0h, 74h, 08h, B8h, 40h                  ; .P..._...d..t..@
-  ovl5:8073  18823  db 1Fh, 50h, E8h, F6h, AEh, 5Fh, E8h, 69h, 07h, 0Bh, C0h, 75h, 02h, EBh, F7h, E8h                  ; .P..._.i...u....
-  ovl5:8083  18833  db 09h, AEh, 8Bh, 46h, FBh, 89h, 06h, D3h, 69h, 0Bh, C0h, 75h, 05h, E8h, 8Bh, F4h                  ; ...F....i..u....
-  ovl5:8093  18843  db EBh, 03h, E8h, 22h, F5h, 8Bh, 06h, 8Dh, 64h, 0Bh, C0h, 74h, 0Bh, 81h, 3Eh, 87h                  ; ..."....d..t..>.
-  ovl5:80A3  18853  db 6Ch, 18h, 00h, 75h, 03h, E8h, E8h, 8Dh, E9h, 42h, 05h, B8h, 01h, 00h, 88h, 06h                  ; l..u.....B......
-  ovl5:80B3  18863  db 94h, 6Ch, 8Ah, 46h, F6h, 98h, 83h, F8h, 1Bh, 75h, 06h, E8h, CDh, ADh, 88h, 46h                  ; .l.F.....u.....F
-  ovl5:80C3  18873  db F6h, E8h, C7h, ADh, 0Bh, C0h, 75h, F9h, 81h, 3Eh, DDh, 69h, 02h, 00h, 75h, 08h                  ; ......u..>.i..u.
-  ovl5:80D3  18883  db B8h, 0Ch, 00h, 89h, 46h, F7h, EBh, 06h, B8h, 06h, 00h, 89h, 46h, F7h, 8Ah, 46h                  ; ....F.......F..F
-  ovl5:80E3  18893  db F6h, 98h, EBh, 40h, 8Bh, 46h, F7h, 01h, 06h, D5h, 69h, 8Bh, 46h, F7h, 29h, 06h                  ; ...@.F....i.F.).
-  ovl5:80F3  188A3  db D7h, 69h, EBh, 7Ch, 8Bh, 46h, F7h, 01h, 06h, D7h, 69h, 8Bh, 46h, F7h, 01h, 06h                  ; .i.|.F....i.F...
-  ovl5:8103  188B3  db D5h, 69h, EBh, 6Ch, 8Bh, 46h, F7h, 29h, 06h, D5h, 69h, 8Bh, 46h, F7h, 01h, 06h                  ; .i.l.F.)..i.F...
-  ovl5:8113  188C3  db D7h, 69h, EBh, 5Ch, 8Bh, 46h, F7h, 29h, 06h, D7h, 69h, 8Bh, 46h, F7h, 29h, 06h                  ; .i.\.F.)..i.F.).
-  ovl5:8123  188D3  db D5h, 69h, EBh, 4Ch, 50h, E8h, D9h, E9h, 31h, 00h, 21h, 00h, 73h, 81h, 07h, 81h                  ; .i.LP...1.!.s...
-  ovl5:8133  188E3  db 0Eh, 81h, F7h, 80h, 1Eh, 81h, 73h, 81h, FEh, 80h, 17h, 81h, EEh, 80h, E7h, 80h                  ; ......s.........
-  ovl5:8143  188F3  db 73h, 81h, 73h, 81h, 73h, 81h, 73h, 81h, 73h, 81h, 73h, 81h, 73h, 81h, 73h, 81h                  ; s.s.s.s.s.s.s.s.
-  ovl5:8153  18903  db 73h, 81h, 73h, 81h, 73h, 81h, 73h, 81h, 73h, 81h, 17h, 81h, EEh, 80h, E7h, 80h                  ; s.s.s.s.s.......
-  ovl5:8163  18913  db 73h, 81h, 1Eh, 81h, 73h, 81h, FEh, 80h, 73h, 81h, 07h, 81h, 0Eh, 81h, F7h, 80h                  ; s...s...s.......
-  ovl5:8173  18923  db 81h, 3Eh, D5h, 69h, 06h, 00h, 7Dh, 07h, B8h, 06h, 00h, 89h, 06h, D5h, 69h, 81h                  ; .>.i..}.......i.
-  ovl5:8183  18933  db 3Eh, D7h, 69h, 06h, 00h, 7Dh, 07h, B8h, 06h, 00h, 89h, 06h, D7h, 69h, 81h, 3Eh                  ; >.i..}.......i.>
-  ovl5:8193  18943  db D5h, 69h, 89h, 01h, 7Eh, 07h, B8h, 89h, 01h, 89h, 06h, D5h, 69h, 81h, 3Eh, D7h                  ; .i..~.......i.>.
-  ovl5:81A3  18953  db 69h, 68h, 01h, 7Eh, 07h, B8h, 68h, 01h, 89h, 06h                                                ; ih.~..h...
-  ovl5:81AD  1895D  d7             xlatb
-  ovl5:81AE  1895E  69b80600508b   imul   di, word ptr [bx + si + 6], 0x8b50
-  ovl5:81B4  18964  06             push   es
-  ovl5:81B5  18965  d569           aad    0x69
+  ovl5:7BE3  18393  e9e508         jmp    0x84cb
+  ovl5:7BE6  18396  bea76a         mov    si, 0x6aa7
+  ovl5:7BE9  18399  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:7BED  1839D  d1e0           shl    ax, 1
+  ovl5:7BEF  1839F  03f0           add    si, ax
+  ovl5:7BF1  183A1  8b04           mov    ax, word ptr [si]
+  ovl5:7BF3  183A3  0bc0           or     ax, ax
+  ovl5:7BF5  183A5  7403           je     0x7bfa
+  ovl5:7BF7  183A7  b80100         mov    ax, 1
+  ovl5:7BFA  183AA  350100         xor    ax, 1
+  ovl5:7BFD  183AD  bea76a         mov    si, 0x6aa7
+  ovl5:7C00  183B0  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:7C04  183B4  d1e2           shl    dx, 1
+  ovl5:7C06  183B6  03f2           add    si, dx
+  ovl5:7C08  183B8  8904           mov    word ptr [si], ax
+  ovl5:7C0A  183BA  b80f11         mov    ax, 0x110f
+  ovl5:7C0D  183BD  8906796c       mov    word ptr [0x6c79], ax
+  ovl5:7C11  183C1  bea76a         mov    si, 0x6aa7
+  ovl5:7C14  183C4  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:7C18  183C8  d1e0           shl    ax, 1
+  ovl5:7C1A  183CA  03f0           add    si, ax
+  ovl5:7C1C  183CC  8b04           mov    ax, word ptr [si]
+  ovl5:7C1E  183CE  0bc0           or     ax, ax
+  ovl5:7C20  183D0  7503           jne    0x7c25
+  ovl5:7C22  183D2  e99300         jmp    0x7cb8
+  ovl5:7C25  183D5  b80100         mov    ax, 1
+  ovl5:7C28  183D8  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:7C2B  183DB  817ef71500     cmp    word ptr [bp - 9], 0x15
+  ovl5:7C30  183E0  7d14           jge    0x7c46
+  ovl5:7C32  183E2  ff76f7         push   word ptr [bp - 9]
+  ovl5:7C35  183E5  e85fea         call   rt_6697
+  ovl5:7C38  183E8  5f             pop    di
+  ovl5:7C39  183E9  b8e803         mov    ax, 0x3e8
+  ovl5:7C3C  183EC  50             push   ax
+  ovl5:7C3D  183ED  e82eb3         call   delay
+  ovl5:7C40  183F0  5f             pop    di
+  ovl5:7C41  183F1  ff46f7         inc    word ptr [bp - 9]
+  ovl5:7C44  183F4  ebe5           jmp    0x7c2b
+  ovl5:7C46  183F6  813e776c7300   cmp    word ptr [0x6c77], 0x73
+  ovl5:7C4C  183FC  7c08           jl     0x7c56
+  ovl5:7C4E  183FE  813e776c7700   cmp    word ptr [0x6c77], 0x77
+  ovl5:7C54  18404  7e07           jle    0x7c5d
+  ovl5:7C56  18406  b87300         mov    ax, 0x73
+  ovl5:7C59  18409  8906776c       mov    word ptr [0x6c77], ax
+  ovl5:7C5D  1840D  b81400         mov    ax, 0x14
+  ovl5:7C60  18410  89067b6c       mov    word ptr [0x6c7b], ax
+  ovl5:7C64  18414  b8bf6a         mov    ax, 0x6abf
+  ovl5:7C67  18417  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:7C6B  1841B  d1e2           shl    dx, 1
+  ovl5:7C6D  1841D  03c2           add    ax, dx
+  ovl5:7C6F  1841F  8946fd         mov    word ptr [bp - 3], ax
+  ovl5:7C72  18422  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7C75  18425  8b04           mov    ax, word ptr [si]
+  ovl5:7C77  18427  83f805         cmp    ax, 5
+  ovl5:7C7A  1842A  7d0a           jge    0x7c86
+  ovl5:7C7C  1842C  b80300         mov    ax, 3
+  ovl5:7C7F  1842F  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7C82  18432  8904           mov    word ptr [si], ax
+  ovl5:7C84  18434  eb30           jmp    0x7cb6
+  ovl5:7C86  18436  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7C89  18439  8b04           mov    ax, word ptr [si]
+  ovl5:7C8B  1843B  83f808         cmp    ax, 8
+  ovl5:7C8E  1843E  7d0a           jge    0x7c9a
+  ovl5:7C90  18440  b80600         mov    ax, 6
+  ovl5:7C93  18443  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7C96  18446  8904           mov    word ptr [si], ax
+  ovl5:7C98  18448  eb1c           jmp    0x7cb6
+  ovl5:7C9A  1844A  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7C9D  1844D  8b04           mov    ax, word ptr [si]
+  ovl5:7C9F  1844F  83f80a         cmp    ax, 0xa
+  ovl5:7CA2  18452  7d0a           jge    0x7cae
+  ovl5:7CA4  18454  b80a00         mov    ax, 0xa
+  ovl5:7CA7  18457  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7CAA  1845A  8904           mov    word ptr [si], ax
+  ovl5:7CAC  1845C  eb08           jmp    0x7cb6
+  ovl5:7CAE  1845E  b80c00         mov    ax, 0xc
+  ovl5:7CB1  18461  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7CB4  18464  8904           mov    word ptr [si], ax
+  ovl5:7CB6  18466  eb4f           jmp    0x7d07
+  ovl5:7CB8  18468  b81300         mov    ax, 0x13
+  ovl5:7CBB  1846B  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:7CBE  1846E  817ef70000     cmp    word ptr [bp - 9], 0
+  ovl5:7CC3  18473  7c14           jl     0x7cd9
+  ovl5:7CC5  18475  ff76f7         push   word ptr [bp - 9]
+  ovl5:7CC8  18478  e8cce9         call   rt_6697
+  ovl5:7CCB  1847B  5f             pop    di
+  ovl5:7CCC  1847C  b8e803         mov    ax, 0x3e8
+  ovl5:7CCF  1847F  50             push   ax
+  ovl5:7CD0  18480  e89bb2         call   delay
+  ovl5:7CD3  18483  5f             pop    di
+  ovl5:7CD4  18484  ff4ef7         dec    word ptr [bp - 9]
+  ovl5:7CD7  18487  ebe5           jmp    0x7cbe
+  ovl5:7CD9  18489  813e776c6100   cmp    word ptr [0x6c77], 0x61
+  ovl5:7CDF  1848F  7c08           jl     0x7ce9
+  ovl5:7CE1  18491  813e776c6700   cmp    word ptr [0x6c77], 0x67
+  ovl5:7CE7  18497  7e07           jle    0x7cf0
+  ovl5:7CE9  18499  b86700         mov    ax, 0x67
+  ovl5:7CEC  1849C  8906776c       mov    word ptr [0x6c77], ax
+  ovl5:7CF0  184A0  33c0           xor    ax, ax
+  ovl5:7CF2  184A2  89067b6c       mov    word ptr [0x6c7b], ax
+  ovl5:7CF6  184A6  b8b36a         mov    ax, 0x6ab3
+  ovl5:7CF9  184A9  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:7CFD  184AD  d1e2           shl    dx, 1
+  ovl5:7CFF  184AF  03c2           add    ax, dx
+  ovl5:7D01  184B1  8946fd         mov    word ptr [bp - 3], ax
+  ovl5:7D04  184B4  e96bff         jmp    0x7c72
+  ovl5:7D07  184B7  813ed3694100   cmp    word ptr [0x69d3], 0x41
+  ovl5:7D0D  184BD  7509           jne    0x7d18
+  ovl5:7D0F  184BF  33c0           xor    ax, ax
+  ovl5:7D11  184C1  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:7D15  184C5  e806f8         call   thunk_36                     ; -> overlay 6: ovl6_e15d
+  ovl5:7D18  184C8  e857f8         call   thunk_43                     ; -> overlay 6: ovl6_e266
+  ovl5:7D1B  184CB  e8148f         call   beep_low
+  ovl5:7D1E  184CE  e8d9f7         call   thunk_33                     ; -> overlay 6: ovl6_dfe2
+  ovl5:7D21  184D1  b80300         mov    ax, 3
+  ovl5:7D24  184D4  50             push   ax
+  ovl5:7D25  184D5  b00a           mov    al, 0xa
+  ovl5:7D27  184D7  50             push   ax
+  ovl5:7D28  184D8  e8f60f         call   ovl5_8d21
+  ovl5:7D2B  184DB  5f             pop    di
+  ovl5:7D2C  184DC  5f             pop    di
+  ovl5:7D2D  184DD  0bc0           or     ax, ax
+  ovl5:7D2F  184DF  7510           jne    0x7d41
+  ovl5:7D31  184E1  b80300         mov    ax, 3
+  ovl5:7D34  184E4  50             push   ax
+  ovl5:7D35  184E5  b00e           mov    al, 0xe
+  ovl5:7D37  184E7  50             push   ax
+  ovl5:7D38  184E8  e8e60f         call   ovl5_8d21
+  ovl5:7D3B  184EB  5f             pop    di
+  ovl5:7D3C  184EC  5f             pop    di
+  ovl5:7D3D  184ED  0bc0           or     ax, ax
+  ovl5:7D3F  184EF  7406           je     0x7d47
+  ovl5:7D41  184F1  e8c90e         call   ovl5_8c0d
+  ovl5:7D44  184F4  e8b60f         call   ovl5_8cfd
+  ovl5:7D47  184F7  e834f8         call   thunk_44                     ; -> overlay 6: ovl6_fbfb
+  ovl5:7D4A  184FA  e8e9f7         call   thunk_38                     ; -> overlay 6: ovl6_e7f1
+  ovl5:7D4D  184FD  e98f0a         jmp    0x87df
+  ovl5:7D50  18500  be176a         mov    si, 0x6a17
+  ovl5:7D53  18503  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:7D57  18507  d1e0           shl    ax, 1
+  ovl5:7D59  18509  03f0           add    si, ax
+  ovl5:7D5B  1850B  8b04           mov    ax, word ptr [si]
+  ovl5:7D5D  1850D  83f801         cmp    ax, 1
+  ovl5:7D60  18510  7416           je     0x7d78
+  ovl5:7D62  18512  b80100         mov    ax, 1
+  ovl5:7D65  18515  be176a         mov    si, 0x6a17
+  ovl5:7D68  18518  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:7D6C  1851C  d1e2           shl    dx, 1
+  ovl5:7D6E  1851E  03f2           add    si, dx
+  ovl5:7D70  18520  8904           mov    word ptr [si], ax
+  ovl5:7D72  18522  e885f7         call   thunk_33                     ; -> overlay 6: ovl6_dfe2
+  ovl5:7D75  18525  e8fef6         call   thunk_22                     ; -> overlay 6: ovl6_e3e3
+  ovl5:7D78  18528  e8c00a         call   ovl5_883b
+  ovl5:7D7B  1852B  b84300         mov    ax, 0x43
+  ovl5:7D7E  1852E  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:7D82  18532  e8edf7         call   thunk_43                     ; -> overlay 6: ovl6_e266
+  ovl5:7D85  18535  b80200         mov    ax, 2
+  ovl5:7D88  18538  50             push   ax
+  ovl5:7D89  18539  b01a           mov    al, 0x1a
+  ovl5:7D8B  1853B  50             push   ax
+  ovl5:7D8C  1853C  e8c40a         call   ovl5_8853
+  ovl5:7D8F  1853F  5f             pop    di
+  ovl5:7D90  18540  5f             pop    di
+  ovl5:7D91  18541  e94b0a         jmp    0x87df
+  ovl5:7D94  18544  813ed3695300   cmp    word ptr [0x69d3], 0x53
+  ovl5:7D9A  1854A  7508           jne    0x7da4
+  ovl5:7D9C  1854C  33c0           xor    ax, ax
+  ovl5:7D9E  1854E  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:7DA1  18551  e97508         jmp    0x8619
+  ovl5:7DA4  18554  e8940a         call   ovl5_883b
+  ovl5:7DA7  18557  b85300         mov    ax, 0x53
+  ovl5:7DAA  1855A  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:7DAE  1855E  b003           mov    al, 3
+  ovl5:7DB0  18560  50             push   ax
+  ovl5:7DB1  18561  33c0           xor    ax, ax
+  ovl5:7DB3  18563  50             push   ax
+  ovl5:7DB4  18564  e89c0a         call   ovl5_8853
+  ovl5:7DB7  18567  5f             pop    di
+  ovl5:7DB8  18568  5f             pop    di
+  ovl5:7DB9  18569  e9230a         jmp    0x87df
+  ovl5:7DBC  1856C  e87c0a         call   ovl5_883b
+  ovl5:7DBF  1856F  b84f00         mov    ax, 0x4f
+  ovl5:7DC2  18572  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:7DC6  18576  e8a9f7         call   thunk_43                     ; -> overlay 6: ovl6_e266
+  ovl5:7DC9  18579  b80200         mov    ax, 2
+  ovl5:7DCC  1857C  50             push   ax
+  ovl5:7DCD  1857D  b013           mov    al, 0x13
+  ovl5:7DCF  1857F  50             push   ax
+  ovl5:7DD0  18580  e8800a         call   ovl5_8853
+  ovl5:7DD3  18583  5f             pop    di
+  ovl5:7DD4  18584  5f             pop    di
+  ovl5:7DD5  18585  e85ef7         call   thunk_38                     ; -> overlay 6: ovl6_e7f1
+  ovl5:7DD8  18588  b8176a         mov    ax, 0x6a17
+  ovl5:7DDB  1858B  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:7DDF  1858F  d1e2           shl    dx, 1
+  ovl5:7DE1  18591  03c2           add    ax, dx
+  ovl5:7DE3  18593  8946fd         mov    word ptr [bp - 3], ax
+  ovl5:7DE6  18596  b80100         mov    ax, 1
+  ovl5:7DE9  18599  0bc0           or     ax, ax
+  ovl5:7DEB  1859B  7503           jne    0x7df0
+  ovl5:7DED  1859D  e97d01         jmp    0x7f6d
+  ovl5:7DF0  185A0  e8f209         call   ovl5_87e5
+  ovl5:7DF3  185A3  8846f6         mov    byte ptr [bp - 0xa], al
+  ovl5:7DF6  185A6  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7DF9  185A9  98             cwde
+  ovl5:7DFA  185AA  83f861         cmp    ax, 0x61
+  ovl5:7DFD  185AD  7c17           jl     0x7e16
+  ovl5:7DFF  185AF  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E02  185B2  98             cwde
+  ovl5:7E03  185B3  83f87a         cmp    ax, 0x7a
+  ovl5:7E06  185B6  7f0e           jg     0x7e16
+  ovl5:7E08  185B8  b82000         mov    ax, 0x20
+  ovl5:7E0B  185BB  50             push   ax
+  ovl5:7E0C  185BC  5a             pop    dx
+  ovl5:7E0D  185BD  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E10  185C0  98             cwde
+  ovl5:7E11  185C1  2bc2           sub    ax, dx
+  ovl5:7E13  185C3  8846f6         mov    byte ptr [bp - 0xa], al
+  ovl5:7E16  185C6  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E19  185C9  98             cwde
+  ovl5:7E1A  185CA  83f80a         cmp    ax, 0xa
+  ovl5:7E1D  185CD  7409           je     0x7e28
+  ovl5:7E1F  185CF  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E22  185D2  98             cwde
+  ovl5:7E23  185D3  83f80d         cmp    ax, 0xd
+  ovl5:7E26  185D6  7502           jne    0x7e2a
+  ovl5:7E28  185D8  eb09           jmp    0x7e33
+  ovl5:7E2A  185DA  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E2D  185DD  98             cwde
+  ovl5:7E2E  185DE  83f853         cmp    ax, 0x53
+  ovl5:7E31  185E1  7502           jne    0x7e35
+  ovl5:7E33  185E3  eb09           jmp    0x7e3e
+  ovl5:7E35  185E5  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E38  185E8  98             cwde
+  ovl5:7E39  185E9  83f846         cmp    ax, 0x46
+  ovl5:7E3C  185EC  7502           jne    0x7e40
+  ovl5:7E3E  185EE  eb09           jmp    0x7e49
+  ovl5:7E40  185F0  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E43  185F3  98             cwde
+  ovl5:7E44  185F4  83f841         cmp    ax, 0x41
+  ovl5:7E47  185F7  7502           jne    0x7e4b
+  ovl5:7E49  185F9  eb09           jmp    0x7e54
+  ovl5:7E4B  185FB  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E4E  185FE  98             cwde
+  ovl5:7E4F  185FF  83f847         cmp    ax, 0x47
+  ovl5:7E52  18602  7503           jne    0x7e57
+  ovl5:7E54  18604  e91601         jmp    0x7f6d
+  ovl5:7E57  18607  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E5A  1860A  98             cwde
+  ovl5:7E5B  1860B  83f843         cmp    ax, 0x43
+  ovl5:7E5E  1860E  750d           jne    0x7e6d
+  ovl5:7E60  18610  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7E63  18613  8b04           mov    ax, word ptr [si]
+  ovl5:7E65  18615  83f801         cmp    ax, 1
+  ovl5:7E68  18618  7503           jne    0x7e6d
+  ovl5:7E6A  1861A  e90bff         jmp    0x7d78
+  ovl5:7E6D  1861D  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E70  18620  98             cwde
+  ovl5:7E71  18621  83f84f         cmp    ax, 0x4f
+  ovl5:7E74  18624  7409           je     0x7e7f
+  ovl5:7E76  18626  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E79  18629  98             cwde
+  ovl5:7E7A  1862A  83f86f         cmp    ax, 0x6f
+  ovl5:7E7D  1862D  7506           jne    0x7e85
+  ovl5:7E7F  1862F  b82b00         mov    ax, 0x2b
+  ovl5:7E82  18632  8846f6         mov    byte ptr [bp - 0xa], al
+  ovl5:7E85  18635  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7E88  18638  98             cwde
+  ovl5:7E89  18639  50             push   ax
+  ovl5:7E8A  1863A  e8fdf6         call   thunk_45                     ; -> overlay 6: ovl6_fcaa
+  ovl5:7E8D  1863D  5f             pop    di
+  ovl5:7E8E  1863E  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:7E91  18641  0bc0           or     ax, ax
+  ovl5:7E93  18643  7503           jne    0x7e98
+  ovl5:7E95  18645  e94eff         jmp    0x7de6
+  ovl5:7E98  18648  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7E9B  1864B  8b04           mov    ax, word ptr [si]
+  ovl5:7E9D  1864D  83f801         cmp    ax, 1
+  ovl5:7EA0  18650  7503           jne    0x7ea5
+  ovl5:7EA2  18652  e855f6         call   thunk_33                     ; -> overlay 6: ovl6_dfe2
+  ovl5:7EA5  18655  b80100         mov    ax, 1
+  ovl5:7EA8  18658  0bc0           or     ax, ax
+  ovl5:7EAA  1865A  7503           jne    0x7eaf
+  ovl5:7EAC  1865C  e98500         jmp    0x7f34
+  ovl5:7EAF  1865F  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:7EB2  18662  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7EB5  18665  8b14           mov    dx, word ptr [si]
+  ovl5:7EB7  18667  03d0           add    dx, ax
+  ovl5:7EB9  18669  8914           mov    word ptr [si], dx
+  ovl5:7EBB  1866B  ff36d169       push   word ptr [0x69d1]
+  ovl5:7EBF  1866F  e8e9ca         call   rt_49ab
+  ovl5:7EC2  18672  5f             pop    di
+  ovl5:7EC3  18673  0bc0           or     ax, ax
+  ovl5:7EC5  18675  7516           jne    0x7edd
+  ovl5:7EC7  18677  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7ECA  1867A  8b04           mov    ax, word ptr [si]
+  ovl5:7ECC  1867C  83f802         cmp    ax, 2
+  ovl5:7ECF  1867F  740a           je     0x7edb
+  ovl5:7ED1  18681  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7ED4  18684  8b04           mov    ax, word ptr [si]
+  ovl5:7ED6  18686  83f803         cmp    ax, 3
+  ovl5:7ED9  18689  7502           jne    0x7edd
+  ovl5:7EDB  1868B  ebc8           jmp    0x7ea5
+  ovl5:7EDD  1868D  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7EE0  18690  8b04           mov    ax, word ptr [si]
+  ovl5:7EE2  18692  83f801         cmp    ax, 1
+  ovl5:7EE5  18695  7d0a           jge    0x7ef1
+  ovl5:7EE7  18697  b80700         mov    ax, 7
+  ovl5:7EEA  1869A  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7EED  1869D  8904           mov    word ptr [si], ax
+  ovl5:7EEF  1869F  ebb4           jmp    0x7ea5
+  ovl5:7EF1  186A1  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7EF4  186A4  8b04           mov    ax, word ptr [si]
+  ovl5:7EF6  186A6  83f806         cmp    ax, 6
+  ovl5:7EF9  186A9  7f11           jg     0x7f0c
+  ovl5:7EFB  186AB  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7EFE  186AE  8b04           mov    ax, word ptr [si]
+  ovl5:7F00  186B0  83f806         cmp    ax, 6
+  ovl5:7F03  186B3  7517           jne    0x7f1c
+  ovl5:7F05  186B5  e8aac5         call   rt_44b2
+  ovl5:7F08  186B8  0bc0           or     ax, ax
+  ovl5:7F0A  186BA  7510           jne    0x7f1c
+  ovl5:7F0C  186BC  817ef70000     cmp    word ptr [bp - 9], 0
+  ovl5:7F11  186C1  7e07           jle    0x7f1a
+  ovl5:7F13  186C3  33c0           xor    ax, ax
+  ovl5:7F15  186C5  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7F18  186C8  8904           mov    word ptr [si], ax
+  ovl5:7F1A  186CA  eb89           jmp    0x7ea5
+  ovl5:7F1C  186CC  8a06a965       mov    al, byte ptr [0x65a9]
+  ovl5:7F20  186D0  98             cwde
+  ovl5:7F21  186D1  0bc0           or     ax, ax
+  ovl5:7F23  186D3  740d           je     0x7f32
+  ovl5:7F25  186D5  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7F28  186D8  8b04           mov    ax, word ptr [si]
+  ovl5:7F2A  186DA  83f803         cmp    ax, 3
+  ovl5:7F2D  186DD  7e03           jle    0x7f32
+  ovl5:7F2F  186DF  e973ff         jmp    0x7ea5
+  ovl5:7F32  186E2  eb00           jmp    0x7f34
+  ovl5:7F34  186E4  e83ff5         call   thunk_22                     ; -> overlay 6: ovl6_e3e3
+  ovl5:7F37  186E7  e8c0f5         call   thunk_33                     ; -> overlay 6: ovl6_dfe2
+  ovl5:7F3A  186EA  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7F3D  186ED  8b04           mov    ax, word ptr [si]
+  ovl5:7F3F  186EF  83f804         cmp    ax, 4
+  ovl5:7F42  186F2  750c           jne    0x7f50
+  ovl5:7F44  186F4  33c0           xor    ax, ax
+  ovl5:7F46  186F6  50             push   ax
+  ovl5:7F47  186F7  ff36d169       push   word ptr [0x69d1]
+  ovl5:7F4B  186FB  e8f0c3         call   rt_433e
+  ovl5:7F4E  186FE  5f             pop    di
+  ovl5:7F4F  186FF  5f             pop    di
+  ovl5:7F50  18700  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:7F53  18703  8b04           mov    ax, word ptr [si]
+  ovl5:7F55  18705  83f806         cmp    ax, 6
+  ovl5:7F58  18708  750d           jne    0x7f67
+  ovl5:7F5A  1870A  b80200         mov    ax, 2
+  ovl5:7F5D  1870D  50             push   ax
+  ovl5:7F5E  1870E  ff36d169       push   word ptr [0x69d1]
+  ovl5:7F62  18712  e8d9c3         call   rt_433e
+  ovl5:7F65  18715  5f             pop    di
+  ovl5:7F66  18716  5f             pop    di
+  ovl5:7F67  18717  e814f6         call   thunk_44                     ; -> overlay 6: ovl6_fbfb
+  ovl5:7F6A  1871A  e979fe         jmp    0x7de6
+  ovl5:7F6D  1871D  b80200         mov    ax, 2
+  ovl5:7F70  18720  50             push   ax
+  ovl5:7F71  18721  b013           mov    al, 0x13
+  ovl5:7F73  18723  50             push   ax
+  ovl5:7F74  18724  e8aa0d         call   ovl5_8d21
+  ovl5:7F77  18727  5f             pop    di
+  ovl5:7F78  18728  5f             pop    di
+  ovl5:7F79  18729  0bc0           or     ax, ax
+  ovl5:7F7B  1872B  7503           jne    0x7f80
+  ovl5:7F7D  1872D  e816f6         call   thunk_46                     ; -> overlay 6: ovl6_fc39
+  ovl5:7F80  18730  33c0           xor    ax, ax
+  ovl5:7F82  18732  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:7F86  18736  e895f5         call   thunk_36                     ; -> overlay 6: ovl6_e15d
+  ovl5:7F89  18739  e8f2f5         call   thunk_44                     ; -> overlay 6: ovl6_fbfb
+  ovl5:7F8C  1873C  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7F8F  1873F  98             cwde
+  ovl5:7F90  18740  83f80a         cmp    ax, 0xa
+  ovl5:7F93  18743  740c           je     0x7fa1
+  ovl5:7F95  18745  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:7F98  18748  98             cwde
+  ovl5:7F99  18749  83f80d         cmp    ax, 0xd
+  ovl5:7F9C  1874C  7403           je     0x7fa1
+  ovl5:7F9E  1874E  e951fb         jmp    0x7af2
+  ovl5:7FA1  18751  e88e8c         call   beep_low
+  ovl5:7FA4  18754  e93808         jmp    0x87df
+  ovl5:7FA7  18757  813edd690200   cmp    word ptr [0x69dd], 2
+  ovl5:7FAD  1875D  7509           jne    0x7fb8
+  ovl5:7FAF  1875F  b80300         mov    ax, 3
+  ovl5:7FB2  18762  8906dd69       mov    word ptr [0x69dd], ax
+  ovl5:7FB6  18766  eb07           jmp    0x7fbf
+  ovl5:7FB8  18768  b80200         mov    ax, 2
+  ovl5:7FBB  1876B  8906dd69       mov    word ptr [0x69dd], ax
+  ovl5:7FBF  1876F  33c0           xor    ax, ax
+  ovl5:7FC1  18771  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:7FC4  18774  817ef71200     cmp    word ptr [bp - 9], 0x12
+  ovl5:7FC9  18779  7d0f           jge    0x7fda
+  ovl5:7FCB  1877B  33c0           xor    ax, ax
+  ovl5:7FCD  1877D  be196b         mov    si, 0x6b19
+  ovl5:7FD0  18780  0376f7         add    si, word ptr [bp - 9]
+  ovl5:7FD3  18783  8804           mov    byte ptr [si], al
+  ovl5:7FD5  18785  ff46f7         inc    word ptr [bp - 9]
+  ovl5:7FD8  18788  ebea           jmp    0x7fc4
+  ovl5:7FDA  1878A  33c0           xor    ax, ax
+  ovl5:7FDC  1878C  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:7FDF  1878F  817ef70600     cmp    word ptr [bp - 9], 6
+  ovl5:7FE4  18794  7d24           jge    0x800a
+  ovl5:7FE6  18796  bee769         mov    si, 0x69e7
+  ovl5:7FE9  18799  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:7FEC  1879C  d1e0           shl    ax, 1
+  ovl5:7FEE  1879E  03f0           add    si, ax
+  ovl5:7FF0  187A0  8b04           mov    ax, word ptr [si]
+  ovl5:7FF2  187A2  3d19fc         cmp    ax, 0xfc19
+  ovl5:7FF5  187A5  740e           je     0x8005
+  ovl5:7FF7  187A7  33c0           xor    ax, ax
+  ovl5:7FF9  187A9  bee36a         mov    si, 0x6ae3
+  ovl5:7FFC  187AC  8b56f7         mov    dx, word ptr [bp - 9]
+  ovl5:7FFF  187AF  d1e2           shl    dx, 1
+  ovl5:8001  187B1  03f2           add    si, dx
+  ovl5:8003  187B3  8904           mov    word ptr [si], ax
+  ovl5:8005  187B5  ff46f7         inc    word ptr [bp - 9]
+  ovl5:8008  187B8  ebd5           jmp    0x7fdf
+  ovl5:800A  187BA  e895f5         call   thunk_47                     ; -> overlay 6: ovl6_f9ce
+  ovl5:800D  187BD  e857d3         call   rt_5367
+  ovl5:8010  187C0  e89ff4         call   thunk_27                     ; -> overlay 6: ovl6_fb95
+  ovl5:8013  187C3  e8b02f         call   ovl5_afc6
+  ovl5:8016  187C6  e8198c         call   beep_low
+  ovl5:8019  187C9  e862f5         call   thunk_44                     ; -> overlay 6: ovl6_fbfb
+  ovl5:801C  187CC  e9c007         jmp    0x87df
+  ovl5:801F  187CF  ff0ecf69       dec    word ptr [0x69cf]
+  ovl5:8023  187D3  8b06cf69       mov    ax, word ptr [0x69cf]
+  ovl5:8027  187D7  09c0           or     ax, ax
+  ovl5:8029  187D9  7d07           jge    0x8032
+  ovl5:802B  187DB  b80400         mov    ax, 4
+  ovl5:802E  187DE  8906cf69       mov    word ptr [0x69cf], ax
+  ovl5:8032  187E2  e8fd8b         call   beep_low
+  ovl5:8035  187E5  8b06d369       mov    ax, word ptr [0x69d3]
+  ovl5:8039  187E9  0bc0           or     ax, ax
+  ovl5:803B  187EB  7503           jne    0x8040
+  ovl5:803D  187ED  e86ef5         call   thunk_48                     ; -> overlay 6: ovl6_e31e
+  ovl5:8040  187F0  e83bf5         call   thunk_44                     ; -> overlay 6: ovl6_fbfb
+  ovl5:8043  187F3  e9e501         jmp    0x822b
+  ovl5:8046  187F6  e845ae         call   rt_2e8e
+  ovl5:8049  187F9  e8e68b         call   beep_low
+  ovl5:804C  187FC  8b06d369       mov    ax, word ptr [0x69d3]
+  ovl5:8050  18800  8946fb         mov    word ptr [bp - 5], ax
+  ovl5:8053  18803  b85000         mov    ax, 0x50
+  ovl5:8056  18806  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:805A  1880A  b018           mov    al, 0x18
+  ovl5:805C  1880C  50             push   ax
+  ovl5:805D  1880D  e8e8ab         call   clear_text_row
+  ovl5:8060  18810  5f             pop    di
+  ovl5:8061  18811  b87316         mov    ax, 0x1673
+  ovl5:8064  18814  50             push   ax
+  ovl5:8065  18815  e8edb2         call   print_string
+  ovl5:8068  18818  5f             pop    di
+  ovl5:8069  18819  8b068d64       mov    ax, word ptr [0x648d]
+  ovl5:806D  1881D  0bc0           or     ax, ax
+  ovl5:806F  1881F  7408           je     0x8079
+  ovl5:8071  18821  b8401f         mov    ax, 0x1f40
+  ovl5:8074  18824  50             push   ax
+  ovl5:8075  18825  e8f6ae         call   delay
+  ovl5:8078  18828  5f             pop    di
+  ovl5:8079  18829  e86907         call   ovl5_87e5
+  ovl5:807C  1882C  0bc0           or     ax, ax
+  ovl5:807E  1882E  7502           jne    0x8082
+  ovl5:8080  18830  ebf7           jmp    0x8079
+  ovl5:8082  18832  e809ae         call   rt_2e8e
+  ovl5:8085  18835  8b46fb         mov    ax, word ptr [bp - 5]
+  ovl5:8088  18838  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:808C  1883C  0bc0           or     ax, ax
+  ovl5:808E  1883E  7505           jne    0x8095
+  ovl5:8090  18840  e88bf4         call   thunk_36                     ; -> overlay 6: ovl6_e15d
+  ovl5:8093  18843  eb03           jmp    0x8098
+  ovl5:8095  18845  e822f5         call   thunk_49                     ; -> overlay 6: ovl6_e394
+  ovl5:8098  18848  8b068d64       mov    ax, word ptr [0x648d]
+  ovl5:809C  1884C  0bc0           or     ax, ax
+  ovl5:809E  1884E  740b           je     0x80ab
+  ovl5:80A0  18850  813e876c1800   cmp    word ptr [0x6c87], 0x18
+  ovl5:80A6  18856  7503           jne    0x80ab
+  ovl5:80A8  18858  e8e88d         call   rt_0e93
+  ovl5:80AB  1885B  e94205         jmp    0x85f0
+  ovl5:80AE  1885E  b80100         mov    ax, 1
+  ovl5:80B1  18861  8806946c       mov    byte ptr [0x6c94], al
+  ovl5:80B5  18865  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:80B8  18868  98             cwde
+  ovl5:80B9  18869  83f81b         cmp    ax, 0x1b
+  ovl5:80BC  1886C  7506           jne    0x80c4
+  ovl5:80BE  1886E  e8cdad         call   rt_2e8e
+  ovl5:80C1  18871  8846f6         mov    byte ptr [bp - 0xa], al
+  ovl5:80C4  18874  e8c7ad         call   rt_2e8e
+  ovl5:80C7  18877  0bc0           or     ax, ax
+  ovl5:80C9  18879  75f9           jne    0x80c4
+  ovl5:80CB  1887B  813edd690200   cmp    word ptr [0x69dd], 2
+  ovl5:80D1  18881  7508           jne    0x80db
+  ovl5:80D3  18883  b80c00         mov    ax, 0xc
+  ovl5:80D6  18886  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:80D9  18889  eb06           jmp    0x80e1
+  ovl5:80DB  1888B  b80600         mov    ax, 6
+  ovl5:80DE  1888E  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:80E1  18891  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:80E4  18894  98             cwde
+  ovl5:80E5  18895  eb40           jmp    0x8127
+  ovl5:80E7  18897  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:80EA  1889A  0106d569       add    word ptr [0x69d5], ax
+  ovl5:80EE  1889E  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:80F1  188A1  2906d769       sub    word ptr [0x69d7], ax
+  ovl5:80F5  188A5  eb7c           jmp    0x8173
+  ovl5:80F7  188A7  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:80FA  188AA  0106d769       add    word ptr [0x69d7], ax
+  ovl5:80FE  188AE  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:8101  188B1  0106d569       add    word ptr [0x69d5], ax
+  ovl5:8105  188B5  eb6c           jmp    0x8173
+  ovl5:8107  188B7  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:810A  188BA  2906d569       sub    word ptr [0x69d5], ax
+  ovl5:810E  188BE  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:8111  188C1  0106d769       add    word ptr [0x69d7], ax
+  ovl5:8115  188C5  eb5c           jmp    0x8173
+  ovl5:8117  188C7  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:811A  188CA  2906d769       sub    word ptr [0x69d7], ax
+  ovl5:811E  188CE  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:8121  188D1  2906d569       sub    word ptr [0x69d5], ax
+  ovl5:8125  188D5  eb4c           jmp    0x8173
+  ovl5:8127  188D7  50             push   ax
+  ovl5:8128  188D8  e8d9e9         call   switch_helper
+  ovl5:812B  188DB  dw 49, 33, 8173h                                                       ; switch table: lowest case 49, 33 cases, default 8173
+  ovl5:8131  188E1  dw 8107h                                                                 ; case 49
+  ovl5:8133  188E3  dw 810Eh                                                                 ; case 50
+  ovl5:8135  188E5  dw 80F7h                                                                 ; case 51
+  ovl5:8137  188E7  dw 811Eh                                                                 ; case 52
+  ovl5:8139  188E9  dw 8173h                                                                 ; case 53
+  ovl5:813B  188EB  dw 80FEh                                                                 ; case 54
+  ovl5:813D  188ED  dw 8117h                                                                 ; case 55
+  ovl5:813F  188EF  dw 80EEh                                                                 ; case 56
+  ovl5:8141  188F1  dw 80E7h                                                                 ; case 57
+  ovl5:8143  188F3  dw 8173h                                                                 ; case 58
+  ovl5:8145  188F5  dw 8173h                                                                 ; case 59
+  ovl5:8147  188F7  dw 8173h                                                                 ; case 60
+  ovl5:8149  188F9  dw 8173h                                                                 ; case 61
+  ovl5:814B  188FB  dw 8173h                                                                 ; case 62
+  ovl5:814D  188FD  dw 8173h                                                                 ; case 63
+  ovl5:814F  188FF  dw 8173h                                                                 ; case 64
+  ovl5:8151  18901  dw 8173h                                                                 ; case 65
+  ovl5:8153  18903  dw 8173h                                                                 ; case 66
+  ovl5:8155  18905  dw 8173h                                                                 ; case 67
+  ovl5:8157  18907  dw 8173h                                                                 ; case 68
+  ovl5:8159  18909  dw 8173h                                                                 ; case 69
+  ovl5:815B  1890B  dw 8173h                                                                 ; case 70
+  ovl5:815D  1890D  dw 8117h                                                                 ; case 71
+  ovl5:815F  1890F  dw 80EEh                                                                 ; case 72
+  ovl5:8161  18911  dw 80E7h                                                                 ; case 73
+  ovl5:8163  18913  dw 8173h                                                                 ; case 74
+  ovl5:8165  18915  dw 811Eh                                                                 ; case 75
+  ovl5:8167  18917  dw 8173h                                                                 ; case 76
+  ovl5:8169  18919  dw 80FEh                                                                 ; case 77
+  ovl5:816B  1891B  dw 8173h                                                                 ; case 78
+  ovl5:816D  1891D  dw 8107h                                                                 ; case 79
+  ovl5:816F  1891F  dw 810Eh                                                                 ; case 80
+  ovl5:8171  18921  dw 80F7h                                                                 ; case 81
+  ovl5:8173  18923  813ed5690600   cmp    word ptr [0x69d5], 6
+  ovl5:8179  18929  7d07           jge    0x8182
+  ovl5:817B  1892B  b80600         mov    ax, 6
+  ovl5:817E  1892E  8906d569       mov    word ptr [0x69d5], ax
+  ovl5:8182  18932  813ed7690600   cmp    word ptr [0x69d7], 6
+  ovl5:8188  18938  7d07           jge    0x8191
+  ovl5:818A  1893A  b80600         mov    ax, 6
+  ovl5:818D  1893D  8906d769       mov    word ptr [0x69d7], ax
+  ovl5:8191  18941  813ed5698901   cmp    word ptr [0x69d5], 0x189
+  ovl5:8197  18947  7e07           jle    0x81a0
+  ovl5:8199  18949  b88901         mov    ax, 0x189
+  ovl5:819C  1894C  8906d569       mov    word ptr [0x69d5], ax
+  ovl5:81A0  18950  813ed7696801   cmp    word ptr [0x69d7], 0x168
+  ovl5:81A6  18956  7e07           jle    0x81af
+  ovl5:81A8  18958  b86801         mov    ax, 0x168
+  ovl5:81AB  1895B  8906d769       mov    word ptr [0x69d7], ax
+  ovl5:81AF  1895F  b80600         mov    ax, 6
+  ovl5:81B2  18962  50             push   ax
+  ovl5:81B3  18963  8b06d569       mov    ax, word ptr [0x69d5]
   ovl5:81B7  18967  5b             pop    bx
   ovl5:81B8  18968  99             cdq
   ovl5:81B9  18969  f7fb           idiv   bx
@@ -41441,55 +42203,72 @@ ovl5_7ac6:
   ovl5:81D9  18989  e855ad         call   speaker_click
   ovl5:81DC  1898C  e92703         jmp    0x8506
   ovl5:81DF  1898F  50             push   ax
-  ovl5:81E0  18990  e8ede8         call   rt_6ad0
-  ovl5:81E3  18993  1100           adc    word ptr [bx + si], ax
-  ovl5:81E5  18995  1b00           sbb    ax, word ptr [bx + si]
-  ovl5:81E7  18997  3900           cmp    word ptr [bx + si], ax
-  ovl5:81E9  18999  3800           cmp    byte ptr [bx + si], al
-  ovl5:81EB  1899B  37             aaa
-  ovl5:81EC  1899C  00360034       add    byte ptr [0x3400], dh
-  ovl5:81F0  189A0  0033           add    byte ptr [bp + di], dh
-  ovl5:81F2  189A2  0032           add    byte ptr [bp + si], dh
-  ovl5:81F4  189A4  0031           add    byte ptr [bx + di], dh
-  ovl5:81F6  189A6  005000         add    byte ptr [bx + si], dl
-  ovl5:81F9  189A9  54             push   sp
-  ovl5:81FA  189AA  005600         add    byte ptr [bp], dl
-  ovl5:81FD  189AD  4f             dec    di
-  ovl5:81FE  189AE  005300         add    byte ptr [bp + di], dl
-  ovl5:8201  189B1  43             inc    bx
-  ovl5:8202  189B2  004700         add    byte ptr [bx], al
-  ovl5:8205  189B5  2000           and    byte ptr [bx + si], al
-  ovl5:8207  189B7  2b82ae80       sub    ax, word ptr [bp + si - 0x7f52]
-  ovl5:820B  189BB  ae             scasb  al, byte ptr es:[di]
-  ovl5:820C  189BC  80ae80ae80     sub    byte ptr [bp - 0x5180], 0x80
-  ovl5:8211  189C1  ae             scasb  al, byte ptr es:[di]
-  ovl5:8212  189C2  80ae80ae80     sub    byte ptr [bp - 0x5180], 0x80
-  ovl5:8217  189C7  ae             scasb  al, byte ptr es:[di]
-  ovl5:8218  189C8  80ae804680     sub    byte ptr [bp + 0x4680], 0x80
-  ovl5:821D  189CD  1f             pop    ds
-  ovl5:821E  189CE  80a77fbc7d     and    byte ptr [bx - 0x4381], 0x7d
-  ovl5:8223  189D3  94             xchg   sp, ax
-  ovl5:8224  189D4  7d50           jge    0x8276
-  ovl5:8226  189D6  7de6           jge    0x820e
-  ovl5:8228  189D8  7be3           jnp    0x820d
-  ovl5:822A  189DA  7b81           jnp    0x81ad
-  ovl5:822C  189DC  3e776c         ja     0x829b
-  ovl5:822F  189DF  60             pushaw
-  ovl5:8230  189E0  00740b         add    byte ptr [si + 0xb], dh
+  ovl5:81E0  18990  e8ede8         call   sparse_switch
+  ovl5:81E3  18993  dw 17                                                                    ; sparse switch table: 17 values, then 18 targets (the default first)
+  ovl5:81E5  18995  dw 27                                                                   ; value 0
+  ovl5:81E7  18997  dw 57                                                                   ; value 1
+  ovl5:81E9  18999  dw 56                                                                   ; value 2
+  ovl5:81EB  1899B  dw 55                                                                   ; value 3
+  ovl5:81ED  1899D  dw 54                                                                   ; value 4
+  ovl5:81EF  1899F  dw 52                                                                   ; value 5
+  ovl5:81F1  189A1  dw 51                                                                   ; value 6
+  ovl5:81F3  189A3  dw 50                                                                   ; value 7
+  ovl5:81F5  189A5  dw 49                                                                   ; value 8
+  ovl5:81F7  189A7  dw 80                                                                   ; value 9
+  ovl5:81F9  189A9  dw 84                                                                   ; value 10
+  ovl5:81FB  189AB  dw 86                                                                   ; value 11
+  ovl5:81FD  189AD  dw 79                                                                   ; value 12
+  ovl5:81FF  189AF  dw 83                                                                   ; value 13
+  ovl5:8201  189B1  dw 67                                                                   ; value 14
+  ovl5:8203  189B3  dw 71                                                                   ; value 15
+  ovl5:8205  189B5  dw 32                                                                   ; value 16
+  ovl5:8207  189B7  dw 822Bh                                                                 ; default
+  ovl5:8209  189B9  dw 80AEh                                                                 ; case 27
+  ovl5:820B  189BB  dw 80AEh                                                                 ; case 57
+  ovl5:820D  189BD  dw 80AEh                                                                 ; case 56
+  ovl5:820F  189BF  dw 80AEh                                                                 ; case 55
+  ovl5:8211  189C1  dw 80AEh                                                                 ; case 54
+  ovl5:8213  189C3  dw 80AEh                                                                 ; case 52
+  ovl5:8215  189C5  dw 80AEh                                                                 ; case 51
+  ovl5:8217  189C7  dw 80AEh                                                                 ; case 50
+  ovl5:8219  189C9  dw 80AEh                                                                 ; case 49
+  ovl5:821B  189CB  dw 8046h                                                                 ; case 80
+  ovl5:821D  189CD  dw 801Fh                                                                 ; case 84
+  ovl5:821F  189CF  dw 7FA7h                                                                 ; case 86
+  ovl5:8221  189D1  dw 7DBCh                                                                 ; case 79
+  ovl5:8223  189D3  dw 7D94h                                                                 ; case 83
+  ovl5:8225  189D5  dw 7D50h                                                                 ; case 67
+  ovl5:8227  189D7  dw 7BE6h                                                                 ; case 71
+  ovl5:8229  189D9  dw 7BE3h                                                                 ; case 32
+  ovl5:822B  189DB  813e776c6000   cmp    word ptr [0x6c77], 0x60
+  ovl5:8231  189E1  740b           je     0x823e
   ovl5:8233  189E3  813e776c7900   cmp    word ptr [0x6c77], 0x79
   ovl5:8239  189E9  7403           je     0x823e
   ovl5:823B  189EB  e90502         jmp    0x8443
   ovl5:823E  189EE  8a46f6         mov    al, byte ptr [bp - 0xa]
   ovl5:8241  189F1  98             cwde
   ovl5:8242  189F2  e9ee01         jmp    0x8433
-  ; ---- data / unreached bytes (49 bytes)
-  ovl5:8245  189F5  db 81h, 3Eh, D3h, 69h, 41h, 00h, 74h, 09h, 8Ah, 06h, 68h, 68h, 98h, 0Bh, C0h, 74h                  ; .>.iA.t...hh...t
-  ovl5:8255  18A05  db 03h, E9h, 86h, 05h, BEh, A7h, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh                  ; ......j...i.....
-  ovl5:8265  18A15  db 04h, 0Bh, C0h, 74h, 12h, BEh, BFh, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h                  ; ...t...j...i....
-  ovl5:8275  18A25  db 8Bh                                                                                             ; .
-  ovl5:8276  18A26  0483           add    al, 0x83
-  ovl5:8278  18A28  f8             clc
-  ovl5:8279  18A29  0d7429         or     ax, 0x2974
+  ovl5:8245  189F5  813ed3694100   cmp    word ptr [0x69d3], 0x41
+  ovl5:824B  189FB  7409           je     0x8256
+  ovl5:824D  189FD  8a066868       mov    al, byte ptr [0x6868]
+  ovl5:8251  18A01  98             cwde
+  ovl5:8252  18A02  0bc0           or     ax, ax
+  ovl5:8254  18A04  7403           je     0x8259
+  ovl5:8256  18A06  e98605         jmp    0x87df
+  ovl5:8259  18A09  bea76a         mov    si, 0x6aa7
+  ovl5:825C  18A0C  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:8260  18A10  d1e0           shl    ax, 1
+  ovl5:8262  18A12  03f0           add    si, ax
+  ovl5:8264  18A14  8b04           mov    ax, word ptr [si]
+  ovl5:8266  18A16  0bc0           or     ax, ax
+  ovl5:8268  18A18  7412           je     0x827c
+  ovl5:826A  18A1A  bebf6a         mov    si, 0x6abf
+  ovl5:826D  18A1D  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:8271  18A21  d1e0           shl    ax, 1
+  ovl5:8273  18A23  03f0           add    si, ax
+  ovl5:8275  18A25  8b04           mov    ax, word ptr [si]
+  ovl5:8277  18A27  83f80d         cmp    ax, 0xd
+  ovl5:827A  18A2A  7429           je     0x82a5
   ovl5:827C  18A2C  bea76a         mov    si, 0x6aa7
   ovl5:827F  18A2F  8b06d169       mov    ax, word ptr [0x69d1]
   ovl5:8283  18A33  d1e0           shl    ax, 1
@@ -41583,31 +42362,106 @@ ovl5_7ac6:
   ovl5:8355  18B05  5f             pop    di
   ovl5:8356  18B06  e8d988         call   beep_low
   ovl5:8359  18B09  e9e700         jmp    0x8443
-  ; ---- data / unreached bytes (215 bytes)
-  ovl5:835C  18B0C  db 81h, 3Eh, D3h, 69h, 41h, 00h, 75h, 09h, 33h, C0h, 89h, 06h, D3h, 69h, E8h, B1h                  ; .>.iA.u.3....i..
-  ovl5:836C  18B1C  db F1h, 8Ah, 06h, 68h, 68h, 98h, 0Bh, C0h, 74h, 77h, BEh, A7h, 6Ah, 8Bh, 06h, D1h                  ; ...hh...tw..j...
-  ovl5:837C  18B2C  db 69h, D1h, E0h, 03h, F0h, FFh, 34h, FFh, 36h, D1h, 69h, E8h, 1Ah, BCh, 5Fh, 5Fh                  ; i.....4.6.i...__
-  ovl5:838C  18B3C  db 89h, 46h, F7h, 0Bh, C0h, 75h, 19h, BEh, A7h, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h                  ; .F...u...j...i..
-  ovl5:839C  18B4C  db 03h, F0h, FFh, 34h, FFh, 36h, D1h, 69h, E8h, FDh, BBh, 5Fh, 5Fh, 89h, 46h, F7h                  ; ...4.6.i...__.F.
-  ovl5:83AC  18B5C  db BEh, A7h, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh, 04h, 0Bh, C0h, 74h                  ; ..j...i........t
-  ovl5:83BC  18B6C  db 19h, 8Bh, 46h, F7h, 0Bh, C0h, 75h, 10h, B8h, 03h, 00h, BEh, 83h, 6Ah, 8Bh, 16h                  ; ..F...u......j..
-  ovl5:83CC  18B7C  db D1h, 69h, D1h, E2h, 03h, F2h, 89h, 04h, EBh, 17h, 8Bh, 46h, F7h, 0Bh, C0h, 75h                  ; .i.........F...u
-  ovl5:83DC  18B8C  db 10h, B8h, 03h, 00h, BEh, 9Bh, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h                  ; ......j...i.....
-  ovl5:83EC  18B9C  db 04h, E8h, 46h, F1h, B8h, E8h, 03h, 50h, E8h, 77h, ABh, 5Fh, FFh, 36h, D1h, 69h                  ; ..F....P.w._.6.i
-  ovl5:83FC  18BAC  db E8h, 6Eh, 0Fh, 5Fh, 0Bh, C0h, 74h, 07h, B8h, 01h, 00h, 8Bh, E5h, 5Dh, C3h, B8h                  ; .n._..t......]..
-  ovl5:840C  18BBC  db 03h, 00h, 50h, B0h, 0Ah, 50h, E8h, 0Ch, 09h, 5Fh, 5Fh, 0Bh, C0h, 75h, 10h, B8h                  ; ..P..P...__..u..
-  ovl5:841C  18BCC  db 03h, 00h, 50h, B0h, 0Eh, 50h, E8h, FCh, 08h, 5Fh, 5Fh, 0Bh, C0h, 74h, 06h, E8h                  ; ..P..P...__..t..
-  ovl5:842C  18BDC  db DFh, 07h, E8h, CCh, 08h, EBh, 10h                                                               ; .......
+  ovl5:835C  18B0C  813ed3694100   cmp    word ptr [0x69d3], 0x41
+  ovl5:8362  18B12  7509           jne    0x836d
+  ovl5:8364  18B14  33c0           xor    ax, ax
+  ovl5:8366  18B16  8906d369       mov    word ptr [0x69d3], ax
+  ovl5:836A  18B1A  e8b1f1         call   thunk_36                     ; -> overlay 6: ovl6_e15d
+  ovl5:836D  18B1D  8a066868       mov    al, byte ptr [0x6868]
+  ovl5:8371  18B21  98             cwde
+  ovl5:8372  18B22  0bc0           or     ax, ax
+  ovl5:8374  18B24  7477           je     0x83ed
+  ovl5:8376  18B26  bea76a         mov    si, 0x6aa7
+  ovl5:8379  18B29  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:837D  18B2D  d1e0           shl    ax, 1
+  ovl5:837F  18B2F  03f0           add    si, ax
+  ovl5:8381  18B31  ff34           push   word ptr [si]
+  ovl5:8383  18B33  ff36d169       push   word ptr [0x69d1]
+  ovl5:8387  18B37  e81abc         call   rt_3fa4
+  ovl5:838A  18B3A  5f             pop    di
+  ovl5:838B  18B3B  5f             pop    di
+  ovl5:838C  18B3C  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:838F  18B3F  0bc0           or     ax, ax
+  ovl5:8391  18B41  7519           jne    0x83ac
+  ovl5:8393  18B43  bea76a         mov    si, 0x6aa7
+  ovl5:8396  18B46  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:839A  18B4A  d1e0           shl    ax, 1
+  ovl5:839C  18B4C  03f0           add    si, ax
+  ovl5:839E  18B4E  ff34           push   word ptr [si]
+  ovl5:83A0  18B50  ff36d169       push   word ptr [0x69d1]
+  ovl5:83A4  18B54  e8fdbb         call   rt_3fa4
+  ovl5:83A7  18B57  5f             pop    di
+  ovl5:83A8  18B58  5f             pop    di
+  ovl5:83A9  18B59  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:83AC  18B5C  bea76a         mov    si, 0x6aa7
+  ovl5:83AF  18B5F  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:83B3  18B63  d1e0           shl    ax, 1
+  ovl5:83B5  18B65  03f0           add    si, ax
+  ovl5:83B7  18B67  8b04           mov    ax, word ptr [si]
+  ovl5:83B9  18B69  0bc0           or     ax, ax
+  ovl5:83BB  18B6B  7419           je     0x83d6
+  ovl5:83BD  18B6D  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:83C0  18B70  0bc0           or     ax, ax
+  ovl5:83C2  18B72  7510           jne    0x83d4
+  ovl5:83C4  18B74  b80300         mov    ax, 3
+  ovl5:83C7  18B77  be836a         mov    si, 0x6a83
+  ovl5:83CA  18B7A  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:83CE  18B7E  d1e2           shl    dx, 1
+  ovl5:83D0  18B80  03f2           add    si, dx
+  ovl5:83D2  18B82  8904           mov    word ptr [si], ax
+  ovl5:83D4  18B84  eb17           jmp    0x83ed
+  ovl5:83D6  18B86  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:83D9  18B89  0bc0           or     ax, ax
+  ovl5:83DB  18B8B  7510           jne    0x83ed
+  ovl5:83DD  18B8D  b80300         mov    ax, 3
+  ovl5:83E0  18B90  be9b6a         mov    si, 0x6a9b
+  ovl5:83E3  18B93  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:83E7  18B97  d1e2           shl    dx, 1
+  ovl5:83E9  18B99  03f2           add    si, dx
+  ovl5:83EB  18B9B  8904           mov    word ptr [si], ax
+  ovl5:83ED  18B9D  e846f1         call   thunk_38                     ; -> overlay 6: ovl6_e7f1
+  ovl5:83F0  18BA0  b8e803         mov    ax, 0x3e8
+  ovl5:83F3  18BA3  50             push   ax
+  ovl5:83F4  18BA4  e877ab         call   delay
+  ovl5:83F7  18BA7  5f             pop    di
+  ovl5:83F8  18BA8  ff36d169       push   word ptr [0x69d1]
+  ovl5:83FC  18BAC  e86e0f         call   ovl5_936d
+  ovl5:83FF  18BAF  5f             pop    di
+  ovl5:8400  18BB0  0bc0           or     ax, ax
+  ovl5:8402  18BB2  7407           je     0x840b
+  ovl5:8404  18BB4  b80100         mov    ax, 1
+  ovl5:8407  18BB7  8be5           mov    sp, bp
+  ovl5:8409  18BB9  5d             pop    bp
+  ovl5:840A  18BBA  c3             ret
+  ovl5:840B  18BBB  b80300         mov    ax, 3
+  ovl5:840E  18BBE  50             push   ax
+  ovl5:840F  18BBF  b00a           mov    al, 0xa
+  ovl5:8411  18BC1  50             push   ax
+  ovl5:8412  18BC2  e80c09         call   ovl5_8d21
+  ovl5:8415  18BC5  5f             pop    di
+  ovl5:8416  18BC6  5f             pop    di
+  ovl5:8417  18BC7  0bc0           or     ax, ax
+  ovl5:8419  18BC9  7510           jne    0x842b
+  ovl5:841B  18BCB  b80300         mov    ax, 3
+  ovl5:841E  18BCE  50             push   ax
+  ovl5:841F  18BCF  b00e           mov    al, 0xe
+  ovl5:8421  18BD1  50             push   ax
+  ovl5:8422  18BD2  e8fc08         call   ovl5_8d21
+  ovl5:8425  18BD5  5f             pop    di
+  ovl5:8426  18BD6  5f             pop    di
+  ovl5:8427  18BD7  0bc0           or     ax, ax
+  ovl5:8429  18BD9  7406           je     0x8431
+  ovl5:842B  18BDB  e8df07         call   ovl5_8c0d
+  ovl5:842E  18BDE  e8cc08         call   ovl5_8cfd
+  ovl5:8431  18BE1  eb10           jmp    0x8443
   ovl5:8433  18BE3  50             push   ax
-  ovl5:8434  18BE4  e899e6         call   rt_6ad0
-  ovl5:8437  18BE7  0200           add    al, byte ptr [bx + si]
-  ovl5:8439  18BE9  46             inc    si
-  ovl5:843A  18BEA  004100         add    byte ptr [bx + di], al
-  ovl5:843D  18BED  43             inc    bx
-  ovl5:843E  18BEE  845c83         test   byte ptr [si - 0x7d], bl
-  ovl5:8441  18BF1  45             inc    bp
-  ; ---- data / unreached bytes (1 bytes)
-  ovl5:8442  18BF2  db 82h                                                                                             ; .
+  ovl5:8434  18BE4  e899e6         call   sparse_switch
+  ovl5:8437  18BE7  dw 2                                                                    ; sparse switch table: 2 values, then 3 targets (the default first)
+  ovl5:8439  18BE9  dw 70                                                                   ; value 0
+  ovl5:843B  18BEB  dw 65                                                                   ; value 1
+  ovl5:843D  18BED  dw 8443h                                                                 ; default
+  ovl5:843F  18BEF  dw 835Ch                                                                 ; case 70
+  ovl5:8441  18BF1  dw 8245h                                                                 ; case 65
   ovl5:8443  18BF3  8b06d369       mov    ax, word ptr [0x69d3]
   ovl5:8447  18BF7  0bc0           or     ax, ax
   ovl5:8449  18BF9  7403           je     0x844e
@@ -41615,14 +42469,44 @@ ovl5_7ac6:
   ovl5:844E  18BFE  8a46f6         mov    al, byte ptr [bp - 0xa]
   ovl5:8451  18C01  98             cwde
   ovl5:8452  18C02  e95a01         jmp    0x85af
-  ; ---- data / unreached bytes (103 bytes)
-  ovl5:8455  18C05  db 8Bh, 06h, 77h, 6Ch, BEh, 01h, 6Bh, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h                  ; ..wl..k...i.....
-  ovl5:8465  18C15  db 04h, 8Bh, 06h, D1h, 69h, 89h, 46h, F7h, B8h, 01h, 00h, 0Bh, C0h, 74h, 48h, FFh                  ; ....i.F......tH.
-  ovl5:8475  18C25  db 0Eh, D1h, 69h, 8Bh, 06h, D1h, 69h, 09h, C0h, 7Dh, 07h, B8h, 06h, 00h, 89h, 06h                  ; ..i...i..}......
-  ovl5:8485  18C35  db D1h, 69h, BEh, E7h, 69h, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh, 04h, 3Dh                  ; .i..i...i......=
-  ovl5:8495  18C45  db 19h, FCh, 74h, 21h, BEh, FFh, 69h, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh                  ; ..t!..i...i.....
-  ovl5:84A5  18C55  db 04h, 83h, F8h, FFh, 75h, 0Fh, BEh, 11h, 6Ah, 03h, 36h, D1h, 69h, 8Ah, 04h, 98h                  ; ....u...j.6.i...
-  ovl5:84B5  18C65  db 83h, F8h, 06h, 7Ch, 02h, EBh, B1h                                                               ; ...|...
+  ovl5:8455  18C05  8b06776c       mov    ax, word ptr [0x6c77]
+  ovl5:8459  18C09  be016b         mov    si, 0x6b01
+  ovl5:845C  18C0C  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:8460  18C10  d1e2           shl    dx, 1
+  ovl5:8462  18C12  03f2           add    si, dx
+  ovl5:8464  18C14  8904           mov    word ptr [si], ax
+  ovl5:8466  18C16  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:846A  18C1A  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:846D  18C1D  b80100         mov    ax, 1
+  ovl5:8470  18C20  0bc0           or     ax, ax
+  ovl5:8472  18C22  7448           je     0x84bc
+  ovl5:8474  18C24  ff0ed169       dec    word ptr [0x69d1]
+  ovl5:8478  18C28  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:847C  18C2C  09c0           or     ax, ax
+  ovl5:847E  18C2E  7d07           jge    0x8487
+  ovl5:8480  18C30  b80600         mov    ax, 6
+  ovl5:8483  18C33  8906d169       mov    word ptr [0x69d1], ax
+  ovl5:8487  18C37  bee769         mov    si, 0x69e7
+  ovl5:848A  18C3A  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:848E  18C3E  d1e0           shl    ax, 1
+  ovl5:8490  18C40  03f0           add    si, ax
+  ovl5:8492  18C42  8b04           mov    ax, word ptr [si]
+  ovl5:8494  18C44  3d19fc         cmp    ax, 0xfc19
+  ovl5:8497  18C47  7421           je     0x84ba
+  ovl5:8499  18C49  beff69         mov    si, 0x69ff
+  ovl5:849C  18C4C  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:84A0  18C50  d1e0           shl    ax, 1
+  ovl5:84A2  18C52  03f0           add    si, ax
+  ovl5:84A4  18C54  8b04           mov    ax, word ptr [si]
+  ovl5:84A6  18C56  83f8ff         cmp    ax, -1
+  ovl5:84A9  18C59  750f           jne    0x84ba
+  ovl5:84AB  18C5B  be116a         mov    si, 0x6a11
+  ovl5:84AE  18C5E  0336d169       add    si, word ptr [0x69d1]
+  ovl5:84B2  18C62  8a04           mov    al, byte ptr [si]
+  ovl5:84B4  18C64  98             cwde
+  ovl5:84B5  18C65  83f806         cmp    ax, 6
+  ovl5:84B8  18C68  7c02           jl     0x84bc
+  ovl5:84BA  18C6A  ebb1           jmp    0x846d
   ovl5:84BC  18C6C  e87387         call   beep_low
   ovl5:84BF  18C6F  8b46f7         mov    ax, word ptr [bp - 9]
   ovl5:84C2  18C72  3b06d169       cmp    ax, word ptr [0x69d1]
@@ -41662,29 +42546,71 @@ ovl5_7ac6:
   ovl5:8523  18CD3  e8b6dd         call   rt_62dc
   ovl5:8526  18CD6  83c406         add    sp, 6
   ovl5:8529  18CD9  e99f00         jmp    0x85cb
-  ; ---- data / unreached bytes (131 bytes)
-  ovl5:852C  18CDC  db 8Bh, 06h, 77h, 6Ch, BEh, 01h, 6Bh, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h                  ; ..wl..k...i.....
-  ovl5:853C  18CEC  db 04h, 8Bh, 06h, D1h, 69h, 89h, 46h, F7h, B8h, 01h, 00h, 0Bh, C0h, 74h, 48h, FFh                  ; ....i.F......tH.
-  ovl5:854C  18CFC  db 06h, D1h, 69h, 8Bh, 06h, D1h, 69h, 83h, F8h, 06h, 7Ch, 06h, 33h, C0h, 89h, 06h                  ; ..i...i...|.3...
-  ovl5:855C  18D0C  db D1h, 69h, BEh, E7h, 69h, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh, 04h, 3Dh                  ; .i..i...i......=
-  ovl5:856C  18D1C  db 19h, FCh, 74h, 21h, BEh, FFh, 69h, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh                  ; ..t!..i...i.....
-  ovl5:857C  18D2C  db 04h, 83h, F8h, FFh, 75h, 0Fh, BEh, 11h, 6Ah, 03h, 36h, D1h, 69h, 8Ah, 04h, 98h                  ; ....u...j.6.i...
-  ovl5:858C  18D3C  db 83h, F8h, 06h, 7Ch, 02h, EBh, B1h, E9h, 26h, FFh, B8h, 01h, 00h, 89h, 06h, B8h                  ; ...|....&.......
-  ovl5:859C  18D4C  db 65h, E8h, 92h, 86h, B8h, 18h, 00h, 50h, E8h, A1h, A6h, 5Fh, B8h, 01h, 00h, 8Bh                  ; e......P..._....
-  ovl5:85AC  18D5C  db E5h, 5Dh, C3h                                                                                   ; .].
+  ovl5:852C  18CDC  8b06776c       mov    ax, word ptr [0x6c77]
+  ovl5:8530  18CE0  be016b         mov    si, 0x6b01
+  ovl5:8533  18CE3  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:8537  18CE7  d1e2           shl    dx, 1
+  ovl5:8539  18CE9  03f2           add    si, dx
+  ovl5:853B  18CEB  8904           mov    word ptr [si], ax
+  ovl5:853D  18CED  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:8541  18CF1  8946f7         mov    word ptr [bp - 9], ax
+  ovl5:8544  18CF4  b80100         mov    ax, 1
+  ovl5:8547  18CF7  0bc0           or     ax, ax
+  ovl5:8549  18CF9  7448           je     0x8593
+  ovl5:854B  18CFB  ff06d169       inc    word ptr [0x69d1]
+  ovl5:854F  18CFF  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:8553  18D03  83f806         cmp    ax, 6
+  ovl5:8556  18D06  7c06           jl     0x855e
+  ovl5:8558  18D08  33c0           xor    ax, ax
+  ovl5:855A  18D0A  8906d169       mov    word ptr [0x69d1], ax
+  ovl5:855E  18D0E  bee769         mov    si, 0x69e7
+  ovl5:8561  18D11  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:8565  18D15  d1e0           shl    ax, 1
+  ovl5:8567  18D17  03f0           add    si, ax
+  ovl5:8569  18D19  8b04           mov    ax, word ptr [si]
+  ovl5:856B  18D1B  3d19fc         cmp    ax, 0xfc19
+  ovl5:856E  18D1E  7421           je     0x8591
+  ovl5:8570  18D20  beff69         mov    si, 0x69ff
+  ovl5:8573  18D23  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:8577  18D27  d1e0           shl    ax, 1
+  ovl5:8579  18D29  03f0           add    si, ax
+  ovl5:857B  18D2B  8b04           mov    ax, word ptr [si]
+  ovl5:857D  18D2D  83f8ff         cmp    ax, -1
+  ovl5:8580  18D30  750f           jne    0x8591
+  ovl5:8582  18D32  be116a         mov    si, 0x6a11
+  ovl5:8585  18D35  0336d169       add    si, word ptr [0x69d1]
+  ovl5:8589  18D39  8a04           mov    al, byte ptr [si]
+  ovl5:858B  18D3B  98             cwde
+  ovl5:858C  18D3C  83f806         cmp    ax, 6
+  ovl5:858F  18D3F  7c02           jl     0x8593
+  ovl5:8591  18D41  ebb1           jmp    0x8544
+  ovl5:8593  18D43  e926ff         jmp    0x84bc
+  ovl5:8596  18D46  b80100         mov    ax, 1
+  ovl5:8599  18D49  8906b865       mov    word ptr [0x65b8], ax
+  ovl5:859D  18D4D  e89286         call   beep_low
+  ovl5:85A0  18D50  b81800         mov    ax, 0x18
+  ovl5:85A3  18D53  50             push   ax
+  ovl5:85A4  18D54  e8a1a6         call   clear_text_row
+  ovl5:85A7  18D57  5f             pop    di
+  ovl5:85A8  18D58  b80100         mov    ax, 1
+  ovl5:85AB  18D5B  8be5           mov    sp, bp
+  ovl5:85AD  18D5D  5d             pop    bp
+  ovl5:85AE  18D5E  c3             ret
   ovl5:85AF  18D5F  50             push   ax
-  ovl5:85B0  18D60  e81de5         call   rt_6ad0
-  ovl5:85B3  18D63  05004c         add    ax, 0x4c00
-  ovl5:85B6  18D66  003d           add    byte ptr [di], bh
-  ovl5:85B8  18D68  002b           add    byte ptr [bp + di], ch
-  ovl5:85BA  18D6A  005f00         add    byte ptr [bx], bl
-  ovl5:85BD  18D6D  2d00cb         sub    ax, 0xcb00
-  ovl5:85C0  18D70  8596852c       test   word ptr [bp + 0x2c85], dx
-  ovl5:85C4  18D74  852c           test   word ptr [si], bp
-  ovl5:85C6  18D76  855584         test   word ptr [di - 0x7c], dx
-  ovl5:85C9  18D79  55             push   bp
-  ovl5:85CA  18D7A  84e9           test   cl, ch
-  ovl5:85CC  18D7C  1102           adc    word ptr [bp + si], ax
+  ovl5:85B0  18D60  e81de5         call   sparse_switch
+  ovl5:85B3  18D63  dw 5                                                                    ; sparse switch table: 5 values, then 6 targets (the default first)
+  ovl5:85B5  18D65  dw 76                                                                   ; value 0
+  ovl5:85B7  18D67  dw 61                                                                   ; value 1
+  ovl5:85B9  18D69  dw 43                                                                   ; value 2
+  ovl5:85BB  18D6B  dw 95                                                                   ; value 3
+  ovl5:85BD  18D6D  dw 45                                                                   ; value 4
+  ovl5:85BF  18D6F  dw 85CBh                                                                 ; default
+  ovl5:85C1  18D71  dw 8596h                                                                 ; case 76
+  ovl5:85C3  18D73  dw 852Ch                                                                 ; case 61
+  ovl5:85C5  18D75  dw 852Ch                                                                 ; case 43
+  ovl5:85C7  18D77  dw 8455h                                                                 ; case 95
+  ovl5:85C9  18D79  dw 8455h                                                                 ; case 45
+  ovl5:85CB  18D7B  e91102         jmp    0x87df
   ovl5:85CE  18D7E  8a46f6         mov    al, byte ptr [bp - 0xa]
   ovl5:85D1  18D81  98             cwde
   ovl5:85D2  18D82  83f80a         cmp    ax, 0xa
@@ -41716,52 +42642,199 @@ ovl5_7ac6:
   ovl5:860F  18DBF  e9cd01         jmp    0x87df
   ovl5:8612  18DC2  8b06d369       mov    ax, word ptr [0x69d3]
   ovl5:8616  18DC6  e9b201         jmp    0x87cb
-  ; ---- data / unreached bytes (434 bytes)
-  ovl5:8619  18DC9  db B8h, 23h, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, C2h, 89h, 46h, FDh, 8Bh, 46h                  ; .#j...i.....F..F
-  ovl5:8629  18DD9  db F7h, 8Bh, 76h, FDh, 8Bh, 14h, 03h, D0h, 89h, 14h, 8Ah, 46h, F6h, 98h, 83h, F8h                  ; ..v........F....
-  ovl5:8639  18DE9  db 53h, 75h, 1Eh, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 06h, 75h, 09h, 33h, C0h, 8Bh                  ; Su..v......u.3..
-  ovl5:8649  18DF9  db 76h, FDh, 89h, 04h, EBh, 08h, B8h, 06h, 00h, 8Bh, 76h, FDh, 89h, 04h, E8h, D8h                  ; v.........v.....
-  ovl5:8659  18E09  db 85h, 8Bh, 76h, FDh, 8Bh, 04h, 09h, C0h, 7Dh, 0Ah, 33h, C0h, 8Bh, 76h, FDh, 89h                  ; ..v.....}.3..v..
-  ovl5:8669  18E19  db 04h, E8h, 65h, EFh, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 06h, 7Eh, 0Bh, B8h, 06h                  ; ..e..v......~...
-  ovl5:8679  18E29  db 00h, 8Bh, 76h, FDh, 89h, 04h, E8h, 50h, EFh, E8h, 59h, EFh, FFh, 36h, D1h, 69h                  ; ..v....P..Y..6.i
-  ovl5:8689  18E39  db E8h, F6h, EDh, 5Fh, E8h, 5Ah, EFh, E9h, 4Ch, 01h, BEh, A7h, 6Ah, 8Bh, 06h, D1h                  ; ..._.Z..L...j...
-  ovl5:8699  18E49  db 69h, D1h, E0h, 03h, F0h, 8Bh, 04h, 0Bh, C0h, 74h, 10h, B8h, 83h, 6Ah, 8Bh, 16h                  ; i........t...j..
-  ovl5:86A9  18E59  db D1h, 69h, D1h, E2h, 03h, C2h, 89h, 46h, FDh, EBh, 0Eh, B8h, 9Bh, 6Ah, 8Bh, 16h                  ; .i.....F.....j..
-  ovl5:86B9  18E69  db D1h, 69h, D1h, E2h, 03h, C2h, 89h, 46h, FDh, 8Bh, 46h, F7h, 8Bh, 76h, FDh, 8Bh                  ; .i.....F..F..v..
-  ovl5:86C9  18E79  db 14h, 03h, D0h, 89h, 14h, 8Bh, 76h, FDh, 8Bh, 04h, 09h, C0h, 7Dh, 0Ah, 33h, C0h                  ; ......v.....}.3.
-  ovl5:86D9  18E89  db 8Bh, 76h, FDh, 89h, 04h, E8h, F1h, EEh, 8Bh, 76h, FDh, 8Bh, 04h, 83h, F8h, 03h                  ; .v.......v......
-  ovl5:86E9  18E99  db 7Eh, 0Bh, B8h, 03h, 00h, 8Bh, 76h, FDh, 89h, 04h, E8h, DCh, EEh, E8h, CDh, EEh                  ; ~.....v.........
-  ovl5:86F9  18EA9  db BEh, A7h, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h, 8Bh, 04h, 0Bh, C0h, 74h                  ; ..j...i........t
-  ovl5:8709  18EB9  db 38h, B8h, 01h, 00h, 50h, 33h, C0h, 50h, BEh, 07h, 11h, 8Bh, 7Eh, FDh, 8Bh, 05h                  ; 8...P3.P....~...
-  ovl5:8719  18EC9  db D1h, E0h, 03h, F0h, 8Bh, 04h, 03h, 06h, 77h, 6Ch, 50h, BEh, 67h, 6Ch, 8Bh, 7Eh                  ; ........wlP.gl.~
-  ovl5:8729  18ED9  db FDh, 8Bh, 05h, D1h, E0h, 03h, F0h, FFh, 34h, E8h, 3Ah, DEh, 83h, C4h, 08h, B8h                  ; ........4.:.....
-  ovl5:8739  18EE9  db 14h, 00h, 50h, E8h, 58h, DFh, 5Fh, EBh, 39h, B8h, 01h, 00h, 50h, 33h, C0h, 50h                  ; ..P.X._.9...P3.P
-  ovl5:8749  18EF9  db BEh, 07h, 11h, 8Bh, 7Eh, FDh, 8Bh, 05h, D1h, E0h, 03h, F0h, 8Bh, 04h, 03h, 06h                  ; ....~...........
-  ovl5:8759  18F09  db 77h, 6Ch, FFh, C8h, FFh, C8h, 50h, BEh, 5Fh, 6Ch, 8Bh, 7Eh, FDh, 8Bh, 05h, D1h                  ; wl....P._l.~....
-  ovl5:8769  18F19  db E0h, 03h, F0h, FFh, 34h, E8h, FEh, DDh, 83h, C4h, 08h, 33h, C0h, 50h, E8h, 1Dh                  ; ....4......3.P..
-  ovl5:8779  18F29  db DFh, 5Fh, E8h, 00h, EEh, EBh, 5Fh, 8Bh, 46h, F7h, BEh, D7h, 6Ah, 8Bh, 16h, D1h                  ; ._...._.F...j...
-  ovl5:8789  18F39  db 69h, D1h, E2h, 03h, F2h, 8Bh, 14h, 03h, D0h, 89h, 14h, E8h, 63h, EDh, B8h, 03h                  ; i...........c...
-  ovl5:8799  18F49  db 00h, BEh, 5Fh, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h, 04h, BEh, E1h                  ; .._j...i........
-  ovl5:87A9  18F59  db 69h, 03h, 36h, D1h, 69h, 8Ah, 04h, 98h, 83h, F8h, 02h, 75h, 10h, B8h, 02h, 00h                  ; i.6.i......u....
-  ovl5:87B9  18F69  db BEh, 5Fh, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h, 04h, E8h, 21h, EEh                  ; ._j...i.......!.
-  ovl5:87C9  18F79  db EBh, 14h                                                                                        ; ..
+  ovl5:8619  18DC9  b8236a         mov    ax, 0x6a23
+  ovl5:861C  18DCC  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:8620  18DD0  d1e2           shl    dx, 1
+  ovl5:8622  18DD2  03c2           add    ax, dx
+  ovl5:8624  18DD4  8946fd         mov    word ptr [bp - 3], ax
+  ovl5:8627  18DD7  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:862A  18DDA  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:862D  18DDD  8b14           mov    dx, word ptr [si]
+  ovl5:862F  18DDF  03d0           add    dx, ax
+  ovl5:8631  18DE1  8914           mov    word ptr [si], dx
+  ovl5:8633  18DE3  8a46f6         mov    al, byte ptr [bp - 0xa]
+  ovl5:8636  18DE6  98             cwde
+  ovl5:8637  18DE7  83f853         cmp    ax, 0x53
+  ovl5:863A  18DEA  751e           jne    0x865a
+  ovl5:863C  18DEC  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:863F  18DEF  8b04           mov    ax, word ptr [si]
+  ovl5:8641  18DF1  83f806         cmp    ax, 6
+  ovl5:8644  18DF4  7509           jne    0x864f
+  ovl5:8646  18DF6  33c0           xor    ax, ax
+  ovl5:8648  18DF8  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:864B  18DFB  8904           mov    word ptr [si], ax
+  ovl5:864D  18DFD  eb08           jmp    0x8657
+  ovl5:864F  18DFF  b80600         mov    ax, 6
+  ovl5:8652  18E02  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:8655  18E05  8904           mov    word ptr [si], ax
+  ovl5:8657  18E07  e8d885         call   beep_low
+  ovl5:865A  18E0A  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:865D  18E0D  8b04           mov    ax, word ptr [si]
+  ovl5:865F  18E0F  09c0           or     ax, ax
+  ovl5:8661  18E11  7d0a           jge    0x866d
+  ovl5:8663  18E13  33c0           xor    ax, ax
+  ovl5:8665  18E15  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:8668  18E18  8904           mov    word ptr [si], ax
+  ovl5:866A  18E1A  e865ef         call   thunk_51                     ; -> overlay 6: ovl6_f9b1
+  ovl5:866D  18E1D  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:8670  18E20  8b04           mov    ax, word ptr [si]
+  ovl5:8672  18E22  83f806         cmp    ax, 6
+  ovl5:8675  18E25  7e0b           jle    0x8682
+  ovl5:8677  18E27  b80600         mov    ax, 6
+  ovl5:867A  18E2A  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:867D  18E2D  8904           mov    word ptr [si], ax
+  ovl5:867F  18E2F  e850ef         call   thunk_51                     ; -> overlay 6: ovl6_f9b1
+  ovl5:8682  18E32  e859ef         call   thunk_52                     ; -> overlay 6: ovl6_df4b
+  ovl5:8685  18E35  ff36d169       push   word ptr [0x69d1]
+  ovl5:8689  18E39  e8f6ed         call   thunk_23                     ; -> overlay 6: ovl6_f6f9
+  ovl5:868C  18E3C  5f             pop    di
+  ovl5:868D  18E3D  e85aef         call   thunk_53                     ; -> overlay 6: ovl6_fc1a
+  ovl5:8690  18E40  e94c01         jmp    0x87df
+  ovl5:8693  18E43  bea76a         mov    si, 0x6aa7
+  ovl5:8696  18E46  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:869A  18E4A  d1e0           shl    ax, 1
+  ovl5:869C  18E4C  03f0           add    si, ax
+  ovl5:869E  18E4E  8b04           mov    ax, word ptr [si]
+  ovl5:86A0  18E50  0bc0           or     ax, ax
+  ovl5:86A2  18E52  7410           je     0x86b4
+  ovl5:86A4  18E54  b8836a         mov    ax, 0x6a83
+  ovl5:86A7  18E57  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:86AB  18E5B  d1e2           shl    dx, 1
+  ovl5:86AD  18E5D  03c2           add    ax, dx
+  ovl5:86AF  18E5F  8946fd         mov    word ptr [bp - 3], ax
+  ovl5:86B2  18E62  eb0e           jmp    0x86c2
+  ovl5:86B4  18E64  b89b6a         mov    ax, 0x6a9b
+  ovl5:86B7  18E67  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:86BB  18E6B  d1e2           shl    dx, 1
+  ovl5:86BD  18E6D  03c2           add    ax, dx
+  ovl5:86BF  18E6F  8946fd         mov    word ptr [bp - 3], ax
+  ovl5:86C2  18E72  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:86C5  18E75  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:86C8  18E78  8b14           mov    dx, word ptr [si]
+  ovl5:86CA  18E7A  03d0           add    dx, ax
+  ovl5:86CC  18E7C  8914           mov    word ptr [si], dx
+  ovl5:86CE  18E7E  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:86D1  18E81  8b04           mov    ax, word ptr [si]
+  ovl5:86D3  18E83  09c0           or     ax, ax
+  ovl5:86D5  18E85  7d0a           jge    0x86e1
+  ovl5:86D7  18E87  33c0           xor    ax, ax
+  ovl5:86D9  18E89  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:86DC  18E8C  8904           mov    word ptr [si], ax
+  ovl5:86DE  18E8E  e8f1ee         call   thunk_51                     ; -> overlay 6: ovl6_f9b1
+  ovl5:86E1  18E91  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:86E4  18E94  8b04           mov    ax, word ptr [si]
+  ovl5:86E6  18E96  83f803         cmp    ax, 3
+  ovl5:86E9  18E99  7e0b           jle    0x86f6
+  ovl5:86EB  18E9B  b80300         mov    ax, 3
+  ovl5:86EE  18E9E  8b76fd         mov    si, word ptr [bp - 3]
+  ovl5:86F1  18EA1  8904           mov    word ptr [si], ax
+  ovl5:86F3  18EA3  e8dcee         call   thunk_51                     ; -> overlay 6: ovl6_f9b1
+  ovl5:86F6  18EA6  e8cdee         call   thunk_50                     ; -> overlay 6: ovl6_ed60
+  ovl5:86F9  18EA9  bea76a         mov    si, 0x6aa7
+  ovl5:86FC  18EAC  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl5:8700  18EB0  d1e0           shl    ax, 1
+  ovl5:8702  18EB2  03f0           add    si, ax
+  ovl5:8704  18EB4  8b04           mov    ax, word ptr [si]
+  ovl5:8706  18EB6  0bc0           or     ax, ax
+  ovl5:8708  18EB8  7438           je     0x8742
+  ovl5:870A  18EBA  b80100         mov    ax, 1
+  ovl5:870D  18EBD  50             push   ax
+  ovl5:870E  18EBE  33c0           xor    ax, ax
+  ovl5:8710  18EC0  50             push   ax
+  ovl5:8711  18EC1  be0711         mov    si, 0x1107
+  ovl5:8714  18EC4  8b7efd         mov    di, word ptr [bp - 3]
+  ovl5:8717  18EC7  8b05           mov    ax, word ptr [di]
+  ovl5:8719  18EC9  d1e0           shl    ax, 1
+  ovl5:871B  18ECB  03f0           add    si, ax
+  ovl5:871D  18ECD  8b04           mov    ax, word ptr [si]
+  ovl5:871F  18ECF  0306776c       add    ax, word ptr [0x6c77]
+  ovl5:8723  18ED3  50             push   ax
+  ovl5:8724  18ED4  be676c         mov    si, 0x6c67
+  ovl5:8727  18ED7  8b7efd         mov    di, word ptr [bp - 3]
+  ovl5:872A  18EDA  8b05           mov    ax, word ptr [di]
+  ovl5:872C  18EDC  d1e0           shl    ax, 1
+  ovl5:872E  18EDE  03f0           add    si, ax
+  ovl5:8730  18EE0  ff34           push   word ptr [si]
+  ovl5:8732  18EE2  e83ade         call   rt_656f
+  ovl5:8735  18EE5  83c408         add    sp, 8
+  ovl5:8738  18EE8  b81400         mov    ax, 0x14
+  ovl5:873B  18EEB  50             push   ax
+  ovl5:873C  18EEC  e858df         call   rt_6697
+  ovl5:873F  18EEF  5f             pop    di
+  ovl5:8740  18EF0  eb39           jmp    0x877b
+  ovl5:8742  18EF2  b80100         mov    ax, 1
+  ovl5:8745  18EF5  50             push   ax
+  ovl5:8746  18EF6  33c0           xor    ax, ax
+  ovl5:8748  18EF8  50             push   ax
+  ovl5:8749  18EF9  be0711         mov    si, 0x1107
+  ovl5:874C  18EFC  8b7efd         mov    di, word ptr [bp - 3]
+  ovl5:874F  18EFF  8b05           mov    ax, word ptr [di]
+  ovl5:8751  18F01  d1e0           shl    ax, 1
+  ovl5:8753  18F03  03f0           add    si, ax
+  ovl5:8755  18F05  8b04           mov    ax, word ptr [si]
+  ovl5:8757  18F07  0306776c       add    ax, word ptr [0x6c77]
+  ovl5:875B  18F0B  ffc8           dec    ax
+  ovl5:875D  18F0D  ffc8           dec    ax
+  ovl5:875F  18F0F  50             push   ax
+  ovl5:8760  18F10  be5f6c         mov    si, 0x6c5f
+  ovl5:8763  18F13  8b7efd         mov    di, word ptr [bp - 3]
+  ovl5:8766  18F16  8b05           mov    ax, word ptr [di]
+  ovl5:8768  18F18  d1e0           shl    ax, 1
+  ovl5:876A  18F1A  03f0           add    si, ax
+  ovl5:876C  18F1C  ff34           push   word ptr [si]
+  ovl5:876E  18F1E  e8fedd         call   rt_656f
+  ovl5:8771  18F21  83c408         add    sp, 8
+  ovl5:8774  18F24  33c0           xor    ax, ax
+  ovl5:8776  18F26  50             push   ax
+  ovl5:8777  18F27  e81ddf         call   rt_6697
+  ovl5:877A  18F2A  5f             pop    di
+  ovl5:877B  18F2B  e800ee         call   thunk_44                     ; -> overlay 6: ovl6_fbfb
+  ovl5:877E  18F2E  eb5f           jmp    0x87df
+  ovl5:8780  18F30  8b46f7         mov    ax, word ptr [bp - 9]
+  ovl5:8783  18F33  bed76a         mov    si, 0x6ad7
+  ovl5:8786  18F36  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:878A  18F3A  d1e2           shl    dx, 1
+  ovl5:878C  18F3C  03f2           add    si, dx
+  ovl5:878E  18F3E  8b14           mov    dx, word ptr [si]
+  ovl5:8790  18F40  03d0           add    dx, ax
+  ovl5:8792  18F42  8914           mov    word ptr [si], dx
+  ovl5:8794  18F44  e863ed         call   thunk_33                     ; -> overlay 6: ovl6_dfe2
+  ovl5:8797  18F47  b80300         mov    ax, 3
+  ovl5:879A  18F4A  be5f6a         mov    si, 0x6a5f
+  ovl5:879D  18F4D  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:87A1  18F51  d1e2           shl    dx, 1
+  ovl5:87A3  18F53  03f2           add    si, dx
+  ovl5:87A5  18F55  8904           mov    word ptr [si], ax
+  ovl5:87A7  18F57  bee169         mov    si, 0x69e1
+  ovl5:87AA  18F5A  0336d169       add    si, word ptr [0x69d1]
+  ovl5:87AE  18F5E  8a04           mov    al, byte ptr [si]
+  ovl5:87B0  18F60  98             cwde
+  ovl5:87B1  18F61  83f802         cmp    ax, 2
+  ovl5:87B4  18F64  7510           jne    0x87c6
+  ovl5:87B6  18F66  b80200         mov    ax, 2
+  ovl5:87B9  18F69  be5f6a         mov    si, 0x6a5f
+  ovl5:87BC  18F6C  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl5:87C0  18F70  d1e2           shl    dx, 1
+  ovl5:87C2  18F72  03f2           add    si, dx
+  ovl5:87C4  18F74  8904           mov    word ptr [si], ax
+  ovl5:87C6  18F76  e821ee         call   thunk_53                     ; -> overlay 6: ovl6_fc1a
+  ovl5:87C9  18F79  eb14           jmp    0x87df
   ovl5:87CB  18F7B  50             push   ax
-  ovl5:87CC  18F7C  e801e3         call   rt_6ad0
-  ovl5:87CF  18F7F  0300           add    ax, word ptr [bx + si]
-  ovl5:87D1  18F81  43             inc    bx
-  ovl5:87D2  18F82  004100         add    byte ptr [bx + di], al
-  ovl5:87D5  18F85  53             push   bx
-  ovl5:87D6  18F86  00df           add    bh, bl
-  ovl5:87D8  18F88  87808793       xchg   word ptr [bx + si - 0x6c79], ax
-  ovl5:87DC  18F8C  8619           xchg   byte ptr [bx + di], bl
-  ; ---- data / unreached bytes (1 bytes)
-  ovl5:87DE  18F8E  db 86h                                                                                             ; .
+  ovl5:87CC  18F7C  e801e3         call   sparse_switch
+  ovl5:87CF  18F7F  dw 3                                                                    ; sparse switch table: 3 values, then 4 targets (the default first)
+  ovl5:87D1  18F81  dw 67                                                                   ; value 0
+  ovl5:87D3  18F83  dw 65                                                                   ; value 1
+  ovl5:87D5  18F85  dw 83                                                                   ; value 2
+  ovl5:87D7  18F87  dw 87DFh                                                                 ; default
+  ovl5:87D9  18F89  dw 8780h                                                                 ; case 67
+  ovl5:87DB  18F8B  dw 8693h                                                                 ; case 65
+  ovl5:87DD  18F8D  dw 8619h                                                                 ; case 83
   ovl5:87DF  18F8F  33c0           xor    ax, ax
   ovl5:87E1  18F91  8be5           mov    sp, bp
   ovl5:87E3  18F93  5d             pop    bp
   ovl5:87E4  18F94  c3             ret
 
-; ---- ovl5_87e5   (called from 2 places)
+; ---- ovl5_87e5   (called from 4 places)
 ovl5_87e5:
   ovl5:87E5  18F95  55             push   bp
   ovl5:87E6  18F96  8bec           mov    bp, sp
@@ -41798,7 +42871,7 @@ ovl5_87e5:
   ovl5:8839  18FE9  5d             pop    bp
   ovl5:883A  18FEA  c3             ret
 
-; ---- ovl5_883b   (called from 1 place)
+; ---- ovl5_883b   (called from 4 places)
 ovl5_883b:
   ovl5:883B  18FEB  55             push   bp
   ovl5:883C  18FEC  8bec           mov    bp, sp
@@ -41812,7 +42885,7 @@ ovl5_883b:
   ovl5:8851  19001  5d             pop    bp
   ovl5:8852  19002  c3             ret
 
-; ---- ovl5_8853   (called from 1 place)
+; ---- ovl5_8853   (called from 4 places)
 ovl5_8853:
   ovl5:8853  19003  55             push   bp
   ovl5:8854  19004  8bec           mov    bp, sp
@@ -42182,7 +43255,7 @@ ovl5_8b7e:
   ovl5:8C0B  193BB  5d             pop    bp
   ovl5:8C0C  193BC  c3             ret
 
-; ---- ovl5_8c0d   (called from 2 places)
+; ---- ovl5_8c0d   (called from 4 places)
 ovl5_8c0d:
   ovl5:8C0D  193BD  55             push   bp
   ovl5:8C0E  193BE  8bec           mov    bp, sp
@@ -42272,7 +43345,7 @@ ovl5_8cb0:
   ovl5:8CFB  194AB  5d             pop    bp
   ovl5:8CFC  194AC  c3             ret
 
-; ---- ovl5_8cfd   (called from 6 places)
+; ---- ovl5_8cfd   (called from 8 places)
 ovl5_8cfd:
   ovl5:8CFD  194AD  55             push   bp
   ovl5:8CFE  194AE  8bec           mov    bp, sp
@@ -42293,7 +43366,7 @@ ovl5_8cfd:
   ovl5:8D1F  194CF  5d             pop    bp
   ovl5:8D20  194D0  c3             ret
 
-; ---- ovl5_8d21
+; ---- ovl5_8d21   (called from 5 places)
 ovl5_8d21:
   ovl5:8D21  194D1  55             push   bp
   ovl5:8D22  194D2  8bec           mov    bp, sp
@@ -42355,111 +43428,582 @@ ovl5_8d89:
   ovl5:8D96  19546  8946d4         mov    word ptr [bp - 0x2c], ax
   ovl5:8D99  19549  8b066b68       mov    ax, word ptr [0x686b]
   ovl5:8D9D  1954D  e9c601         jmp    0x8f66
-  ; ---- data / unreached bytes (454 bytes)
-  ovl5:8DA0  19550  db 8Bh, E5h, 5Dh, C3h, B8h, B9h, 13h, 89h, 46h, D2h, E9h, DBh, 01h, B8h, 0Bh, 14h                  ; ..].....F.......
-  ovl5:8DB0  19560  db 89h, 46h, D2h, E9h, D2h, 01h, B8h, 5Dh, 14h, 89h, 46h, D2h, E9h, C9h, 01h, B8h                  ; .F.....]..F.....
-  ovl5:8DC0  19570  db C0h, 14h, 89h, 46h, D2h, E9h, C0h, 01h, B8h, 1Fh, 15h, 89h, 46h, D2h, E9h, B7h                  ; ...F........F...
-  ovl5:8DD0  19580  db 01h, B8h, 74h, 15h, 89h, 46h, D2h, E9h, AEh, 01h, B8h, C9h, 15h, 89h, 46h, D2h                  ; ..t..F........F.
-  ovl5:8DE0  19590  db E9h, A5h, 01h, B8h, 1Eh, 16h, 89h, 46h, D2h, E9h, 9Ch, 01h, 33h, C0h, 89h, 46h                  ; .......F....3..F
-  ovl5:8DF0  195A0  db ECh, 81h, 7Eh, ECh, 9Ah, 00h, 7Dh, 3Ch, B8h, 47h, 00h, 8Bh, 76h, D4h, FFh, 46h                  ; ..~...}<.G..v..F
-  ovl5:8E00  195B0  db D4h, 88h, 04h, B8h, 66h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, B8h, 09h                  ; ....f..v..F.....
-  ovl5:8E10  195C0  db 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, B8h, 77h, 00h, 8Bh, 76h, D4h, FFh                  ; ..v..F....w..v..
-  ovl5:8E20  195D0  db 46h, D4h, 88h, 04h, B8h, 63h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, FFh                  ; F....c..v..F....
-  ovl5:8E30  195E0  db 46h, ECh, EBh, BDh, B8h, 01h, 00h, 89h, 06h, 6Bh, 68h, 8Bh, E5h, 5Dh, C3h, 33h                  ; F........kh..].3
-  ovl5:8E40  195F0  db C0h, 89h, 46h, ECh, 81h, 7Eh, ECh, 9Ah, 00h, 7Dh, 3Ch, B8h, 0Bh, 00h, 8Bh, 76h                  ; ..F..~...}<....v
-  ovl5:8E50  19600  db D4h, FFh, 46h, D4h, 88h, 04h, B8h, 77h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h                  ; ..F....w..v..F..
-  ovl5:8E60  19610  db 04h, B8h, 45h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, B8h, 66h, 00h, 8Bh                  ; ..E..v..F....f..
-  ovl5:8E70  19620  db 76h, D4h, FFh, 46h, D4h, 88h, 04h, B8h, 63h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h                  ; v..F....c..v..F.
-  ovl5:8E80  19630  db 88h, 04h, FFh, 46h, ECh, EBh, BDh, B8h, 02h, 00h, 89h, 06h, 6Bh, 68h, 8Bh, E5h                  ; ...F........kh..
-  ovl5:8E90  19640  db 5Dh, C3h, 33h, C0h, 89h, 46h, ECh, 81h, 7Eh, ECh, 1Ah, 00h, 7Dh, 26h, B8h, 50h                  ; ].3..F..~...}&.P
-  ovl5:8EA0  19650  db 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, B8h, 77h, 00h, 8Bh, 76h, D4h, FFh                  ; ..v..F....w..v..
-  ovl5:8EB0  19660  db 46h, D4h, 88h, 04h, B8h, 63h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, FFh                  ; F....c..v..F....
-  ovl5:8EC0  19670  db 46h, ECh, EBh, D3h, 81h, 7Eh, ECh, 9Ah, 00h, 7Dh, 26h, B8h, 50h, 00h, 8Bh, 76h                  ; F....~...}&.P..v
-  ovl5:8ED0  19680  db D4h, FFh, 46h, D4h, 88h, 04h, B8h, 66h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h                  ; ..F....f..v..F..
-  ovl5:8EE0  19690  db 04h, B8h, 63h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, FFh, 46h, ECh, EBh                  ; ..c..v..F....F..
-  ovl5:8EF0  196A0  db D3h, B8h, 03h, 00h, 89h, 06h, 6Bh, 68h, 8Bh, E5h, 5Dh, C3h, 33h, C0h, 89h, 46h                  ; ......kh..].3..F
-  ovl5:8F00  196B0  db ECh, 81h, 7Eh, ECh, 82h, 00h, 7Dh, 26h, B8h, 50h, 00h, 8Bh, 76h, D4h, FFh, 46h                  ; ..~...}&.P..v..F
-  ovl5:8F10  196C0  db D4h, 88h, 04h, B8h, 66h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, B8h, 63h                  ; ....f..v..F....c
-  ovl5:8F20  196D0  db 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, FFh, 46h, ECh, EBh, D3h, 81h, 7Eh                  ; ..v..F....F....~
-  ovl5:8F30  196E0  db ECh, 9Ah, 00h, 7Dh, 26h, B8h, 50h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h                  ; ...}&.P..v..F...
-  ovl5:8F40  196F0  db B8h, 77h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, B8h, 63h, 00h, 8Bh, 76h                  ; .w..v..F....c..v
-  ovl5:8F50  19700  db D4h, FFh, 46h, D4h, 88h, 04h, FFh, 46h, ECh, EBh, D3h, B8h, 04h, 00h, 89h, 06h                  ; ..F....F........
-  ovl5:8F60  19710  db 6Bh, 68h, 8Bh, E5h, 5Dh, C3h                                                                    ; kh..].
+  ovl5:8DA0  19550  8be5           mov    sp, bp
+  ovl5:8DA2  19552  5d             pop    bp
+  ovl5:8DA3  19553  c3             ret
+  ovl5:8DA4  19554  b8b913         mov    ax, 0x13b9                   ; DS:13B9 "Ff\nwc"
+  ovl5:8DA7  19557  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DAA  1955A  e9db01         jmp    0x8f88
+  ovl5:8DAD  1955D  b80b14         mov    ax, 0x140b
+  ovl5:8DB0  19560  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DB3  19563  e9d201         jmp    0x8f88
+  ovl5:8DB6  19566  b85d14         mov    ax, 0x145d
+  ovl5:8DB9  19569  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DBC  1956C  e9c901         jmp    0x8f88
+  ovl5:8DBF  1956F  b8c014         mov    ax, 0x14c0
+  ovl5:8DC2  19572  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DC5  19575  e9c001         jmp    0x8f88
+  ovl5:8DC8  19578  b81f15         mov    ax, 0x151f
+  ovl5:8DCB  1957B  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DCE  1957E  e9b701         jmp    0x8f88
+  ovl5:8DD1  19581  b87415         mov    ax, 0x1574
+  ovl5:8DD4  19584  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DD7  19587  e9ae01         jmp    0x8f88
+  ovl5:8DDA  1958A  b8c915         mov    ax, 0x15c9
+  ovl5:8DDD  1958D  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DE0  19590  e9a501         jmp    0x8f88
+  ovl5:8DE3  19593  b81e16         mov    ax, 0x161e
+  ovl5:8DE6  19596  8946d2         mov    word ptr [bp - 0x2e], ax
+  ovl5:8DE9  19599  e99c01         jmp    0x8f88
+  ovl5:8DEC  1959C  33c0           xor    ax, ax
+  ovl5:8DEE  1959E  8946ec         mov    word ptr [bp - 0x14], ax
+  ovl5:8DF1  195A1  817eec9a00     cmp    word ptr [bp - 0x14], 0x9a
+  ovl5:8DF6  195A6  7d3c           jge    0x8e34
+  ovl5:8DF8  195A8  b84700         mov    ax, 0x47
+  ovl5:8DFB  195AB  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8DFE  195AE  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E01  195B1  8804           mov    byte ptr [si], al
+  ovl5:8E03  195B3  b86600         mov    ax, 0x66
+  ovl5:8E06  195B6  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E09  195B9  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E0C  195BC  8804           mov    byte ptr [si], al
+  ovl5:8E0E  195BE  b80900         mov    ax, 9
+  ovl5:8E11  195C1  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E14  195C4  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E17  195C7  8804           mov    byte ptr [si], al
+  ovl5:8E19  195C9  b87700         mov    ax, 0x77
+  ovl5:8E1C  195CC  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E1F  195CF  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E22  195D2  8804           mov    byte ptr [si], al
+  ovl5:8E24  195D4  b86300         mov    ax, 0x63
+  ovl5:8E27  195D7  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E2A  195DA  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E2D  195DD  8804           mov    byte ptr [si], al
+  ovl5:8E2F  195DF  ff46ec         inc    word ptr [bp - 0x14]
+  ovl5:8E32  195E2  ebbd           jmp    0x8df1
+  ovl5:8E34  195E4  b80100         mov    ax, 1
+  ovl5:8E37  195E7  89066b68       mov    word ptr [0x686b], ax
+  ovl5:8E3B  195EB  8be5           mov    sp, bp
+  ovl5:8E3D  195ED  5d             pop    bp
+  ovl5:8E3E  195EE  c3             ret
+  ovl5:8E3F  195EF  33c0           xor    ax, ax
+  ovl5:8E41  195F1  8946ec         mov    word ptr [bp - 0x14], ax
+  ovl5:8E44  195F4  817eec9a00     cmp    word ptr [bp - 0x14], 0x9a
+  ovl5:8E49  195F9  7d3c           jge    0x8e87
+  ovl5:8E4B  195FB  b80b00         mov    ax, 0xb
+  ovl5:8E4E  195FE  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E51  19601  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E54  19604  8804           mov    byte ptr [si], al
+  ovl5:8E56  19606  b87700         mov    ax, 0x77
+  ovl5:8E59  19609  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E5C  1960C  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E5F  1960F  8804           mov    byte ptr [si], al
+  ovl5:8E61  19611  b84500         mov    ax, 0x45
+  ovl5:8E64  19614  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E67  19617  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E6A  1961A  8804           mov    byte ptr [si], al
+  ovl5:8E6C  1961C  b86600         mov    ax, 0x66
+  ovl5:8E6F  1961F  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E72  19622  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E75  19625  8804           mov    byte ptr [si], al
+  ovl5:8E77  19627  b86300         mov    ax, 0x63
+  ovl5:8E7A  1962A  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8E7D  1962D  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8E80  19630  8804           mov    byte ptr [si], al
+  ovl5:8E82  19632  ff46ec         inc    word ptr [bp - 0x14]
+  ovl5:8E85  19635  ebbd           jmp    0x8e44
+  ovl5:8E87  19637  b80200         mov    ax, 2
+  ovl5:8E8A  1963A  89066b68       mov    word ptr [0x686b], ax
+  ovl5:8E8E  1963E  8be5           mov    sp, bp
+  ovl5:8E90  19640  5d             pop    bp
+  ovl5:8E91  19641  c3             ret
+  ovl5:8E92  19642  33c0           xor    ax, ax
+  ovl5:8E94  19644  8946ec         mov    word ptr [bp - 0x14], ax
+  ovl5:8E97  19647  817eec1a00     cmp    word ptr [bp - 0x14], 0x1a
+  ovl5:8E9C  1964C  7d26           jge    0x8ec4
+  ovl5:8E9E  1964E  b85000         mov    ax, 0x50
+  ovl5:8EA1  19651  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8EA4  19654  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8EA7  19657  8804           mov    byte ptr [si], al
+  ovl5:8EA9  19659  b87700         mov    ax, 0x77
+  ovl5:8EAC  1965C  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8EAF  1965F  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8EB2  19662  8804           mov    byte ptr [si], al
+  ovl5:8EB4  19664  b86300         mov    ax, 0x63
+  ovl5:8EB7  19667  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8EBA  1966A  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8EBD  1966D  8804           mov    byte ptr [si], al
+  ovl5:8EBF  1966F  ff46ec         inc    word ptr [bp - 0x14]
+  ovl5:8EC2  19672  ebd3           jmp    0x8e97
+  ovl5:8EC4  19674  817eec9a00     cmp    word ptr [bp - 0x14], 0x9a
+  ovl5:8EC9  19679  7d26           jge    0x8ef1
+  ovl5:8ECB  1967B  b85000         mov    ax, 0x50
+  ovl5:8ECE  1967E  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8ED1  19681  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8ED4  19684  8804           mov    byte ptr [si], al
+  ovl5:8ED6  19686  b86600         mov    ax, 0x66
+  ovl5:8ED9  19689  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8EDC  1968C  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8EDF  1968F  8804           mov    byte ptr [si], al
+  ovl5:8EE1  19691  b86300         mov    ax, 0x63
+  ovl5:8EE4  19694  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8EE7  19697  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8EEA  1969A  8804           mov    byte ptr [si], al
+  ovl5:8EEC  1969C  ff46ec         inc    word ptr [bp - 0x14]
+  ovl5:8EEF  1969F  ebd3           jmp    0x8ec4
+  ovl5:8EF1  196A1  b80300         mov    ax, 3
+  ovl5:8EF4  196A4  89066b68       mov    word ptr [0x686b], ax
+  ovl5:8EF8  196A8  8be5           mov    sp, bp
+  ovl5:8EFA  196AA  5d             pop    bp
+  ovl5:8EFB  196AB  c3             ret
+  ovl5:8EFC  196AC  33c0           xor    ax, ax
+  ovl5:8EFE  196AE  8946ec         mov    word ptr [bp - 0x14], ax
+  ovl5:8F01  196B1  817eec8200     cmp    word ptr [bp - 0x14], 0x82
+  ovl5:8F06  196B6  7d26           jge    0x8f2e
+  ovl5:8F08  196B8  b85000         mov    ax, 0x50
+  ovl5:8F0B  196BB  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8F0E  196BE  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8F11  196C1  8804           mov    byte ptr [si], al
+  ovl5:8F13  196C3  b86600         mov    ax, 0x66
+  ovl5:8F16  196C6  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8F19  196C9  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8F1C  196CC  8804           mov    byte ptr [si], al
+  ovl5:8F1E  196CE  b86300         mov    ax, 0x63
+  ovl5:8F21  196D1  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8F24  196D4  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8F27  196D7  8804           mov    byte ptr [si], al
+  ovl5:8F29  196D9  ff46ec         inc    word ptr [bp - 0x14]
+  ovl5:8F2C  196DC  ebd3           jmp    0x8f01
+  ovl5:8F2E  196DE  817eec9a00     cmp    word ptr [bp - 0x14], 0x9a
+  ovl5:8F33  196E3  7d26           jge    0x8f5b
+  ovl5:8F35  196E5  b85000         mov    ax, 0x50
+  ovl5:8F38  196E8  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8F3B  196EB  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8F3E  196EE  8804           mov    byte ptr [si], al
+  ovl5:8F40  196F0  b87700         mov    ax, 0x77
+  ovl5:8F43  196F3  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8F46  196F6  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8F49  196F9  8804           mov    byte ptr [si], al
+  ovl5:8F4B  196FB  b86300         mov    ax, 0x63
+  ovl5:8F4E  196FE  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8F51  19701  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8F54  19704  8804           mov    byte ptr [si], al
+  ovl5:8F56  19706  ff46ec         inc    word ptr [bp - 0x14]
+  ovl5:8F59  19709  ebd3           jmp    0x8f2e
+  ovl5:8F5B  1970B  b80400         mov    ax, 4
+  ovl5:8F5E  1970E  89066b68       mov    word ptr [0x686b], ax
+  ovl5:8F62  19712  8be5           mov    sp, bp
+  ovl5:8F64  19714  5d             pop    bp
+  ovl5:8F65  19715  c3             ret
   ovl5:8F66  19716  50             push   ax
-  ovl5:8F67  19717  e89adb         call   rt_6b04
-  ovl5:8F6A  1971A  0000           add    byte ptr [bx + si], al
-  ovl5:8F6C  1971C  0c00           or     al, 0
-  ovl5:8F6E  1971E  fc             cld
-  ovl5:8F6F  1971F  8ea08da4       mov    fs, word ptr [bx + si - 0x5b73]
-  ovl5:8F73  19723  8dad8db6       lea    bp, [di - 0x4973]
-  ovl5:8F77  19727  8dbf8dc8       lea    di, [bx - 0x3773]
-  ; ---- data / unreached bytes (1010 bytes)
-  ovl5:8F7B  1972B  db 8Dh, D1h, 8Dh, DAh, 8Dh, E3h, 8Dh, ECh, 8Dh, 3Fh, 8Eh, 92h, 8Eh, 33h, C0h, 89h                  ; .........?...3..
-  ovl5:8F8B  1973B  db 06h, D7h, 6Ch, 8Bh, 76h, D2h, FFh, 46h, D2h, 8Ah, 04h, 98h, 8Bh, 76h, D4h, FFh                  ; ..l.v..F.....v..
-  ovl5:8F9B  1974B  db 46h, D4h, 88h, 04h, 98h, 83h, F8h, 63h, 75h, E9h, 33h, C0h, 89h, 46h, EEh, 81h                  ; F......cu.3..F..
-  ovl5:8FAB  1975B  db 7Eh, EEh, 0Ah, 00h, 7Dh, 0Fh, 33h, C0h, 8Dh, 76h, D8h, 03h, 76h, EEh, 88h, 04h                  ; ~...}.3..v..v...
-  ovl5:8FBB  1976B  db FFh, 46h, EEh, EBh, EAh, 33h, C0h, 89h, 46h, ECh, 81h, 7Eh, ECh, 9Ah, 00h, 7Ch                  ; .F...3..F..~...|
-  ovl5:8FCB  1977B  db 03h, E9h, 9Ah, 03h, 33h, C0h, 89h, 46h, FEh, 89h, 46h, FCh, 89h, 46h, F8h, 89h                  ; ....3..F..F..F..
-  ovl5:8FDB  1978B  db 46h, F6h, 89h, 46h, F4h, 89h, 46h, EEh, 81h, 7Eh, EEh, 0Ah, 00h, 7Dh, 20h, 8Dh                  ; F..F..F..~...} .
-  ovl5:8FEB  1979B  db 76h, D8h, 03h, 76h, EEh, 8Ah, 04h, 98h, 8Dh, 76h, E2h, 03h, 76h, EEh, 88h, 04h                  ; v..v.....v..v...
-  ovl5:8FFB  197AB  db 33h, C0h, 8Dh, 76h, D8h, 03h, 76h, EEh, 88h, 04h, FFh, 46h, EEh, EBh, D9h, B8h                  ; 3..v..v....F....
-  ovl5:900B  197BB  db 01h, 00h, 0Bh, C0h, 75h, 03h, E9h, 4Fh, 03h, 8Bh, 76h, D2h, 8Ah, 04h, 98h, 50h                  ; ....u..O..v....P
-  ovl5:901B  197CB  db E8h, E4h, E5h, 5Fh, 89h, 46h, EEh, 8Bh, 06h, D7h, 6Ch, 0Bh, C0h, 74h, 03h, B8h                  ; ..._.F....l..t..
-  ovl5:902B  197DB  db 01h, 00h, 35h, 01h, 00h, 89h, 06h, D7h, 6Ch, 0Bh, C0h, 75h, 03h, FFh, 46h, D2h                  ; ..5.....l..u..F.
-  ovl5:903B  197EB  db 8Bh, 76h, D6h, 8Ah, 04h, 98h, 89h, 46h, F0h, 81h, 7Eh, F0h, 63h, 00h, 75h, 08h                  ; .v.....F..~.c.u.
-  ovl5:904B  197FB  db B8h, 0Fh, 00h, 89h, 46h, EEh, EBh, 03h, FFh, 46h, D6h, 8Bh, 46h, F4h, 3Bh, 46h                  ; ....F....F..F.;F
-  ovl5:905B  1980B  db F0h, 7Eh, 0Bh, 8Bh, 46h, F0h, 29h, 46h, F4h, FFh, 46h, D6h, EBh, D2h, 8Bh, 46h                  ; .~..F.)F..F....F
-  ovl5:906B  1981B  db F4h, 29h, 46h, F0h, 8Bh, 46h, F6h, 03h, 46h, F0h, 03h, 46h, F4h, 50h, 8Dh, 76h                  ; .)F..F..F..F.P.v
-  ovl5:907B  1982B  db E2h, 03h, 76h, FEh, 8Ah, 04h, 98h, 5Ah, 03h, D0h, 83h, FAh, 50h, 7Ch, 03h, E9h                  ; ..v....Z....P|..
-  ovl5:908B  1983B  db B2h, 00h, 8Bh, 76h, D6h, 46h, 8Ah, 04h, 98h, 83h, F8h, 63h, 75h, 03h, E9h, A3h                  ; ...v.F.....cu...
-  ovl5:909B  1984B  db 00h, 33h, C0h, 89h, 46h, F4h, 81h, 7Eh, EEh, 00h, 00h, 7Eh, 3Dh, 81h, 7Eh, EEh                  ; .3..F..~...~=.~.
-  ovl5:90AB  1985B  db 07h, 00h, 7Dh, 36h, B8h, 07h, 00h, 2Bh, 46h, EEh, 89h, 46h, F2h, 3Bh, 46h, F0h                  ; ..}6...+F..F.;F.
-  ovl5:90BB  1986B  db 7Eh, 06h, 8Bh, 46h, F0h, 89h, 46h, F2h, 8Bh, 46h, F2h, 29h, 46h, F0h, 8Bh, 46h                  ; ~..F..F..F.)F..F
-  ovl5:90CB  1987B  db F2h, F7h, D8h, 89h, 46h, F4h, 33h, C0h, 89h, 46h, FAh, 8Dh, 76h, D8h, FFh, 46h                  ; ....F.3..F..v..F
-  ovl5:90DB  1988B  db FCh, 8Bh, 46h, FCh, 03h, F0h, FEh, 04h, EBh, 38h, 81h, 7Eh, EEh, 06h, 00h, 7Eh                  ; ..F......8.~...~
-  ovl5:90EB  1989B  db 31h, 81h, 7Eh, EEh, 0Eh, 00h, 7Dh, 2Ah, 8Bh, 46h, EEh, 83h, E8h, 06h, 8Bh, 56h                  ; 1.~...}*.F.....V
-  ovl5:90FB  198AB  db F0h, 03h, D0h, 89h, 56h, F0h, 8Bh, 46h, EEh, 83h, E8h, 06h, 89h, 46h, F4h, B8h                  ; ....V..F.....F..
-  ovl5:910B  198BB  db 01h, 00h, 89h, 46h, FAh, 8Dh, 76h, D8h, 8Bh, 46h, FCh, FFh, 46h, FCh, 03h, F0h                  ; ...F..v..F..F...
-  ovl5:911B  198CB  db FEh, 04h, 8Bh, 46h, F4h, 0Bh, C0h, 74h, 19h, 8Bh, 76h, D6h, 8Ah, 04h, 98h, 83h                  ; ...F...t..v.....
-  ovl5:912B  198DB  db F8h, 66h, 75h, 08h, B8h, 67h, 00h, 89h, 46h, F8h, EBh, 06h, B8h, 76h, 00h, 89h                  ; .fu..g..F....v..
-  ovl5:913B  198EB  db 46h, F8h, EBh, 40h, 81h, 7Eh, EEh, 0Fh, 00h, 75h, 13h, 8Bh, 76h, D6h, 46h, 8Ah                  ; F..@.~...u..v.F.
-  ovl5:914B  198FB  db 04h, 98h, 83h, F8h, 63h, 75h, 2Dh, 8Bh, 46h, F6h, 0Bh, C0h, 74h, 26h, 81h, 7Eh                  ; ....cu-.F...t&.~
-  ovl5:915B  1990B  db EEh, 0Eh, 00h, 74h, 1Fh, 8Bh, 06h, D7h, 6Ch, 0Bh, C0h, 74h, 03h, B8h, 01h, 00h                  ; ...t....l..t....
-  ovl5:916B  1991B  db 35h, 01h, 00h, 89h, 06h, D7h, 6Ch, 0Bh, C0h, 74h, 03h, FFh, 4Eh, D2h, B8h, 0Fh                  ; 5.....l..t..N...
-  ovl5:917B  1992B  db 00h, 89h, 46h, EEh, 81h, 7Eh, F0h, 00h, 00h, 7Fh, 06h, FFh, 46h, D6h, E9h, 7Eh                  ; ..F..~......F..~
-  ovl5:918B  1993B  db FEh, 8Bh, 46h, F0h, 03h, 46h, F6h, 83h, F8h, 50h, 7Eh, 37h, B8h, 50h, 00h, 2Bh                  ; ..F..F...P~7.P.+
-  ovl5:919B  1994B  db 46h, F6h, 89h, 46h, F0h, 81h, 7Eh, F0h, 00h, 00h, 7Fh, 27h, 8Bh, 76h, D6h, FFh                  ; F..F..~....'.v..
-  ovl5:91AB  1995B  db 46h, D6h, 8Ah, 04h, 98h, 83h, F8h, 63h, 75h, F2h, 8Bh, 06h, D7h, 6Ch, 0Bh, C0h                  ; F......cu....l..
-  ovl5:91BB  1996B  db 74h, 03h, B8h, 01h, 00h, 35h, 01h, 00h, 89h, 06h, D7h, 6Ch, 0Bh, C0h, 75h, 03h                  ; t....5.....l..u.
-  ovl5:91CB  1997B  db FFh, 46h, D2h, 8Dh, 76h, E2h, 8Bh, 46h, FEh, FFh, 46h, FEh, 03h, F0h, 8Ah, 04h                  ; .F..v..F..F.....
-  ovl5:91DB  1998B  db 98h, 8Bh, 56h, F0h, 03h, D0h, 89h, 56h, F0h, 8Bh, 46h, F0h, 8Bh, 76h, D4h, FFh                  ; ..V....V..F..v..
-  ovl5:91EB  1999B  db 46h, D4h, 88h, 04h, 8Bh, 76h, D6h, FFh, 46h, D6h, 8Ah, 04h, 98h, 8Bh, 76h, D4h                  ; F....v..F.....v.
-  ovl5:91FB  199AB  db FFh, 46h, D4h, 88h, 04h, 8Bh, 76h, D6h, 46h, 8Ah, 04h, 98h, 83h, F8h, 67h, 74h                  ; .F....v.F.....gt
-  ovl5:920B  199BB  db 0Ch, 8Bh, 76h, D6h, 46h, 8Ah, 04h, 98h, 83h, F8h, 76h, 75h, 0Bh, B8h, 02h, 00h                  ; ..v.F.....vu....
-  ovl5:921B  199CB  db 8Bh, 56h, D6h, 03h, D0h, 89h, 56h, D6h, 8Bh, 46h, F8h, 0Bh, C0h, 74h, 32h, 8Bh                  ; .V....V..F...t2.
-  ovl5:922B  199DB  db 46h, FAh, 0Bh, C0h, 75h, 08h, FFh, 46h, F0h, FFh, 46h, F4h, EBh, 08h, 8Bh, 76h                  ; F...u..F..F....v
-  ovl5:923B  199EB  db D4h, 83h, EEh, 02h, FEh, 0Ch, B8h, 01h, 00h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h                  ; ..........v..F..
-  ovl5:924B  199FB  db 04h, 8Bh, 46h, F8h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, 33h, C0h, 89h, 46h                  ; ..F..v..F...3..F
-  ovl5:925B  19A0B  db F8h, 81h, 7Eh, EEh, 0Eh, 00h, 74h, 03h, E9h, A5h, 00h, 8Bh, 06h, D7h, 6Ch, 0Bh                  ; ..~...t.......l.
-  ovl5:926B  19A1B  db C0h, 74h, 09h, FFh, 46h, D2h, 33h, C0h, 89h, 06h, D7h, 6Ch, 8Bh, 46h, F6h, 0Bh                  ; .t..F.3....l.F..
-  ovl5:927B  19A2B  db C0h, 74h, 48h, B8h, 01h, 00h, 0Bh, C0h, 74h, 3Fh, 8Bh, 76h, D6h, FFh, 46h, D6h                  ; .tH.....t?.v..F.
-  ovl5:928B  19A3B  db 8Ah, 04h, 98h, 8Bh, 76h, D4h, 88h, 04h, 8Bh, 76h, D4h, 8Ah, 04h, 98h, 83h, F8h                  ; ....v....v......
-  ovl5:929B  19A4B  db 63h, 74h, 1Fh, 8Dh, 76h, E2h, 8Bh, 46h, FEh, FFh, 46h, FEh, 03h, F0h, 8Ah, 04h                  ; ct..v..F..F.....
-  ovl5:92AB  19A5B  db 98h, 8Bh, 76h, D4h, FFh, 46h, D4h, 50h, 5Ah, 8Ah, 04h, 98h, 03h, C2h, 88h, 04h                  ; ..v..F.PZ.......
-  ovl5:92BB  19A6B  db EBh, 05h, FFh, 46h, D4h, EBh, 02h, EBh, BAh, EBh, 0Bh, B8h, 02h, 00h, 8Bh, 56h                  ; ...F...........V
-  ovl5:92CB  19A7B  db D4h, 2Bh, D0h, 89h, 56h, D4h, 8Bh, 46h, D4h, 89h, 46h, D6h, 8Bh, 76h, D2h, FFh                  ; .+..V..F..F..v..
-  ovl5:92DB  19A8B  db 46h, D2h, 8Ah, 04h, 98h, 8Bh, 76h, D4h, FFh, 46h, D4h, 88h, 04h, 98h, 83h, F8h                  ; F.....v..F......
-  ovl5:92EB  19A9B  db 63h, 75h, E9h, 33h, C0h, 89h, 46h, EEh, 81h, 7Eh, EEh, 0Ah, 00h, 7Dh, 0Fh, 33h                  ; cu.3..F..~...}.3
-  ovl5:92FB  19AAB  db C0h, 8Dh, 76h, D8h, 03h, 76h, EEh, 88h, 04h, FFh, 46h, EEh, EBh, EAh, EBh, 58h                  ; ..v..v....F....X
-  ovl5:930B  19ABB  db 81h, 7Eh, EEh, 0Fh, 00h, 75h, 48h, B8h, 01h, 00h, 0Bh, C0h, 74h, 3Fh, 8Bh, 76h                  ; .~...uH.....t?.v
-  ovl5:931B  19ACB  db D6h, FFh, 46h, D6h, 8Ah, 04h, 98h, 8Bh, 76h, D4h, 88h, 04h, 8Bh, 76h, D4h, 8Ah                  ; ..F.....v....v..
-  ovl5:932B  19ADB  db 04h, 98h, 83h, F8h, 63h, 74h, 1Fh, 8Dh, 76h, E2h, 8Bh, 46h, FEh, FFh, 46h, FEh                  ; ....ct..v..F..F.
-  ovl5:933B  19AEB  db 03h, F0h, 8Ah, 04h, 98h, 8Bh, 76h, D4h, FFh, 46h, D4h, 50h, 5Ah, 8Ah, 04h, 98h                  ; ......v..F.PZ...
-  ovl5:934B  19AFB  db 03h, C2h, 88h, 04h, EBh, 05h, FFh, 46h, D4h, EBh, 02h, EBh, BAh, EBh, 09h, 8Bh                  ; .......F........
-  ovl5:935B  19B0B  db 46h, F0h, 01h, 46h, F6h, E9h, A7h, FCh, FFh, 46h, ECh, E9h, 5Ch, FCh, 8Bh, E5h                  ; F..F.....F..\...
-  ovl5:936B  19B1B  db 5Dh, C3h                                                                                        ; ].
+  ovl5:8F67  19717  e89adb         call   switch_helper
+  ovl5:8F6A  1971A  dw 0, 12, 8EFCh                                                       ; switch table: lowest case 0, 12 cases, default 8EFC
+  ovl5:8F70  19720  dw 8DA0h                                                                 ; case 0
+  ovl5:8F72  19722  dw 8DA4h                                                                 ; case 1
+  ovl5:8F74  19724  dw 8DADh                                                                 ; case 2
+  ovl5:8F76  19726  dw 8DB6h                                                                 ; case 3
+  ovl5:8F78  19728  dw 8DBFh                                                                 ; case 4
+  ovl5:8F7A  1972A  dw 8DC8h                                                                 ; case 5
+  ovl5:8F7C  1972C  dw 8DD1h                                                                 ; case 6
+  ovl5:8F7E  1972E  dw 8DDAh                                                                 ; case 7
+  ovl5:8F80  19730  dw 8DE3h                                                                 ; case 8
+  ovl5:8F82  19732  dw 8DECh                                                                 ; case 9
+  ovl5:8F84  19734  dw 8E3Fh                                                                 ; case 10
+  ovl5:8F86  19736  dw 8E92h                                                                 ; case 11
+  ovl5:8F88  19738  33c0           xor    ax, ax
+  ovl5:8F8A  1973A  8906d76c       mov    word ptr [0x6cd7], ax
+  ovl5:8F8E  1973E  8b76d2         mov    si, word ptr [bp - 0x2e]
+  ovl5:8F91  19741  ff46d2         inc    word ptr [bp - 0x2e]
+  ovl5:8F94  19744  8a04           mov    al, byte ptr [si]
+  ovl5:8F96  19746  98             cwde
+  ovl5:8F97  19747  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:8F9A  1974A  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:8F9D  1974D  8804           mov    byte ptr [si], al
+  ovl5:8F9F  1974F  98             cwde
+  ovl5:8FA0  19750  83f863         cmp    ax, 0x63
+  ovl5:8FA3  19753  75e9           jne    0x8f8e
+  ovl5:8FA5  19755  33c0           xor    ax, ax
+  ovl5:8FA7  19757  8946ee         mov    word ptr [bp - 0x12], ax
+  ovl5:8FAA  1975A  817eee0a00     cmp    word ptr [bp - 0x12], 0xa
+  ovl5:8FAF  1975F  7d0f           jge    0x8fc0
+  ovl5:8FB1  19761  33c0           xor    ax, ax
+  ovl5:8FB3  19763  8d76d8         lea    si, [bp - 0x28]
+  ovl5:8FB6  19766  0376ee         add    si, word ptr [bp - 0x12]
+  ovl5:8FB9  19769  8804           mov    byte ptr [si], al
+  ovl5:8FBB  1976B  ff46ee         inc    word ptr [bp - 0x12]
+  ovl5:8FBE  1976E  ebea           jmp    0x8faa
+  ovl5:8FC0  19770  33c0           xor    ax, ax
+  ovl5:8FC2  19772  8946ec         mov    word ptr [bp - 0x14], ax
+  ovl5:8FC5  19775  817eec9a00     cmp    word ptr [bp - 0x14], 0x9a
+  ovl5:8FCA  1977A  7c03           jl     0x8fcf
+  ovl5:8FCC  1977C  e99a03         jmp    0x9369
+  ovl5:8FCF  1977F  33c0           xor    ax, ax
+  ovl5:8FD1  19781  8946fe         mov    word ptr [bp - 2], ax
+  ovl5:8FD4  19784  8946fc         mov    word ptr [bp - 4], ax
+  ovl5:8FD7  19787  8946f8         mov    word ptr [bp - 8], ax
+  ovl5:8FDA  1978A  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl5:8FDD  1978D  8946f4         mov    word ptr [bp - 0xc], ax
+  ovl5:8FE0  19790  8946ee         mov    word ptr [bp - 0x12], ax
+  ovl5:8FE3  19793  817eee0a00     cmp    word ptr [bp - 0x12], 0xa
+  ovl5:8FE8  19798  7d20           jge    0x900a
+  ovl5:8FEA  1979A  8d76d8         lea    si, [bp - 0x28]
+  ovl5:8FED  1979D  0376ee         add    si, word ptr [bp - 0x12]
+  ovl5:8FF0  197A0  8a04           mov    al, byte ptr [si]
+  ovl5:8FF2  197A2  98             cwde
+  ovl5:8FF3  197A3  8d76e2         lea    si, [bp - 0x1e]
+  ovl5:8FF6  197A6  0376ee         add    si, word ptr [bp - 0x12]
+  ovl5:8FF9  197A9  8804           mov    byte ptr [si], al
+  ovl5:8FFB  197AB  33c0           xor    ax, ax
+  ovl5:8FFD  197AD  8d76d8         lea    si, [bp - 0x28]
+  ovl5:9000  197B0  0376ee         add    si, word ptr [bp - 0x12]
+  ovl5:9003  197B3  8804           mov    byte ptr [si], al
+  ovl5:9005  197B5  ff46ee         inc    word ptr [bp - 0x12]
+  ovl5:9008  197B8  ebd9           jmp    0x8fe3
+  ovl5:900A  197BA  b80100         mov    ax, 1
+  ovl5:900D  197BD  0bc0           or     ax, ax
+  ovl5:900F  197BF  7503           jne    0x9014
+  ovl5:9011  197C1  e94f03         jmp    0x9363
+  ovl5:9014  197C4  8b76d2         mov    si, word ptr [bp - 0x2e]
+  ovl5:9017  197C7  8a04           mov    al, byte ptr [si]
+  ovl5:9019  197C9  98             cwde
+  ovl5:901A  197CA  50             push   ax
+  ovl5:901B  197CB  e8e4e5         call   thunk_55                     ; -> overlay 6: ovl6_fb2a
+  ovl5:901E  197CE  5f             pop    di
+  ovl5:901F  197CF  8946ee         mov    word ptr [bp - 0x12], ax
+  ovl5:9022  197D2  8b06d76c       mov    ax, word ptr [0x6cd7]
+  ovl5:9026  197D6  0bc0           or     ax, ax
+  ovl5:9028  197D8  7403           je     0x902d
+  ovl5:902A  197DA  b80100         mov    ax, 1
+  ovl5:902D  197DD  350100         xor    ax, 1
+  ovl5:9030  197E0  8906d76c       mov    word ptr [0x6cd7], ax
+  ovl5:9034  197E4  0bc0           or     ax, ax
+  ovl5:9036  197E6  7503           jne    0x903b
+  ovl5:9038  197E8  ff46d2         inc    word ptr [bp - 0x2e]
+  ovl5:903B  197EB  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:903E  197EE  8a04           mov    al, byte ptr [si]
+  ovl5:9040  197F0  98             cwde
+  ovl5:9041  197F1  8946f0         mov    word ptr [bp - 0x10], ax
+  ovl5:9044  197F4  817ef06300     cmp    word ptr [bp - 0x10], 0x63
+  ovl5:9049  197F9  7508           jne    0x9053
+  ovl5:904B  197FB  b80f00         mov    ax, 0xf
+  ovl5:904E  197FE  8946ee         mov    word ptr [bp - 0x12], ax
+  ovl5:9051  19801  eb03           jmp    0x9056
+  ovl5:9053  19803  ff46d6         inc    word ptr [bp - 0x2a]
+  ovl5:9056  19806  8b46f4         mov    ax, word ptr [bp - 0xc]
+  ovl5:9059  19809  3b46f0         cmp    ax, word ptr [bp - 0x10]
+  ovl5:905C  1980C  7e0b           jle    0x9069
+  ovl5:905E  1980E  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl5:9061  19811  2946f4         sub    word ptr [bp - 0xc], ax
+  ovl5:9064  19814  ff46d6         inc    word ptr [bp - 0x2a]
+  ovl5:9067  19817  ebd2           jmp    0x903b
+  ovl5:9069  19819  8b46f4         mov    ax, word ptr [bp - 0xc]
+  ovl5:906C  1981C  2946f0         sub    word ptr [bp - 0x10], ax
+  ovl5:906F  1981F  8b46f6         mov    ax, word ptr [bp - 0xa]
+  ovl5:9072  19822  0346f0         add    ax, word ptr [bp - 0x10]
+  ovl5:9075  19825  0346f4         add    ax, word ptr [bp - 0xc]
+  ovl5:9078  19828  50             push   ax
+  ovl5:9079  19829  8d76e2         lea    si, [bp - 0x1e]
+  ovl5:907C  1982C  0376fe         add    si, word ptr [bp - 2]
+  ovl5:907F  1982F  8a04           mov    al, byte ptr [si]
+  ovl5:9081  19831  98             cwde
+  ovl5:9082  19832  5a             pop    dx
+  ovl5:9083  19833  03d0           add    dx, ax
+  ovl5:9085  19835  83fa50         cmp    dx, 0x50
+  ovl5:9088  19838  7c03           jl     0x908d
+  ovl5:908A  1983A  e9b200         jmp    0x913f
+  ovl5:908D  1983D  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:9090  19840  46             inc    si
+  ovl5:9091  19841  8a04           mov    al, byte ptr [si]
+  ovl5:9093  19843  98             cwde
+  ovl5:9094  19844  83f863         cmp    ax, 0x63
+  ovl5:9097  19847  7503           jne    0x909c
+  ovl5:9099  19849  e9a300         jmp    0x913f
+  ovl5:909C  1984C  33c0           xor    ax, ax
+  ovl5:909E  1984E  8946f4         mov    word ptr [bp - 0xc], ax
+  ovl5:90A1  19851  817eee0000     cmp    word ptr [bp - 0x12], 0
+  ovl5:90A6  19856  7e3d           jle    0x90e5
+  ovl5:90A8  19858  817eee0700     cmp    word ptr [bp - 0x12], 7
+  ovl5:90AD  1985D  7d36           jge    0x90e5
+  ovl5:90AF  1985F  b80700         mov    ax, 7
+  ovl5:90B2  19862  2b46ee         sub    ax, word ptr [bp - 0x12]
+  ovl5:90B5  19865  8946f2         mov    word ptr [bp - 0xe], ax
+  ovl5:90B8  19868  3b46f0         cmp    ax, word ptr [bp - 0x10]
+  ovl5:90BB  1986B  7e06           jle    0x90c3
+  ovl5:90BD  1986D  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl5:90C0  19870  8946f2         mov    word ptr [bp - 0xe], ax
+  ovl5:90C3  19873  8b46f2         mov    ax, word ptr [bp - 0xe]
+  ovl5:90C6  19876  2946f0         sub    word ptr [bp - 0x10], ax
+  ovl5:90C9  19879  8b46f2         mov    ax, word ptr [bp - 0xe]
+  ovl5:90CC  1987C  f7d8           neg    ax
+  ovl5:90CE  1987E  8946f4         mov    word ptr [bp - 0xc], ax
+  ovl5:90D1  19881  33c0           xor    ax, ax
+  ovl5:90D3  19883  8946fa         mov    word ptr [bp - 6], ax
+  ovl5:90D6  19886  8d76d8         lea    si, [bp - 0x28]
+  ovl5:90D9  19889  ff46fc         inc    word ptr [bp - 4]
+  ovl5:90DC  1988C  8b46fc         mov    ax, word ptr [bp - 4]
+  ovl5:90DF  1988F  03f0           add    si, ax
+  ovl5:90E1  19891  fe04           inc    byte ptr [si]
+  ovl5:90E3  19893  eb38           jmp    0x911d
+  ovl5:90E5  19895  817eee0600     cmp    word ptr [bp - 0x12], 6
+  ovl5:90EA  1989A  7e31           jle    0x911d
+  ovl5:90EC  1989C  817eee0e00     cmp    word ptr [bp - 0x12], 0xe
+  ovl5:90F1  198A1  7d2a           jge    0x911d
+  ovl5:90F3  198A3  8b46ee         mov    ax, word ptr [bp - 0x12]
+  ovl5:90F6  198A6  83e806         sub    ax, 6
+  ovl5:90F9  198A9  8b56f0         mov    dx, word ptr [bp - 0x10]
+  ovl5:90FC  198AC  03d0           add    dx, ax
+  ovl5:90FE  198AE  8956f0         mov    word ptr [bp - 0x10], dx
+  ovl5:9101  198B1  8b46ee         mov    ax, word ptr [bp - 0x12]
+  ovl5:9104  198B4  83e806         sub    ax, 6
+  ovl5:9107  198B7  8946f4         mov    word ptr [bp - 0xc], ax
+  ovl5:910A  198BA  b80100         mov    ax, 1
+  ovl5:910D  198BD  8946fa         mov    word ptr [bp - 6], ax
+  ovl5:9110  198C0  8d76d8         lea    si, [bp - 0x28]
+  ovl5:9113  198C3  8b46fc         mov    ax, word ptr [bp - 4]
+  ovl5:9116  198C6  ff46fc         inc    word ptr [bp - 4]
+  ovl5:9119  198C9  03f0           add    si, ax
+  ovl5:911B  198CB  fe04           inc    byte ptr [si]
+  ovl5:911D  198CD  8b46f4         mov    ax, word ptr [bp - 0xc]
+  ovl5:9120  198D0  0bc0           or     ax, ax
+  ovl5:9122  198D2  7419           je     0x913d
+  ovl5:9124  198D4  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:9127  198D7  8a04           mov    al, byte ptr [si]
+  ovl5:9129  198D9  98             cwde
+  ovl5:912A  198DA  83f866         cmp    ax, 0x66
+  ovl5:912D  198DD  7508           jne    0x9137
+  ovl5:912F  198DF  b86700         mov    ax, 0x67
+  ovl5:9132  198E2  8946f8         mov    word ptr [bp - 8], ax
+  ovl5:9135  198E5  eb06           jmp    0x913d
+  ovl5:9137  198E7  b87600         mov    ax, 0x76
+  ovl5:913A  198EA  8946f8         mov    word ptr [bp - 8], ax
+  ovl5:913D  198ED  eb40           jmp    0x917f
+  ovl5:913F  198EF  817eee0f00     cmp    word ptr [bp - 0x12], 0xf
+  ovl5:9144  198F4  7513           jne    0x9159
+  ovl5:9146  198F6  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:9149  198F9  46             inc    si
+  ovl5:914A  198FA  8a04           mov    al, byte ptr [si]
+  ovl5:914C  198FC  98             cwde
+  ovl5:914D  198FD  83f863         cmp    ax, 0x63
+  ovl5:9150  19900  752d           jne    0x917f
+  ovl5:9152  19902  8b46f6         mov    ax, word ptr [bp - 0xa]
+  ovl5:9155  19905  0bc0           or     ax, ax
+  ovl5:9157  19907  7426           je     0x917f
+  ovl5:9159  19909  817eee0e00     cmp    word ptr [bp - 0x12], 0xe
+  ovl5:915E  1990E  741f           je     0x917f
+  ovl5:9160  19910  8b06d76c       mov    ax, word ptr [0x6cd7]
+  ovl5:9164  19914  0bc0           or     ax, ax
+  ovl5:9166  19916  7403           je     0x916b
+  ovl5:9168  19918  b80100         mov    ax, 1
+  ovl5:916B  1991B  350100         xor    ax, 1
+  ovl5:916E  1991E  8906d76c       mov    word ptr [0x6cd7], ax
+  ovl5:9172  19922  0bc0           or     ax, ax
+  ovl5:9174  19924  7403           je     0x9179
+  ovl5:9176  19926  ff4ed2         dec    word ptr [bp - 0x2e]
+  ovl5:9179  19929  b80f00         mov    ax, 0xf
+  ovl5:917C  1992C  8946ee         mov    word ptr [bp - 0x12], ax
+  ovl5:917F  1992F  817ef00000     cmp    word ptr [bp - 0x10], 0
+  ovl5:9184  19934  7f06           jg     0x918c
+  ovl5:9186  19936  ff46d6         inc    word ptr [bp - 0x2a]
+  ovl5:9189  19939  e97efe         jmp    0x900a
+  ovl5:918C  1993C  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl5:918F  1993F  0346f6         add    ax, word ptr [bp - 0xa]
+  ovl5:9192  19942  83f850         cmp    ax, 0x50
+  ovl5:9195  19945  7e37           jle    0x91ce
+  ovl5:9197  19947  b85000         mov    ax, 0x50
+  ovl5:919A  1994A  2b46f6         sub    ax, word ptr [bp - 0xa]
+  ovl5:919D  1994D  8946f0         mov    word ptr [bp - 0x10], ax
+  ovl5:91A0  19950  817ef00000     cmp    word ptr [bp - 0x10], 0
+  ovl5:91A5  19955  7f27           jg     0x91ce
+  ovl5:91A7  19957  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:91AA  1995A  ff46d6         inc    word ptr [bp - 0x2a]
+  ovl5:91AD  1995D  8a04           mov    al, byte ptr [si]
+  ovl5:91AF  1995F  98             cwde
+  ovl5:91B0  19960  83f863         cmp    ax, 0x63
+  ovl5:91B3  19963  75f2           jne    0x91a7
+  ovl5:91B5  19965  8b06d76c       mov    ax, word ptr [0x6cd7]
+  ovl5:91B9  19969  0bc0           or     ax, ax
+  ovl5:91BB  1996B  7403           je     0x91c0
+  ovl5:91BD  1996D  b80100         mov    ax, 1
+  ovl5:91C0  19970  350100         xor    ax, 1
+  ovl5:91C3  19973  8906d76c       mov    word ptr [0x6cd7], ax
+  ovl5:91C7  19977  0bc0           or     ax, ax
+  ovl5:91C9  19979  7503           jne    0x91ce
+  ovl5:91CB  1997B  ff46d2         inc    word ptr [bp - 0x2e]
+  ovl5:91CE  1997E  8d76e2         lea    si, [bp - 0x1e]
+  ovl5:91D1  19981  8b46fe         mov    ax, word ptr [bp - 2]
+  ovl5:91D4  19984  ff46fe         inc    word ptr [bp - 2]
+  ovl5:91D7  19987  03f0           add    si, ax
+  ovl5:91D9  19989  8a04           mov    al, byte ptr [si]
+  ovl5:91DB  1998B  98             cwde
+  ovl5:91DC  1998C  8b56f0         mov    dx, word ptr [bp - 0x10]
+  ovl5:91DF  1998F  03d0           add    dx, ax
+  ovl5:91E1  19991  8956f0         mov    word ptr [bp - 0x10], dx
+  ovl5:91E4  19994  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl5:91E7  19997  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:91EA  1999A  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:91ED  1999D  8804           mov    byte ptr [si], al
+  ovl5:91EF  1999F  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:91F2  199A2  ff46d6         inc    word ptr [bp - 0x2a]
+  ovl5:91F5  199A5  8a04           mov    al, byte ptr [si]
+  ovl5:91F7  199A7  98             cwde
+  ovl5:91F8  199A8  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:91FB  199AB  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:91FE  199AE  8804           mov    byte ptr [si], al
+  ovl5:9200  199B0  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:9203  199B3  46             inc    si
+  ovl5:9204  199B4  8a04           mov    al, byte ptr [si]
+  ovl5:9206  199B6  98             cwde
+  ovl5:9207  199B7  83f867         cmp    ax, 0x67
+  ovl5:920A  199BA  740c           je     0x9218
+  ovl5:920C  199BC  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:920F  199BF  46             inc    si
+  ovl5:9210  199C0  8a04           mov    al, byte ptr [si]
+  ovl5:9212  199C2  98             cwde
+  ovl5:9213  199C3  83f876         cmp    ax, 0x76
+  ovl5:9216  199C6  750b           jne    0x9223
+  ovl5:9218  199C8  b80200         mov    ax, 2
+  ovl5:921B  199CB  8b56d6         mov    dx, word ptr [bp - 0x2a]
+  ovl5:921E  199CE  03d0           add    dx, ax
+  ovl5:9220  199D0  8956d6         mov    word ptr [bp - 0x2a], dx
+  ovl5:9223  199D3  8b46f8         mov    ax, word ptr [bp - 8]
+  ovl5:9226  199D6  0bc0           or     ax, ax
+  ovl5:9228  199D8  7432           je     0x925c
+  ovl5:922A  199DA  8b46fa         mov    ax, word ptr [bp - 6]
+  ovl5:922D  199DD  0bc0           or     ax, ax
+  ovl5:922F  199DF  7508           jne    0x9239
+  ovl5:9231  199E1  ff46f0         inc    word ptr [bp - 0x10]
+  ovl5:9234  199E4  ff46f4         inc    word ptr [bp - 0xc]
+  ovl5:9237  199E7  eb08           jmp    0x9241
+  ovl5:9239  199E9  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:923C  199EC  83ee02         sub    si, 2
+  ovl5:923F  199EF  fe0c           dec    byte ptr [si]
+  ovl5:9241  199F1  b80100         mov    ax, 1
+  ovl5:9244  199F4  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:9247  199F7  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:924A  199FA  8804           mov    byte ptr [si], al
+  ovl5:924C  199FC  8b46f8         mov    ax, word ptr [bp - 8]
+  ovl5:924F  199FF  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:9252  19A02  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:9255  19A05  8804           mov    byte ptr [si], al
+  ovl5:9257  19A07  33c0           xor    ax, ax
+  ovl5:9259  19A09  8946f8         mov    word ptr [bp - 8], ax
+  ovl5:925C  19A0C  817eee0e00     cmp    word ptr [bp - 0x12], 0xe
+  ovl5:9261  19A11  7403           je     0x9266
+  ovl5:9263  19A13  e9a500         jmp    0x930b
+  ovl5:9266  19A16  8b06d76c       mov    ax, word ptr [0x6cd7]
+  ovl5:926A  19A1A  0bc0           or     ax, ax
+  ovl5:926C  19A1C  7409           je     0x9277
+  ovl5:926E  19A1E  ff46d2         inc    word ptr [bp - 0x2e]
+  ovl5:9271  19A21  33c0           xor    ax, ax
+  ovl5:9273  19A23  8906d76c       mov    word ptr [0x6cd7], ax
+  ovl5:9277  19A27  8b46f6         mov    ax, word ptr [bp - 0xa]
+  ovl5:927A  19A2A  0bc0           or     ax, ax
+  ovl5:927C  19A2C  7448           je     0x92c6
+  ovl5:927E  19A2E  b80100         mov    ax, 1
+  ovl5:9281  19A31  0bc0           or     ax, ax
+  ovl5:9283  19A33  743f           je     0x92c4
+  ovl5:9285  19A35  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:9288  19A38  ff46d6         inc    word ptr [bp - 0x2a]
+  ovl5:928B  19A3B  8a04           mov    al, byte ptr [si]
+  ovl5:928D  19A3D  98             cwde
+  ovl5:928E  19A3E  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:9291  19A41  8804           mov    byte ptr [si], al
+  ovl5:9293  19A43  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:9296  19A46  8a04           mov    al, byte ptr [si]
+  ovl5:9298  19A48  98             cwde
+  ovl5:9299  19A49  83f863         cmp    ax, 0x63
+  ovl5:929C  19A4C  741f           je     0x92bd
+  ovl5:929E  19A4E  8d76e2         lea    si, [bp - 0x1e]
+  ovl5:92A1  19A51  8b46fe         mov    ax, word ptr [bp - 2]
+  ovl5:92A4  19A54  ff46fe         inc    word ptr [bp - 2]
+  ovl5:92A7  19A57  03f0           add    si, ax
+  ovl5:92A9  19A59  8a04           mov    al, byte ptr [si]
+  ovl5:92AB  19A5B  98             cwde
+  ovl5:92AC  19A5C  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:92AF  19A5F  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:92B2  19A62  50             push   ax
+  ovl5:92B3  19A63  5a             pop    dx
+  ovl5:92B4  19A64  8a04           mov    al, byte ptr [si]
+  ovl5:92B6  19A66  98             cwde
+  ovl5:92B7  19A67  03c2           add    ax, dx
+  ovl5:92B9  19A69  8804           mov    byte ptr [si], al
+  ovl5:92BB  19A6B  eb05           jmp    0x92c2
+  ovl5:92BD  19A6D  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:92C0  19A70  eb02           jmp    0x92c4
+  ovl5:92C2  19A72  ebba           jmp    0x927e
+  ovl5:92C4  19A74  eb0b           jmp    0x92d1
+  ovl5:92C6  19A76  b80200         mov    ax, 2
+  ovl5:92C9  19A79  8b56d4         mov    dx, word ptr [bp - 0x2c]
+  ovl5:92CC  19A7C  2bd0           sub    dx, ax
+  ovl5:92CE  19A7E  8956d4         mov    word ptr [bp - 0x2c], dx
+  ovl5:92D1  19A81  8b46d4         mov    ax, word ptr [bp - 0x2c]
+  ovl5:92D4  19A84  8946d6         mov    word ptr [bp - 0x2a], ax
+  ovl5:92D7  19A87  8b76d2         mov    si, word ptr [bp - 0x2e]
+  ovl5:92DA  19A8A  ff46d2         inc    word ptr [bp - 0x2e]
+  ovl5:92DD  19A8D  8a04           mov    al, byte ptr [si]
+  ovl5:92DF  19A8F  98             cwde
+  ovl5:92E0  19A90  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:92E3  19A93  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:92E6  19A96  8804           mov    byte ptr [si], al
+  ovl5:92E8  19A98  98             cwde
+  ovl5:92E9  19A99  83f863         cmp    ax, 0x63
+  ovl5:92EC  19A9C  75e9           jne    0x92d7
+  ovl5:92EE  19A9E  33c0           xor    ax, ax
+  ovl5:92F0  19AA0  8946ee         mov    word ptr [bp - 0x12], ax
+  ovl5:92F3  19AA3  817eee0a00     cmp    word ptr [bp - 0x12], 0xa
+  ovl5:92F8  19AA8  7d0f           jge    0x9309
+  ovl5:92FA  19AAA  33c0           xor    ax, ax
+  ovl5:92FC  19AAC  8d76d8         lea    si, [bp - 0x28]
+  ovl5:92FF  19AAF  0376ee         add    si, word ptr [bp - 0x12]
+  ovl5:9302  19AB2  8804           mov    byte ptr [si], al
+  ovl5:9304  19AB4  ff46ee         inc    word ptr [bp - 0x12]
+  ovl5:9307  19AB7  ebea           jmp    0x92f3
+  ovl5:9309  19AB9  eb58           jmp    0x9363
+  ovl5:930B  19ABB  817eee0f00     cmp    word ptr [bp - 0x12], 0xf
+  ovl5:9310  19AC0  7548           jne    0x935a
+  ovl5:9312  19AC2  b80100         mov    ax, 1
+  ovl5:9315  19AC5  0bc0           or     ax, ax
+  ovl5:9317  19AC7  743f           je     0x9358
+  ovl5:9319  19AC9  8b76d6         mov    si, word ptr [bp - 0x2a]
+  ovl5:931C  19ACC  ff46d6         inc    word ptr [bp - 0x2a]
+  ovl5:931F  19ACF  8a04           mov    al, byte ptr [si]
+  ovl5:9321  19AD1  98             cwde
+  ovl5:9322  19AD2  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:9325  19AD5  8804           mov    byte ptr [si], al
+  ovl5:9327  19AD7  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:932A  19ADA  8a04           mov    al, byte ptr [si]
+  ovl5:932C  19ADC  98             cwde
+  ovl5:932D  19ADD  83f863         cmp    ax, 0x63
+  ovl5:9330  19AE0  741f           je     0x9351
+  ovl5:9332  19AE2  8d76e2         lea    si, [bp - 0x1e]
+  ovl5:9335  19AE5  8b46fe         mov    ax, word ptr [bp - 2]
+  ovl5:9338  19AE8  ff46fe         inc    word ptr [bp - 2]
+  ovl5:933B  19AEB  03f0           add    si, ax
+  ovl5:933D  19AED  8a04           mov    al, byte ptr [si]
+  ovl5:933F  19AEF  98             cwde
+  ovl5:9340  19AF0  8b76d4         mov    si, word ptr [bp - 0x2c]
+  ovl5:9343  19AF3  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:9346  19AF6  50             push   ax
+  ovl5:9347  19AF7  5a             pop    dx
+  ovl5:9348  19AF8  8a04           mov    al, byte ptr [si]
+  ovl5:934A  19AFA  98             cwde
+  ovl5:934B  19AFB  03c2           add    ax, dx
+  ovl5:934D  19AFD  8804           mov    byte ptr [si], al
+  ovl5:934F  19AFF  eb05           jmp    0x9356
+  ovl5:9351  19B01  ff46d4         inc    word ptr [bp - 0x2c]
+  ovl5:9354  19B04  eb02           jmp    0x9358
+  ovl5:9356  19B06  ebba           jmp    0x9312
+  ovl5:9358  19B08  eb09           jmp    0x9363
+  ovl5:935A  19B0A  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl5:935D  19B0D  0146f6         add    word ptr [bp - 0xa], ax
+  ovl5:9360  19B10  e9a7fc         jmp    0x900a
+  ovl5:9363  19B13  ff46ec         inc    word ptr [bp - 0x14]
+  ovl5:9366  19B16  e95cfc         jmp    0x8fc5
+  ovl5:9369  19B19  8be5           mov    sp, bp
+  ovl5:936B  19B1B  5d             pop    bp
+  ovl5:936C  19B1C  c3             ret
 
-; ---- ovl5_936d
+; ---- ovl5_936d   (called from 1 place)
 ovl5_936d:
   ovl5:936D  19B1D  55             push   bp
   ovl5:936E  19B1E  8bec           mov    bp, sp
@@ -45386,7 +46930,7 @@ ovl5_abb6:
   ovl5:AFC4  1B774  5d             pop    bp
   ovl5:AFC5  1B775  c3             ret
 
-; ---- ovl5_afc6   (called from 14 places)
+; ---- ovl5_afc6   (called from 15 places)
 ovl5_afc6:
   ovl5:AFC6  1B776  55             push   bp
   ovl5:AFC7  1B777  8bec           mov    bp, sp
@@ -48674,79 +50218,414 @@ ovl6_c9b0:
   ovl6:D061  1D811  8946f6         mov    word ptr [bp - 0xa], ax
   ovl6:D064  1D814  8b066b68       mov    ax, word ptr [0x686b]
   ovl6:D068  1D818  eb3f           jmp    0xd0a9
-  ; ---- data / unreached bytes (63 bytes)
-  ovl6:D06A  1D81A  db B8h, CAh, FFh, 89h, 46h, FEh, B8h, B8h, FFh, 89h, 46h, FCh, EBh, 4Bh, B8h, CAh                  ; ....F.....F..K..
-  ovl6:D07A  1D82A  db FFh, 89h, 46h, FEh, B8h, 3Ch, 00h, 89h, 46h, FCh, EBh, 3Dh, B8h, B8h, FFh, 89h                  ; ..F..<..F..=....
-  ovl6:D08A  1D83A  db 46h, FCh, B8h, 36h, 00h, 89h, 46h, FEh, EBh, 2Fh, B8h, C4h, FFh, 89h, 46h, FEh                  ; F..6..F../....F.
-  ovl6:D09A  1D84A  db EBh, 27h, B8h, 36h, 00h, 89h, 46h, FEh, B0h, 3Ch, 89h, 46h, FCh, EBh, 1Ah                       ; .'.6..F..<.F...
+  ovl6:D06A  1D81A  b8caff         mov    ax, 0xffca
+  ovl6:D06D  1D81D  8946fe         mov    word ptr [bp - 2], ax
+  ovl6:D070  1D820  b8b8ff         mov    ax, 0xffb8
+  ovl6:D073  1D823  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:D076  1D826  eb4b           jmp    0xd0c3
+  ovl6:D078  1D828  b8caff         mov    ax, 0xffca
+  ovl6:D07B  1D82B  8946fe         mov    word ptr [bp - 2], ax
+  ovl6:D07E  1D82E  b83c00         mov    ax, 0x3c
+  ovl6:D081  1D831  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:D084  1D834  eb3d           jmp    0xd0c3
+  ovl6:D086  1D836  b8b8ff         mov    ax, 0xffb8
+  ovl6:D089  1D839  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:D08C  1D83C  b83600         mov    ax, 0x36
+  ovl6:D08F  1D83F  8946fe         mov    word ptr [bp - 2], ax
+  ovl6:D092  1D842  eb2f           jmp    0xd0c3
+  ovl6:D094  1D844  b8c4ff         mov    ax, 0xffc4
+  ovl6:D097  1D847  8946fe         mov    word ptr [bp - 2], ax
+  ovl6:D09A  1D84A  eb27           jmp    0xd0c3
+  ovl6:D09C  1D84C  b83600         mov    ax, 0x36
+  ovl6:D09F  1D84F  8946fe         mov    word ptr [bp - 2], ax
+  ovl6:D0A2  1D852  b03c           mov    al, 0x3c
+  ovl6:D0A4  1D854  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:D0A7  1D857  eb1a           jmp    0xd0c3
   ovl6:D0A9  1D859  50             push   ax
-  ovl6:D0AA  1D85A  e8579a         call   rt_6b04
-  ovl6:D0AD  1D85D  0100           add    word ptr [bx + si], ax
-  ovl6:D0AF  1D85F  0800           or     byte ptr [bx + si], al
-  ovl6:D0B1  1D861  c3             ret
-  ; ---- data / unreached bytes (945 bytes)
-  ovl6:D0B2  1D862  db D0h, 70h, D0h, 7Eh, D0h, 8Ch, D0h, 94h, D0h, 86h, D0h, 6Ah, D0h, 78h, D0h, 9Ch                  ; .p.~.......j.x..
-  ovl6:D0C2  1D872  db D0h, 33h, C0h, 89h, 46h, E2h, 81h, 7Eh, E2h, 03h, 00h, 7Ch, 03h, E9h, E6h, 00h                  ; .3..F..~...|....
-  ovl6:D0D2  1D882  db B8h, FFh, FFh, BEh, FFh, 69h, 8Bh, 56h, E2h, D1h, E2h, 03h, F2h, 89h, 04h, BEh                  ; .....i.V........
-  ovl6:D0E2  1D892  db 56h, 64h, 03h, 76h, E2h, 8Ah, 04h, 98h, 89h, 46h, E6h, 81h, 7Eh, E6h, FFh, FFh                  ; Vd.v.....F..~...
-  ovl6:D0F2  1D8A2  db 75h, 03h, E9h, BBh, 00h, FFh, 76h, F4h, FFh, 76h, E6h, FFh, 76h, E2h, E8h, 60h                  ; u.....v..v..v..`
-  ovl6:D102  1D8B2  db 03h, 83h, C4h, 06h, 8Bh, 46h, E8h, 05h, EAh, 00h, 03h, 46h, FCh, 50h, 8Bh, 46h                  ; .....F.....F.P.F
-  ovl6:D112  1D8C2  db E2h, F7h, 6Eh, F0h, 5Ah, 03h, D0h, BEh, E7h, 69h, 8Bh, 46h, E2h, D1h, E0h, 03h                  ; ..n.Z....i.F....
-  ovl6:D122  1D8D2  db F0h, 89h, 14h, 8Bh, 46h, EAh, 05h, CCh, 00h, 03h, 46h, FEh, 50h, 8Bh, 46h, E2h                  ; ....F.....F.P.F.
-  ovl6:D132  1D8E2  db F7h, 6Eh, F2h, 5Ah, 03h, D0h, BEh, F3h, 69h, 8Bh, 46h, E2h, D1h, E0h, 03h, F0h                  ; .n.Z....i.F.....
-  ovl6:D142  1D8F2  db 89h, 14h, BEh, 81h, 65h, 03h, 36h, 03h, 63h, 8Ah, 04h, 25h, FFh, 00h, 75h, 22h                  ; ....e.6.c..%..u"
-  ovl6:D152  1D902  db 8Bh, 06h, 93h, 64h, 0Bh, C0h, 75h, 1Ah, 33h, C0h, BEh, 47h, 6Ah, 8Bh, 56h, E2h                  ; ...d..u.3..Gj.V.
-  ovl6:D162  1D912  db D1h, E2h, 03h, F2h, 89h, 04h, BEh, 23h, 6Ah, 8Bh, 56h, E2h, D1h, E2h, 03h, F2h                  ; .......#j.V.....
-  ovl6:D172  1D922  db 89h, 04h, FFh, 76h, E2h, E8h, 31h, 78h, 5Fh, 0Bh, C0h, 74h, 17h, 8Bh, 06h, 93h                  ; ...v..1x_..t....
-  ovl6:D182  1D932  db 64h, 0Bh, C0h, 75h, 0Fh, B8h, 03h, 00h, BEh, 17h, 6Ah, 8Bh, 56h, E2h, D1h, E2h                  ; d..u......j.V...
-  ovl6:D192  1D942  db 03h, F2h, 89h, 04h, BEh, E1h, 69h, 03h, 76h, E2h, 8Ah, 04h, 98h, 83h, F8h, 02h                  ; ......i.v.......
-  ovl6:D1A2  1D952  db 75h, 08h, B8h, 01h, 00h, 89h, 46h, F6h, EBh, 06h, B8h, 01h, 00h, 89h, 46h, F8h                  ; u.....F.......F.
-  ovl6:D1B2  1D962  db FFh, 46h, E2h, E9h, 10h, FFh, 33h, C0h, 89h, 46h, E2h, 81h, 7Eh, E2h, 03h, 00h                  ; .F....3..F..~...
-  ovl6:D1C2  1D972  db 7Dh, 67h, BEh, E7h, 69h, 8Bh, 46h, E2h, D1h, E0h, 03h, F0h, 8Bh, 04h, 3Dh, 19h                  ; }g..i.F.......=.
-  ovl6:D1D2  1D982  db FCh, 74h, 4Eh, BEh, 81h, 65h, 03h, 36h, 03h, 63h, 8Ah, 04h, 25h, FFh, 00h, 74h                  ; .tN..e.6.c..%..t
-  ovl6:D1E2  1D992  db 40h, BEh, E1h, 69h, 03h, 76h, E2h, 8Ah, 04h, 98h, 83h, F8h, 02h, 75h, 32h, 8Bh                  ; @..i.v.......u2.
-  ovl6:D1F2  1D9A2  db 46h, F8h, 0Bh, C0h, 74h, 2Bh, B8h, 03h, 00h, BEh, F3h, 69h, 8Bh, 56h, E2h, D1h                  ; F...t+.....i.V..
-  ovl6:D202  1D9B2  db E2h, 03h, F2h, 8Bh, 14h, 03h, D0h, 89h, 14h, BEh, 23h, 6Ah, 8Bh, 46h, E2h, D1h                  ; ..........#j.F..
-  ovl6:D212  1D9C2  db E0h, 03h, F0h, FFh, 0Ch, BEh, 47h, 6Ah, 8Bh, 46h, E2h, D1h, E0h, 03h, F0h, FFh                  ; ......Gj.F......
-  ovl6:D222  1D9D2  db 0Ch, E8h, 68h, 5Ch, FFh, 46h, E2h, EBh, 92h, 8Ah, 06h, A9h, 65h, 98h, 0Bh, C0h                  ; ..h\.F......e...
-  ovl6:D232  1D9E2  db 74h, 03h, E9h, 12h, 02h, BEh, 6Bh, 60h, 8Bh, 04h, 09h, C0h, 75h, 24h, 8Bh, 06h                  ; t.....k`....u$..
-  ovl6:D242  1D9F2  db 6Bh, 68h, 0Bh, C0h, 75h, 1Ch, B8h, 02h, 00h, 50h, 8Bh, 46h, E8h, 5Bh, 99h, F7h                  ; kh..u....P.F.[..
-  ovl6:D252  1DA02  db FBh, 89h, 46h, E8h, B8h, 02h, 00h, 50h, 8Bh, 46h, EAh, 5Bh, 99h, F7h, FBh, 89h                  ; ..F....P.F.[....
-  ovl6:D262  1DA12  db 46h, EAh, FFh, 36h, 01h, 63h, E8h, C5h, 33h, 5Fh, E8h, B4h, 02h, 33h, C0h, 89h                  ; F..6.c..3_...3..
-  ovl6:D272  1DA22  db 46h, FAh, BEh, 55h, 60h, FFh, 34h, E8h, 91h, 5Ch, 5Ah, 3Bh, C2h, 7Eh, 30h, 8Bh                  ; F..U`.4..\Z;.~0.
-  ovl6:D282  1DA32  db 46h, F0h, 01h, 46h, E8h, 8Bh, 46h, F2h, 01h, 46h, EAh, B8h, 01h, 00h, 89h, 46h                  ; F..F..F..F.....F
-  ovl6:D292  1DA42  db FAh, 8Bh, 46h, F0h, 89h, 46h, E4h, 8Bh, 46h, F2h, 89h, 46h, F0h, 8Bh, 46h, E4h                  ; ..F..F..F..F..F.
-  ovl6:D2A2  1DA52  db 89h, 46h, F2h, 8Bh, 46h, F0h, 01h, 46h, E8h, 8Bh, 46h, F2h, 01h, 46h, EAh, 81h                  ; .F..F..F..F..F..
-  ovl6:D2B2  1DA62  db 6Eh, F4h, 08h, 00h, 81h, 7Eh, F4h, 00h, 00h, 7Dh, 05h, 81h, 46h, F4h, 10h, 00h                  ; n....~...}..F...
-  ovl6:D2C2  1DA72  db 33h, C0h, 89h, 46h, F8h, 89h, 46h, F6h, 89h, 46h, E4h, B0h, 03h, 89h, 46h, E2h                  ; 3..F..F..F....F.
-  ovl6:D2D2  1DA82  db 81h, 7Eh, E4h, 03h, 00h, 7Ch, 03h, E9h, FCh, 00h, 33h, C0h, BEh, FFh, 69h, 8Bh                  ; .~...|....3...i.
-  ovl6:D2E2  1DA92  db 56h, E2h, D1h, E2h, 03h, F2h, 89h, 04h, BEh, 56h, 64h, 03h, 76h, E4h, 8Ah, 04h                  ; V........Vd.v...
-  ovl6:D2F2  1DAA2  db 98h, 89h, 46h, E6h, 81h, 7Eh, E6h, FFh, FFh, 75h, 03h, E9h, CFh, 00h, FFh, 76h                  ; ..F..~...u.....v
-  ovl6:D302  1DAB2  db F4h, FFh, 76h, E6h, FFh, 76h, E2h, E8h, 57h, 01h, 83h, C4h, 06h, B8h, EAh, 00h                  ; ..v..v..W.......
-  ovl6:D312  1DAC2  db 50h, 8Bh, 46h, E4h, F7h, 6Eh, F0h, 03h, 46h, E8h, 5Ah, 2Bh, D0h, 03h, 56h, FCh                  ; P.F..n..F.Z+..V.
-  ovl6:D322  1DAD2  db BEh, E7h, 69h, 8Bh, 46h, E2h, D1h, E0h, 03h, F0h, 89h, 14h, B8h, CCh, 00h, 50h                  ; ..i.F..........P
-  ovl6:D332  1DAE2  db 8Bh, 46h, E4h, F7h, 6Eh, F2h, 03h, 46h, EAh, 5Ah, 2Bh, D0h, 03h, 56h, FEh, BEh                  ; .F..n..F.Z+..V..
-  ovl6:D342  1DAF2  db F3h, 69h, 8Bh, 46h, E2h, D1h, E0h, 03h, F0h, 89h, 14h, BEh, 81h, 65h, 03h, 36h                  ; .i.F.........e.6
-  ovl6:D352  1DB02  db 01h, 63h, 8Ah, 04h, 25h, FFh, 00h, 75h, 22h, 8Bh, 06h, 93h, 64h, 0Bh, C0h, 75h                  ; .c..%..u"...d..u
-  ovl6:D362  1DB12  db 1Ah, 33h, C0h, BEh, 47h, 6Ah, 8Bh, 56h, E2h, D1h, E2h, 03h, F2h, 89h, 04h, BEh                  ; .3..Gj.V........
-  ovl6:D372  1DB22  db 23h, 6Ah, 8Bh, 56h, E2h, D1h, E2h, 03h, F2h, 89h, 04h, FFh, 76h, E2h, E8h, 28h                  ; #j.V........v..(
-  ovl6:D382  1DB32  db 76h, 5Fh, 0Bh, C0h, 74h, 2Bh, 8Bh, 46h, FAh, 0Bh, C0h, 75h, 24h, BEh, 0Eh, 6Ah                  ; v_..t+.F...u$..j
-  ovl6:D392  1DB42  db 8Ah, 04h, 98h, 50h, BEh, 6Dh, 5Eh, 03h, 76h, E6h, 8Ah, 04h, 98h, 5Ah, 3Bh, C2h                  ; ...P.m^.v....Z;.
-  ovl6:D3A2  1DB52  db 7Fh, 0Fh, B8h, 03h, 00h, BEh, 17h, 6Ah, 8Bh, 56h, E2h, D1h, E2h, 03h, F2h, 89h                  ; .......j.V......
-  ovl6:D3B2  1DB62  db 04h, BEh, E1h, 69h, 03h, 76h, E2h, 8Ah, 04h, 98h, 83h, F8h, 02h, 75h, 08h, B8h                  ; ...i.v.......u..
-  ovl6:D3C2  1DB72  db 01h, 00h, 89h, 46h, F6h, EBh, 06h, B8h, 01h, 00h, 89h, 46h, F8h, FFh, 46h, E4h                  ; ...F.......F..F.
-  ovl6:D3D2  1DB82  db FFh, 46h, E2h, E9h, FAh, FEh, B8h, 03h, 00h, 89h, 46h, E2h, 81h, 7Eh, E2h, 06h                  ; .F........F..~..
-  ovl6:D3E2  1DB92  db 00h, 7Dh, 64h, BEh, E7h, 69h, 8Bh, 46h, E2h, D1h, E0h, 03h, F0h, 8Bh, 04h, 3Dh                  ; .}d..i.F.......=
-  ovl6:D3F2  1DBA2  db 19h, FCh, 74h, 4Eh, BEh, 81h, 65h, 03h, 36h, 01h, 63h, 8Ah, 04h, 25h, FFh, 00h                  ; ..tN..e.6.c..%..
-  ovl6:D402  1DBB2  db 74h, 40h, BEh, E1h, 69h, 03h, 76h, E2h, 8Ah, 04h, 98h, 83h, F8h, 02h, 75h, 32h                  ; t@..i.v.......u2
-  ovl6:D412  1DBC2  db 8Bh, 46h, F8h, 0Bh, C0h, 74h, 2Bh, B8h, 03h, 00h, BEh, F3h, 69h, 8Bh, 56h, E2h                  ; .F...t+.....i.V.
-  ovl6:D422  1DBD2  db D1h, E2h, 03h, F2h, 8Bh, 14h, 03h, D0h, 89h, 14h, BEh, 23h, 6Ah, 8Bh, 46h, E2h                  ; ...........#j.F.
-  ovl6:D432  1DBE2  db D1h, E0h, 03h, F0h, FFh, 0Ch, BEh, 47h, 6Ah, 8Bh, 46h, E2h, D1h, E0h, 03h, F0h                  ; .......Gj.F.....
-  ovl6:D442  1DBF2  db FFh, 0Ch, FFh, 46h, E2h, EBh, 95h, B8h, 04h, 00h, 50h, 33h, C0h, 50h, E8h, 6Ch                  ; ...F......P3.P.l
-  ovl6:D452  1DC02  db 5Ah, 5Fh, 5Fh, B8h, 28h, 00h, 50h, E8h, 84h, 5Ah, 5Fh, 33h, C0h, 8Bh, E5h, 5Dh                  ; Z__.(.P..Z_3...]
-  ovl6:D462  1DC12  db C3h                                                                                             ; .
+  ovl6:D0AA  1D85A  e8579a         call   switch_helper
+  ovl6:D0AD  1D85D  dw 1, 8, D0C3h                                                       ; switch table: lowest case 1, 8 cases, default D0C3
+  ovl6:D0B3  1D863  dw D070h                                                                 ; case 1
+  ovl6:D0B5  1D865  dw D07Eh                                                                 ; case 2
+  ovl6:D0B7  1D867  dw D08Ch                                                                 ; case 3
+  ovl6:D0B9  1D869  dw D094h                                                                 ; case 4
+  ovl6:D0BB  1D86B  dw D086h                                                                 ; case 5
+  ovl6:D0BD  1D86D  dw D06Ah                                                                 ; case 6
+  ovl6:D0BF  1D86F  dw D078h                                                                 ; case 7
+  ovl6:D0C1  1D871  dw D09Ch                                                                 ; case 8
+  ovl6:D0C3  1D873  33c0           xor    ax, ax
+  ovl6:D0C5  1D875  8946e2         mov    word ptr [bp - 0x1e], ax
+  ovl6:D0C8  1D878  817ee20300     cmp    word ptr [bp - 0x1e], 3
+  ovl6:D0CD  1D87D  7c03           jl     0xd0d2
+  ovl6:D0CF  1D87F  e9e600         jmp    0xd1b8
+  ovl6:D0D2  1D882  b8ffff         mov    ax, 0xffff
+  ovl6:D0D5  1D885  beff69         mov    si, 0x69ff
+  ovl6:D0D8  1D888  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D0DB  1D88B  d1e2           shl    dx, 1
+  ovl6:D0DD  1D88D  03f2           add    si, dx
+  ovl6:D0DF  1D88F  8904           mov    word ptr [si], ax
+  ovl6:D0E1  1D891  be5664         mov    si, 0x6456
+  ovl6:D0E4  1D894  0376e2         add    si, word ptr [bp - 0x1e]
+  ovl6:D0E7  1D897  8a04           mov    al, byte ptr [si]
+  ovl6:D0E9  1D899  98             cwde
+  ovl6:D0EA  1D89A  8946e6         mov    word ptr [bp - 0x1a], ax
+  ovl6:D0ED  1D89D  817ee6ffff     cmp    word ptr [bp - 0x1a], 0xffff
+  ovl6:D0F2  1D8A2  7503           jne    0xd0f7
+  ovl6:D0F4  1D8A4  e9bb00         jmp    0xd1b2
+  ovl6:D0F7  1D8A7  ff76f4         push   word ptr [bp - 0xc]
+  ovl6:D0FA  1D8AA  ff76e6         push   word ptr [bp - 0x1a]
+  ovl6:D0FD  1D8AD  ff76e2         push   word ptr [bp - 0x1e]
+  ovl6:D100  1D8B0  e86003         call   ovl6_d463
+  ovl6:D103  1D8B3  83c406         add    sp, 6
+  ovl6:D106  1D8B6  8b46e8         mov    ax, word ptr [bp - 0x18]
+  ovl6:D109  1D8B9  05ea00         add    ax, 0xea
+  ovl6:D10C  1D8BC  0346fc         add    ax, word ptr [bp - 4]
+  ovl6:D10F  1D8BF  50             push   ax
+  ovl6:D110  1D8C0  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D113  1D8C3  f76ef0         imul   word ptr [bp - 0x10]
+  ovl6:D116  1D8C6  5a             pop    dx
+  ovl6:D117  1D8C7  03d0           add    dx, ax
+  ovl6:D119  1D8C9  bee769         mov    si, 0x69e7
+  ovl6:D11C  1D8CC  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D11F  1D8CF  d1e0           shl    ax, 1
+  ovl6:D121  1D8D1  03f0           add    si, ax
+  ovl6:D123  1D8D3  8914           mov    word ptr [si], dx
+  ovl6:D125  1D8D5  8b46ea         mov    ax, word ptr [bp - 0x16]
+  ovl6:D128  1D8D8  05cc00         add    ax, 0xcc
+  ovl6:D12B  1D8DB  0346fe         add    ax, word ptr [bp - 2]
+  ovl6:D12E  1D8DE  50             push   ax
+  ovl6:D12F  1D8DF  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D132  1D8E2  f76ef2         imul   word ptr [bp - 0xe]
+  ovl6:D135  1D8E5  5a             pop    dx
+  ovl6:D136  1D8E6  03d0           add    dx, ax
+  ovl6:D138  1D8E8  bef369         mov    si, 0x69f3
+  ovl6:D13B  1D8EB  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D13E  1D8EE  d1e0           shl    ax, 1
+  ovl6:D140  1D8F0  03f0           add    si, ax
+  ovl6:D142  1D8F2  8914           mov    word ptr [si], dx
+  ovl6:D144  1D8F4  be8165         mov    si, 0x6581
+  ovl6:D147  1D8F7  03360363       add    si, word ptr [0x6303]
+  ovl6:D14B  1D8FB  8a04           mov    al, byte ptr [si]
+  ovl6:D14D  1D8FD  25ff00         and    ax, 0xff
+  ovl6:D150  1D900  7522           jne    0xd174
+  ovl6:D152  1D902  8b069364       mov    ax, word ptr [0x6493]
+  ovl6:D156  1D906  0bc0           or     ax, ax
+  ovl6:D158  1D908  751a           jne    0xd174
+  ovl6:D15A  1D90A  33c0           xor    ax, ax
+  ovl6:D15C  1D90C  be476a         mov    si, 0x6a47
+  ovl6:D15F  1D90F  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D162  1D912  d1e2           shl    dx, 1
+  ovl6:D164  1D914  03f2           add    si, dx
+  ovl6:D166  1D916  8904           mov    word ptr [si], ax
+  ovl6:D168  1D918  be236a         mov    si, 0x6a23
+  ovl6:D16B  1D91B  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D16E  1D91E  d1e2           shl    dx, 1
+  ovl6:D170  1D920  03f2           add    si, dx
+  ovl6:D172  1D922  8904           mov    word ptr [si], ax
+  ovl6:D174  1D924  ff76e2         push   word ptr [bp - 0x1e]
+  ovl6:D177  1D927  e83178         call   rt_49ab
+  ovl6:D17A  1D92A  5f             pop    di
+  ovl6:D17B  1D92B  0bc0           or     ax, ax
+  ovl6:D17D  1D92D  7417           je     0xd196
+  ovl6:D17F  1D92F  8b069364       mov    ax, word ptr [0x6493]
+  ovl6:D183  1D933  0bc0           or     ax, ax
+  ovl6:D185  1D935  750f           jne    0xd196
+  ovl6:D187  1D937  b80300         mov    ax, 3
+  ovl6:D18A  1D93A  be176a         mov    si, 0x6a17
+  ovl6:D18D  1D93D  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D190  1D940  d1e2           shl    dx, 1
+  ovl6:D192  1D942  03f2           add    si, dx
+  ovl6:D194  1D944  8904           mov    word ptr [si], ax
+  ovl6:D196  1D946  bee169         mov    si, 0x69e1
+  ovl6:D199  1D949  0376e2         add    si, word ptr [bp - 0x1e]
+  ovl6:D19C  1D94C  8a04           mov    al, byte ptr [si]
+  ovl6:D19E  1D94E  98             cwde
+  ovl6:D19F  1D94F  83f802         cmp    ax, 2
+  ovl6:D1A2  1D952  7508           jne    0xd1ac
+  ovl6:D1A4  1D954  b80100         mov    ax, 1
+  ovl6:D1A7  1D957  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:D1AA  1D95A  eb06           jmp    0xd1b2
+  ovl6:D1AC  1D95C  b80100         mov    ax, 1
+  ovl6:D1AF  1D95F  8946f8         mov    word ptr [bp - 8], ax
+  ovl6:D1B2  1D962  ff46e2         inc    word ptr [bp - 0x1e]
+  ovl6:D1B5  1D965  e910ff         jmp    0xd0c8
+  ovl6:D1B8  1D968  33c0           xor    ax, ax
+  ovl6:D1BA  1D96A  8946e2         mov    word ptr [bp - 0x1e], ax
+  ovl6:D1BD  1D96D  817ee20300     cmp    word ptr [bp - 0x1e], 3
+  ovl6:D1C2  1D972  7d67           jge    0xd22b
+  ovl6:D1C4  1D974  bee769         mov    si, 0x69e7
+  ovl6:D1C7  1D977  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D1CA  1D97A  d1e0           shl    ax, 1
+  ovl6:D1CC  1D97C  03f0           add    si, ax
+  ovl6:D1CE  1D97E  8b04           mov    ax, word ptr [si]
+  ovl6:D1D0  1D980  3d19fc         cmp    ax, 0xfc19
+  ovl6:D1D3  1D983  744e           je     0xd223
+  ovl6:D1D5  1D985  be8165         mov    si, 0x6581
+  ovl6:D1D8  1D988  03360363       add    si, word ptr [0x6303]
+  ovl6:D1DC  1D98C  8a04           mov    al, byte ptr [si]
+  ovl6:D1DE  1D98E  25ff00         and    ax, 0xff
+  ovl6:D1E1  1D991  7440           je     0xd223
+  ovl6:D1E3  1D993  bee169         mov    si, 0x69e1
+  ovl6:D1E6  1D996  0376e2         add    si, word ptr [bp - 0x1e]
+  ovl6:D1E9  1D999  8a04           mov    al, byte ptr [si]
+  ovl6:D1EB  1D99B  98             cwde
+  ovl6:D1EC  1D99C  83f802         cmp    ax, 2
+  ovl6:D1EF  1D99F  7532           jne    0xd223
+  ovl6:D1F1  1D9A1  8b46f8         mov    ax, word ptr [bp - 8]
+  ovl6:D1F4  1D9A4  0bc0           or     ax, ax
+  ovl6:D1F6  1D9A6  742b           je     0xd223
+  ovl6:D1F8  1D9A8  b80300         mov    ax, 3
+  ovl6:D1FB  1D9AB  bef369         mov    si, 0x69f3
+  ovl6:D1FE  1D9AE  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D201  1D9B1  d1e2           shl    dx, 1
+  ovl6:D203  1D9B3  03f2           add    si, dx
+  ovl6:D205  1D9B5  8b14           mov    dx, word ptr [si]
+  ovl6:D207  1D9B7  03d0           add    dx, ax
+  ovl6:D209  1D9B9  8914           mov    word ptr [si], dx
+  ovl6:D20B  1D9BB  be236a         mov    si, 0x6a23
+  ovl6:D20E  1D9BE  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D211  1D9C1  d1e0           shl    ax, 1
+  ovl6:D213  1D9C3  03f0           add    si, ax
+  ovl6:D215  1D9C5  ff0c           dec    word ptr [si]
+  ovl6:D217  1D9C7  be476a         mov    si, 0x6a47
+  ovl6:D21A  1D9CA  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D21D  1D9CD  d1e0           shl    ax, 1
+  ovl6:D21F  1D9CF  03f0           add    si, ax
+  ovl6:D221  1D9D1  ff0c           dec    word ptr [si]
+  ovl6:D223  1D9D3  e8685c         call   rt_2e8e
+  ovl6:D226  1D9D6  ff46e2         inc    word ptr [bp - 0x1e]
+  ovl6:D229  1D9D9  eb92           jmp    0xd1bd
+  ovl6:D22B  1D9DB  8a06a965       mov    al, byte ptr [0x65a9]
+  ovl6:D22F  1D9DF  98             cwde
+  ovl6:D230  1D9E0  0bc0           or     ax, ax
+  ovl6:D232  1D9E2  7403           je     0xd237
+  ovl6:D234  1D9E4  e91202         jmp    0xd449
+  ovl6:D237  1D9E7  be6b60         mov    si, 0x606b
+  ovl6:D23A  1D9EA  8b04           mov    ax, word ptr [si]
+  ovl6:D23C  1D9EC  09c0           or     ax, ax
+  ovl6:D23E  1D9EE  7524           jne    0xd264
+  ovl6:D240  1D9F0  8b066b68       mov    ax, word ptr [0x686b]
+  ovl6:D244  1D9F4  0bc0           or     ax, ax
+  ovl6:D246  1D9F6  751c           jne    0xd264
+  ovl6:D248  1D9F8  b80200         mov    ax, 2
+  ovl6:D24B  1D9FB  50             push   ax
+  ovl6:D24C  1D9FC  8b46e8         mov    ax, word ptr [bp - 0x18]
+  ovl6:D24F  1D9FF  5b             pop    bx
+  ovl6:D250  1DA00  99             cdq
+  ovl6:D251  1DA01  f7fb           idiv   bx
+  ovl6:D253  1DA03  8946e8         mov    word ptr [bp - 0x18], ax
+  ovl6:D256  1DA06  b80200         mov    ax, 2
+  ovl6:D259  1DA09  50             push   ax
+  ovl6:D25A  1DA0A  8b46ea         mov    ax, word ptr [bp - 0x16]
+  ovl6:D25D  1DA0D  5b             pop    bx
+  ovl6:D25E  1DA0E  99             cdq
+  ovl6:D25F  1DA0F  f7fb           idiv   bx
+  ovl6:D261  1DA11  8946ea         mov    word ptr [bp - 0x16], ax
+  ovl6:D264  1DA14  ff360163       push   word ptr [0x6301]
+  ovl6:D268  1DA18  e8c533         call   list_ships
+  ovl6:D26B  1DA1B  5f             pop    di
+  ovl6:D26C  1DA1C  e8b402         call   ovl6_d523
+  ovl6:D26F  1DA1F  33c0           xor    ax, ax
+  ovl6:D271  1DA21  8946fa         mov    word ptr [bp - 6], ax
+  ovl6:D274  1DA24  be5560         mov    si, 0x6055
+  ovl6:D277  1DA27  ff34           push   word ptr [si]
+  ovl6:D279  1DA29  e8915c         call   random
+  ovl6:D27C  1DA2C  5a             pop    dx
+  ovl6:D27D  1DA2D  3bc2           cmp    ax, dx
+  ovl6:D27F  1DA2F  7e30           jle    0xd2b1
+  ovl6:D281  1DA31  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl6:D284  1DA34  0146e8         add    word ptr [bp - 0x18], ax
+  ovl6:D287  1DA37  8b46f2         mov    ax, word ptr [bp - 0xe]
+  ovl6:D28A  1DA3A  0146ea         add    word ptr [bp - 0x16], ax
+  ovl6:D28D  1DA3D  b80100         mov    ax, 1
+  ovl6:D290  1DA40  8946fa         mov    word ptr [bp - 6], ax
+  ovl6:D293  1DA43  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl6:D296  1DA46  8946e4         mov    word ptr [bp - 0x1c], ax
+  ovl6:D299  1DA49  8b46f2         mov    ax, word ptr [bp - 0xe]
+  ovl6:D29C  1DA4C  8946f0         mov    word ptr [bp - 0x10], ax
+  ovl6:D29F  1DA4F  8b46e4         mov    ax, word ptr [bp - 0x1c]
+  ovl6:D2A2  1DA52  8946f2         mov    word ptr [bp - 0xe], ax
+  ovl6:D2A5  1DA55  8b46f0         mov    ax, word ptr [bp - 0x10]
+  ovl6:D2A8  1DA58  0146e8         add    word ptr [bp - 0x18], ax
+  ovl6:D2AB  1DA5B  8b46f2         mov    ax, word ptr [bp - 0xe]
+  ovl6:D2AE  1DA5E  0146ea         add    word ptr [bp - 0x16], ax
+  ovl6:D2B1  1DA61  816ef40800     sub    word ptr [bp - 0xc], 8
+  ovl6:D2B6  1DA66  817ef40000     cmp    word ptr [bp - 0xc], 0
+  ovl6:D2BB  1DA6B  7d05           jge    0xd2c2
+  ovl6:D2BD  1DA6D  8146f41000     add    word ptr [bp - 0xc], 0x10
+  ovl6:D2C2  1DA72  33c0           xor    ax, ax
+  ovl6:D2C4  1DA74  8946f8         mov    word ptr [bp - 8], ax
+  ovl6:D2C7  1DA77  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:D2CA  1DA7A  8946e4         mov    word ptr [bp - 0x1c], ax
+  ovl6:D2CD  1DA7D  b003           mov    al, 3
+  ovl6:D2CF  1DA7F  8946e2         mov    word ptr [bp - 0x1e], ax
+  ovl6:D2D2  1DA82  817ee40300     cmp    word ptr [bp - 0x1c], 3
+  ovl6:D2D7  1DA87  7c03           jl     0xd2dc
+  ovl6:D2D9  1DA89  e9fc00         jmp    0xd3d8
+  ovl6:D2DC  1DA8C  33c0           xor    ax, ax
+  ovl6:D2DE  1DA8E  beff69         mov    si, 0x69ff
+  ovl6:D2E1  1DA91  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D2E4  1DA94  d1e2           shl    dx, 1
+  ovl6:D2E6  1DA96  03f2           add    si, dx
+  ovl6:D2E8  1DA98  8904           mov    word ptr [si], ax
+  ovl6:D2EA  1DA9A  be5664         mov    si, 0x6456
+  ovl6:D2ED  1DA9D  0376e4         add    si, word ptr [bp - 0x1c]
+  ovl6:D2F0  1DAA0  8a04           mov    al, byte ptr [si]
+  ovl6:D2F2  1DAA2  98             cwde
+  ovl6:D2F3  1DAA3  8946e6         mov    word ptr [bp - 0x1a], ax
+  ovl6:D2F6  1DAA6  817ee6ffff     cmp    word ptr [bp - 0x1a], 0xffff
+  ovl6:D2FB  1DAAB  7503           jne    0xd300
+  ovl6:D2FD  1DAAD  e9cf00         jmp    0xd3cf
+  ovl6:D300  1DAB0  ff76f4         push   word ptr [bp - 0xc]
+  ovl6:D303  1DAB3  ff76e6         push   word ptr [bp - 0x1a]
+  ovl6:D306  1DAB6  ff76e2         push   word ptr [bp - 0x1e]
+  ovl6:D309  1DAB9  e85701         call   ovl6_d463
+  ovl6:D30C  1DABC  83c406         add    sp, 6
+  ovl6:D30F  1DABF  b8ea00         mov    ax, 0xea
+  ovl6:D312  1DAC2  50             push   ax
+  ovl6:D313  1DAC3  8b46e4         mov    ax, word ptr [bp - 0x1c]
+  ovl6:D316  1DAC6  f76ef0         imul   word ptr [bp - 0x10]
+  ovl6:D319  1DAC9  0346e8         add    ax, word ptr [bp - 0x18]
+  ovl6:D31C  1DACC  5a             pop    dx
+  ovl6:D31D  1DACD  2bd0           sub    dx, ax
+  ovl6:D31F  1DACF  0356fc         add    dx, word ptr [bp - 4]
+  ovl6:D322  1DAD2  bee769         mov    si, 0x69e7
+  ovl6:D325  1DAD5  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D328  1DAD8  d1e0           shl    ax, 1
+  ovl6:D32A  1DADA  03f0           add    si, ax
+  ovl6:D32C  1DADC  8914           mov    word ptr [si], dx
+  ovl6:D32E  1DADE  b8cc00         mov    ax, 0xcc
+  ovl6:D331  1DAE1  50             push   ax
+  ovl6:D332  1DAE2  8b46e4         mov    ax, word ptr [bp - 0x1c]
+  ovl6:D335  1DAE5  f76ef2         imul   word ptr [bp - 0xe]
+  ovl6:D338  1DAE8  0346ea         add    ax, word ptr [bp - 0x16]
+  ovl6:D33B  1DAEB  5a             pop    dx
+  ovl6:D33C  1DAEC  2bd0           sub    dx, ax
+  ovl6:D33E  1DAEE  0356fe         add    dx, word ptr [bp - 2]
+  ovl6:D341  1DAF1  bef369         mov    si, 0x69f3
+  ovl6:D344  1DAF4  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D347  1DAF7  d1e0           shl    ax, 1
+  ovl6:D349  1DAF9  03f0           add    si, ax
+  ovl6:D34B  1DAFB  8914           mov    word ptr [si], dx
+  ovl6:D34D  1DAFD  be8165         mov    si, 0x6581
+  ovl6:D350  1DB00  03360163       add    si, word ptr [0x6301]
+  ovl6:D354  1DB04  8a04           mov    al, byte ptr [si]
+  ovl6:D356  1DB06  25ff00         and    ax, 0xff
+  ovl6:D359  1DB09  7522           jne    0xd37d
+  ovl6:D35B  1DB0B  8b069364       mov    ax, word ptr [0x6493]
+  ovl6:D35F  1DB0F  0bc0           or     ax, ax
+  ovl6:D361  1DB11  751a           jne    0xd37d
+  ovl6:D363  1DB13  33c0           xor    ax, ax
+  ovl6:D365  1DB15  be476a         mov    si, 0x6a47
+  ovl6:D368  1DB18  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D36B  1DB1B  d1e2           shl    dx, 1
+  ovl6:D36D  1DB1D  03f2           add    si, dx
+  ovl6:D36F  1DB1F  8904           mov    word ptr [si], ax
+  ovl6:D371  1DB21  be236a         mov    si, 0x6a23
+  ovl6:D374  1DB24  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D377  1DB27  d1e2           shl    dx, 1
+  ovl6:D379  1DB29  03f2           add    si, dx
+  ovl6:D37B  1DB2B  8904           mov    word ptr [si], ax
+  ovl6:D37D  1DB2D  ff76e2         push   word ptr [bp - 0x1e]
+  ovl6:D380  1DB30  e82876         call   rt_49ab
+  ovl6:D383  1DB33  5f             pop    di
+  ovl6:D384  1DB34  0bc0           or     ax, ax
+  ovl6:D386  1DB36  742b           je     0xd3b3
+  ovl6:D388  1DB38  8b46fa         mov    ax, word ptr [bp - 6]
+  ovl6:D38B  1DB3B  0bc0           or     ax, ax
+  ovl6:D38D  1DB3D  7524           jne    0xd3b3
+  ovl6:D38F  1DB3F  be0e6a         mov    si, 0x6a0e
+  ovl6:D392  1DB42  8a04           mov    al, byte ptr [si]
+  ovl6:D394  1DB44  98             cwde
+  ovl6:D395  1DB45  50             push   ax
+  ovl6:D396  1DB46  be6d5e         mov    si, 0x5e6d
+  ovl6:D399  1DB49  0376e6         add    si, word ptr [bp - 0x1a]
+  ovl6:D39C  1DB4C  8a04           mov    al, byte ptr [si]
+  ovl6:D39E  1DB4E  98             cwde
+  ovl6:D39F  1DB4F  5a             pop    dx
+  ovl6:D3A0  1DB50  3bc2           cmp    ax, dx
+  ovl6:D3A2  1DB52  7f0f           jg     0xd3b3
+  ovl6:D3A4  1DB54  b80300         mov    ax, 3
+  ovl6:D3A7  1DB57  be176a         mov    si, 0x6a17
+  ovl6:D3AA  1DB5A  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D3AD  1DB5D  d1e2           shl    dx, 1
+  ovl6:D3AF  1DB5F  03f2           add    si, dx
+  ovl6:D3B1  1DB61  8904           mov    word ptr [si], ax
+  ovl6:D3B3  1DB63  bee169         mov    si, 0x69e1
+  ovl6:D3B6  1DB66  0376e2         add    si, word ptr [bp - 0x1e]
+  ovl6:D3B9  1DB69  8a04           mov    al, byte ptr [si]
+  ovl6:D3BB  1DB6B  98             cwde
+  ovl6:D3BC  1DB6C  83f802         cmp    ax, 2
+  ovl6:D3BF  1DB6F  7508           jne    0xd3c9
+  ovl6:D3C1  1DB71  b80100         mov    ax, 1
+  ovl6:D3C4  1DB74  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:D3C7  1DB77  eb06           jmp    0xd3cf
+  ovl6:D3C9  1DB79  b80100         mov    ax, 1
+  ovl6:D3CC  1DB7C  8946f8         mov    word ptr [bp - 8], ax
+  ovl6:D3CF  1DB7F  ff46e4         inc    word ptr [bp - 0x1c]
+  ovl6:D3D2  1DB82  ff46e2         inc    word ptr [bp - 0x1e]
+  ovl6:D3D5  1DB85  e9fafe         jmp    0xd2d2
+  ovl6:D3D8  1DB88  b80300         mov    ax, 3
+  ovl6:D3DB  1DB8B  8946e2         mov    word ptr [bp - 0x1e], ax
+  ovl6:D3DE  1DB8E  817ee20600     cmp    word ptr [bp - 0x1e], 6
+  ovl6:D3E3  1DB93  7d64           jge    0xd449
+  ovl6:D3E5  1DB95  bee769         mov    si, 0x69e7
+  ovl6:D3E8  1DB98  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D3EB  1DB9B  d1e0           shl    ax, 1
+  ovl6:D3ED  1DB9D  03f0           add    si, ax
+  ovl6:D3EF  1DB9F  8b04           mov    ax, word ptr [si]
+  ovl6:D3F1  1DBA1  3d19fc         cmp    ax, 0xfc19
+  ovl6:D3F4  1DBA4  744e           je     0xd444
+  ovl6:D3F6  1DBA6  be8165         mov    si, 0x6581
+  ovl6:D3F9  1DBA9  03360163       add    si, word ptr [0x6301]
+  ovl6:D3FD  1DBAD  8a04           mov    al, byte ptr [si]
+  ovl6:D3FF  1DBAF  25ff00         and    ax, 0xff
+  ovl6:D402  1DBB2  7440           je     0xd444
+  ovl6:D404  1DBB4  bee169         mov    si, 0x69e1
+  ovl6:D407  1DBB7  0376e2         add    si, word ptr [bp - 0x1e]
+  ovl6:D40A  1DBBA  8a04           mov    al, byte ptr [si]
+  ovl6:D40C  1DBBC  98             cwde
+  ovl6:D40D  1DBBD  83f802         cmp    ax, 2
+  ovl6:D410  1DBC0  7532           jne    0xd444
+  ovl6:D412  1DBC2  8b46f8         mov    ax, word ptr [bp - 8]
+  ovl6:D415  1DBC5  0bc0           or     ax, ax
+  ovl6:D417  1DBC7  742b           je     0xd444
+  ovl6:D419  1DBC9  b80300         mov    ax, 3
+  ovl6:D41C  1DBCC  bef369         mov    si, 0x69f3
+  ovl6:D41F  1DBCF  8b56e2         mov    dx, word ptr [bp - 0x1e]
+  ovl6:D422  1DBD2  d1e2           shl    dx, 1
+  ovl6:D424  1DBD4  03f2           add    si, dx
+  ovl6:D426  1DBD6  8b14           mov    dx, word ptr [si]
+  ovl6:D428  1DBD8  03d0           add    dx, ax
+  ovl6:D42A  1DBDA  8914           mov    word ptr [si], dx
+  ovl6:D42C  1DBDC  be236a         mov    si, 0x6a23
+  ovl6:D42F  1DBDF  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D432  1DBE2  d1e0           shl    ax, 1
+  ovl6:D434  1DBE4  03f0           add    si, ax
+  ovl6:D436  1DBE6  ff0c           dec    word ptr [si]
+  ovl6:D438  1DBE8  be476a         mov    si, 0x6a47
+  ovl6:D43B  1DBEB  8b46e2         mov    ax, word ptr [bp - 0x1e]
+  ovl6:D43E  1DBEE  d1e0           shl    ax, 1
+  ovl6:D440  1DBF0  03f0           add    si, ax
+  ovl6:D442  1DBF2  ff0c           dec    word ptr [si]
+  ovl6:D444  1DBF4  ff46e2         inc    word ptr [bp - 0x1e]
+  ovl6:D447  1DBF7  eb95           jmp    0xd3de
+  ovl6:D449  1DBF9  b80400         mov    ax, 4
+  ovl6:D44C  1DBFC  50             push   ax
+  ovl6:D44D  1DBFD  33c0           xor    ax, ax
+  ovl6:D44F  1DBFF  50             push   ax
+  ovl6:D450  1DC00  e86c5a         call   goto_xy
+  ovl6:D453  1DC03  5f             pop    di
+  ovl6:D454  1DC04  5f             pop    di
+  ovl6:D455  1DC05  b82800         mov    ax, 0x28
+  ovl6:D458  1DC08  50             push   ax
+  ovl6:D459  1DC09  e8845a         call   print_spaces
+  ovl6:D45C  1DC0C  5f             pop    di
+  ovl6:D45D  1DC0D  33c0           xor    ax, ax
+  ovl6:D45F  1DC0F  8be5           mov    sp, bp
+  ovl6:D461  1DC11  5d             pop    bp
+  ovl6:D462  1DC12  c3             ret
 
-; ---- ovl6_d463
+; ---- ovl6_d463   (called from 2 places)
 ovl6_d463:
   ovl6:D463  1DC13  55             push   bp
   ovl6:D464  1DC14  8bec           mov    bp, sp
@@ -48830,7 +50709,7 @@ ovl6_d463:
   ovl6:D521  1DCD1  5d             pop    bp
   ovl6:D522  1DCD2  c3             ret
 
-; ---- ovl6_d523   (called from 5 places)
+; ---- ovl6_d523   (called from 6 places)
 ovl6_d523:
   ovl6:D523  1DCD3  55             push   bp
   ovl6:D524  1DCD4  8bec           mov    bp, sp
@@ -49210,7 +51089,7 @@ ovl6_d5aa:
   ovl6:D8E0  1E090  50             push   ax
   ovl6:D8E1  1E091  ff36ed6c       push   word ptr [0x6ced]
   ovl6:D8E5  1E095  ff360363       push   word ptr [0x6303]
-  ovl6:D8E9  1E099  e84146         call   rt_1f2d
+  ovl6:D8E9  1E099  e84146         call   place_detached
   ovl6:D8EC  1E09C  83c408         add    sp, 8
   ovl6:D8EF  1E09F  8b06eb6c       mov    ax, word ptr [0x6ceb]
   ovl6:D8F3  1E0A3  0bc0           or     ax, ax
@@ -49222,7 +51101,7 @@ ovl6_d5aa:
   ovl6:D906  1E0B6  50             push   ax
   ovl6:D907  1E0B7  ff36ef6c       push   word ptr [0x6cef]
   ovl6:D90B  1E0BB  ff360163       push   word ptr [0x6301]
-  ovl6:D90F  1E0BF  e81b46         call   rt_1f2d
+  ovl6:D90F  1E0BF  e81b46         call   place_detached
   ovl6:D912  1E0C2  83c408         add    sp, 8
   ovl6:D915  1E0C5  8b06b865       mov    ax, word ptr [0x65b8]
   ovl6:D919  1E0C9  0bc0           or     ax, ax
@@ -49237,7 +51116,7 @@ ovl6_d5aa:
   ovl6:D92F  1E0DF  03f2           add    si, dx
   ovl6:D931  1E0E1  8904           mov    word ptr [si], ax
   ovl6:D933  1E0E3  ff360363       push   word ptr [0x6303]
-  ovl6:D937  1E0E7  e81b36         call   rt_0f55
+  ovl6:D937  1E0E7  e81b36         call   clear_paths
   ovl6:D93A  1E0EA  5f             pop    di
   ovl6:D93B  1E0EB  eb18           jmp    0xd955
   ovl6:D93D  1E0ED  b8ffff         mov    ax, 0xffff
@@ -49247,7 +51126,7 @@ ovl6_d5aa:
   ovl6:D949  1E0F9  03f2           add    si, dx
   ovl6:D94B  1E0FB  8904           mov    word ptr [si], ax
   ovl6:D94D  1E0FD  ff360163       push   word ptr [0x6301]
-  ovl6:D951  1E101  e80136         call   rt_0f55
+  ovl6:D951  1E101  e80136         call   clear_paths
   ovl6:D954  1E104  5f             pop    di
   ovl6:D955  1E105  33c0           xor    ax, ax
   ovl6:D957  1E107  beff56         mov    si, 0x56ff
@@ -49458,7 +51337,7 @@ ovl6_d5aa:
   ovl6:DB26  1E2D6  83f8ff         cmp    ax, -1
   ovl6:DB29  1E2D9  7518           jne    0xdb43
   ovl6:DB2B  1E2DB  ff360163       push   word ptr [0x6301]
-  ovl6:DB2F  1E2DF  e82334         call   rt_0f55
+  ovl6:DB2F  1E2DF  e82334         call   clear_paths
   ovl6:DB32  1E2E2  5f             pop    di
   ovl6:DB33  1E2E3  b80f27         mov    ax, 0x270f
   ovl6:DB36  1E2E6  be2d5d         mov    si, 0x5d2d
@@ -49475,7 +51354,7 @@ ovl6_d5aa:
   ovl6:DB51  1E301  83f8ff         cmp    ax, -1
   ovl6:DB54  1E304  7518           jne    0xdb6e
   ovl6:DB56  1E306  ff360363       push   word ptr [0x6303]
-  ovl6:DB5A  1E30A  e8f833         call   rt_0f55
+  ovl6:DB5A  1E30A  e8f833         call   clear_paths
   ovl6:DB5D  1E30D  5f             pop    di
   ovl6:DB5E  1E30E  b80f27         mov    ax, 0x270f
   ovl6:DB61  1E311  be2d5d         mov    si, 0x5d2d
@@ -49951,20 +51830,35 @@ ovl6_df4b:
   ovl6:DF88  1E738  7454           je     0xdfde
   ovl6:DF8A  1E73A  8b061463       mov    ax, word ptr [0x6314]
   ovl6:DF8E  1E73E  eb2f           jmp    0xdfbf
-  ; ---- data / unreached bytes (47 bytes)
-  ovl6:DF90  1E740  db B8h, FFh, 17h, 89h, 46h, FCh, EBh, 37h, B8h, 07h, 18h, 89h, 46h, FCh, EBh, 2Fh                  ; ....F..7....F../
-  ovl6:DFA0  1E750  db B8h, F5h, 17h, 89h, 46h, FCh, B8h, 01h, 00h, 89h, 46h, FEh, EBh, 21h, B8h, F5h                  ; ....F.....F..!..
-  ovl6:DFB0  1E760  db 4Ah, 05h, 47h, 02h, 89h, 46h, FCh, B8h, 01h, 00h, 89h, 46h, FEh, EBh, 10h                       ; J.G..F.....F...
+  ovl6:DF90  1E740  b8ff17         mov    ax, 0x17ff
+  ovl6:DF93  1E743  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:DF96  1E746  eb37           jmp    0xdfcf
+  ovl6:DF98  1E748  b80718         mov    ax, 0x1807
+  ovl6:DF9B  1E74B  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:DF9E  1E74E  eb2f           jmp    0xdfcf
+  ovl6:DFA0  1E750  b8f517         mov    ax, 0x17f5
+  ovl6:DFA3  1E753  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:DFA6  1E756  b80100         mov    ax, 1
+  ovl6:DFA9  1E759  8946fe         mov    word ptr [bp - 2], ax
+  ovl6:DFAC  1E75C  eb21           jmp    0xdfcf
+  ovl6:DFAE  1E75E  b8f54a         mov    ax, 0x4af5
+  ovl6:DFB1  1E761  054702         add    ax, 0x247
+  ovl6:DFB4  1E764  8946fc         mov    word ptr [bp - 4], ax
+  ovl6:DFB7  1E767  b80100         mov    ax, 1
+  ovl6:DFBA  1E76A  8946fe         mov    word ptr [bp - 2], ax
+  ovl6:DFBD  1E76D  eb10           jmp    0xdfcf
   ovl6:DFBF  1E76F  50             push   ax
-  ovl6:DFC0  1E770  e8418b         call   rt_6b04
-  ovl6:DFC3  1E773  0000           add    byte ptr [bx + si], al
-  ovl6:DFC5  1E775  0300           add    ax, word ptr [bx + si]
-  ovl6:DFC7  1E777  ae             scasb  al, byte ptr es:[di]
-  ovl6:DFC8  1E778  df90dfa0       fist   word ptr [bx + si - 0x5f21]
-  ovl6:DFCC  1E77C  df98df33       fistp  word ptr [bx + si + 0x33df]
-  ovl6:DFD0  1E780  c050ff76       rcl    byte ptr [bx + si - 1], 0x76
-  ; ---- data / unreached bytes (10 bytes)
-  ovl6:DFD4  1E784  db FEh, FFh, 76h, FCh, E8h, E9h, 4Ch, 83h, C4h, 06h                                                ; ..v...L...
+  ovl6:DFC0  1E770  e8418b         call   switch_helper
+  ovl6:DFC3  1E773  dw 0, 3, DFAEh                                                       ; switch table: lowest case 0, 3 cases, default DFAE
+  ovl6:DFC9  1E779  dw DF90h                                                                 ; case 0
+  ovl6:DFCB  1E77B  dw DFA0h                                                                 ; case 1
+  ovl6:DFCD  1E77D  dw DF98h                                                                 ; case 2
+  ovl6:DFCF  1E77F  33c0           xor    ax, ax
+  ovl6:DFD1  1E781  50             push   ax
+  ovl6:DFD2  1E782  ff76fe         push   word ptr [bp - 2]
+  ovl6:DFD5  1E785  ff76fc         push   word ptr [bp - 4]
+  ovl6:DFD8  1E788  e8e94c         call   draw_icon
+  ovl6:DFDB  1E78B  83c406         add    sp, 6
   ovl6:DFDE  1E78E  8be5           mov    sp, bp
   ovl6:DFE0  1E790  5d             pop    bp
   ovl6:DFE1  1E791  c3             ret
@@ -50026,7 +51920,7 @@ ovl6_dfe2:
   ovl6:E07D  1E82D  b8f54a         mov    ax, 0x4af5
   ovl6:E080  1E830  050301         add    ax, 0x103
   ovl6:E083  1E833  50             push   ax
-  ovl6:E084  1E834  e83d4c         call   rt_2cc4
+  ovl6:E084  1E834  e83d4c         call   draw_icon
   ovl6:E087  1E837  83c406         add    sp, 6
   ovl6:E08A  1E83A  b80200         mov    ax, 2
   ovl6:E08D  1E83D  50             push   ax
@@ -50200,7 +52094,7 @@ ovl6_e15d:
   ovl6:E1E4  1E994  50             push   ax
   ovl6:E1E5  1E995  b84d06         mov    ax, 0x64d
   ovl6:E1E8  1E998  50             push   ax
-  ovl6:E1E9  1E999  e8d84a         call   rt_2cc4
+  ovl6:E1E9  1E999  e8d84a         call   draw_icon
   ovl6:E1EC  1E99C  83c406         add    sp, 6
   ovl6:E1EF  1E99F  b83d00         mov    ax, 0x3d
   ovl6:E1F2  1E9A2  50             push   ax
@@ -50208,7 +52102,7 @@ ovl6_e15d:
   ovl6:E1F5  1E9A5  50             push   ax
   ovl6:E1F6  1E9A6  b86f06         mov    ax, 0x66f
   ovl6:E1F9  1E9A9  50             push   ax
-  ovl6:E1FA  1E9AA  e8c74a         call   rt_2cc4
+  ovl6:E1FA  1E9AA  e8c74a         call   draw_icon
   ovl6:E1FD  1E9AD  83c406         add    sp, 6
   ovl6:E200  1E9B0  8be5           mov    sp, bp
   ovl6:E202  1E9B2  5d             pop    bp
@@ -50260,7 +52154,7 @@ ovl6_e204:
   ovl6:E264  1EA14  5d             pop    bp
   ovl6:E265  1EA15  c3             ret
 
-; ---- ovl6_e266   (called from 1 place)
+; ---- ovl6_e266   (called from 5 places)
 ovl6_e266:
   ovl6:E266  1EA16  55             push   bp
   ovl6:E267  1EA17  8bec           mov    bp, sp
@@ -50352,30 +52246,44 @@ ovl6_e31e:
   ovl6:E32C  1EADC  5f             pop    di
   ovl6:E32D  1EADD  8b06cf69       mov    ax, word ptr [0x69cf]
   ovl6:E331  1EAE1  eb41           jmp    0xe374
-  ; ---- data / unreached bytes (12 bytes)
-  ovl6:E333  1EAE3  db B8h, F5h, 4Ah, 83h, C0h, 7Eh, 50h, E8h, 18h, 50h, 5Fh, EBh                                      ; ..J..~P..P_.
-  ovl6:E33F  1EAEF  46             inc    si
+  ovl6:E333  1EAE3  b8f54a         mov    ax, 0x4af5
+  ovl6:E336  1EAE6  83c07e         add    ax, 0x7e
+  ovl6:E339  1EAE9  50             push   ax
+  ovl6:E33A  1EAEA  e81850         call   print_string
+  ovl6:E33D  1EAED  5f             pop    di
+  ovl6:E33E  1EAEE  eb46           jmp    0xe386
   ovl6:E340  1EAF0  b8f54a         mov    ax, 0x4af5
   ovl6:E343  1EAF3  058500         add    ax, 0x85
   ovl6:E346  1EAF6  50             push   ax
   ovl6:E347  1EAF7  e80b50         call   print_string
   ovl6:E34A  1EAFA  5f             pop    di
   ovl6:E34B  1EAFB  eb39           jmp    0xe386
-  ; ---- data / unreached bytes (39 bytes)
-  ovl6:E34D  1EAFD  db B8h, F5h, 4Ah, 05h, 8Ah, 00h, 50h, E8h, FEh, 4Fh, 5Fh, EBh, 2Ch, B8h, F5h, 4Ah                  ; ..J...P..O_.,..J
-  ovl6:E35D  1EB0D  db 05h, 91h, 00h, 50h, E8h, F1h, 4Fh, 5Fh, EBh, 1Fh, B8h, F5h, 4Ah, 05h, 96h, 00h                  ; ...P..O_....J...
-  ovl6:E36D  1EB1D  db 50h, E8h, E4h, 4Fh, 5Fh, EBh, 12h                                                               ; P..O_..
+  ovl6:E34D  1EAFD  b8f54a         mov    ax, 0x4af5
+  ovl6:E350  1EB00  058a00         add    ax, 0x8a
+  ovl6:E353  1EB03  50             push   ax
+  ovl6:E354  1EB04  e8fe4f         call   print_string
+  ovl6:E357  1EB07  5f             pop    di
+  ovl6:E358  1EB08  eb2c           jmp    0xe386
+  ovl6:E35A  1EB0A  b8f54a         mov    ax, 0x4af5
+  ovl6:E35D  1EB0D  059100         add    ax, 0x91
+  ovl6:E360  1EB10  50             push   ax
+  ovl6:E361  1EB11  e8f14f         call   print_string
+  ovl6:E364  1EB14  5f             pop    di
+  ovl6:E365  1EB15  eb1f           jmp    0xe386
+  ovl6:E367  1EB17  b8f54a         mov    ax, 0x4af5
+  ovl6:E36A  1EB1A  059600         add    ax, 0x96
+  ovl6:E36D  1EB1D  50             push   ax
+  ovl6:E36E  1EB1E  e8e44f         call   print_string
+  ovl6:E371  1EB21  5f             pop    di
+  ovl6:E372  1EB22  eb12           jmp    0xe386
   ovl6:E374  1EB24  50             push   ax
-  ovl6:E375  1EB25  e88c87         call   rt_6b04
-  ovl6:E378  1EB28  0000           add    byte ptr [bx + si], al
-  ovl6:E37A  1EB2A  0400           add    al, 0
-  ovl6:E37C  1EB2C  67e333         jecxz  0xe3b2
-  ovl6:E37F  1EB2F  e340           jcxz   0xe3c1
-  ovl6:E381  1EB31  e34d           jcxz   0xe3d0
-  ovl6:E383  1EB33  e35a           jcxz   0xe3df
-  ovl6:E385  1EB35  e3b8           jcxz   0xe33f
-  ovl6:E387  1EB37  f5             cmc
-  ovl6:E388  1EB38  4a             dec    dx
+  ovl6:E375  1EB25  e88c87         call   switch_helper
+  ovl6:E378  1EB28  dw 0, 4, E367h                                                       ; switch table: lowest case 0, 4 cases, default E367
+  ovl6:E37E  1EB2E  dw E333h                                                                 ; case 0
+  ovl6:E380  1EB30  dw E340h                                                                 ; case 1
+  ovl6:E382  1EB32  dw E34Dh                                                                 ; case 2
+  ovl6:E384  1EB34  dw E35Ah                                                                 ; case 3
+  ovl6:E386  1EB36  b8f54a         mov    ax, 0x4af5
   ovl6:E389  1EB39  059d00         add    ax, 0x9d
   ovl6:E38C  1EB3C  50             push   ax
   ovl6:E38D  1EB3D  e8c54f         call   print_string
@@ -50402,7 +52310,7 @@ ovl6_e394:
   ovl6:E3AF  1EB5F  50             push   ax
   ovl6:E3B0  1EB60  b84d06         mov    ax, 0x64d
   ovl6:E3B3  1EB63  50             push   ax
-  ovl6:E3B4  1EB64  e80d49         call   rt_2cc4
+  ovl6:E3B4  1EB64  e80d49         call   draw_icon
   ovl6:E3B7  1EB67  83c406         add    sp, 6
   ovl6:E3BA  1EB6A  b80e00         mov    ax, 0xe
   ovl6:E3BD  1EB6D  50             push   ax
@@ -50410,7 +52318,7 @@ ovl6_e394:
   ovl6:E3C0  1EB70  50             push   ax
   ovl6:E3C1  1EB71  b86f06         mov    ax, 0x66f
   ovl6:E3C4  1EB74  50             push   ax
-  ovl6:E3C5  1EB75  e8fc48         call   rt_2cc4
+  ovl6:E3C5  1EB75  e8fc48         call   draw_icon
   ovl6:E3C8  1EB78  83c406         add    sp, 6
   ovl6:E3CB  1EB7B  b82a00         mov    ax, 0x2a
   ovl6:E3CE  1EB7E  50             push   ax
@@ -50418,7 +52326,7 @@ ovl6_e394:
   ovl6:E3D1  1EB81  50             push   ax
   ovl6:E3D2  1EB82  b82b06         mov    ax, 0x62b
   ovl6:E3D5  1EB85  50             push   ax
-  ovl6:E3D6  1EB86  e8eb48         call   rt_2cc4
+  ovl6:E3D6  1EB86  e8eb48         call   draw_icon
   ovl6:E3D9  1EB89  83c406         add    sp, 6
   ovl6:E3DC  1EB8C  e85328         call   beep_low
   ovl6:E3DF  1EB8F  8be5           mov    sp, bp
@@ -50884,90 +52792,346 @@ ovl6_e7f1:
   ovl6:E861  1F011  8b76fc         mov    si, word ptr [bp - 4]
   ovl6:E864  1F014  8b04           mov    ax, word ptr [si]
   ovl6:E866  1F016  e9d701         jmp    0xea40
-  ; ---- data / unreached bytes (471 bytes)
-  ovl6:E869  1F019  db 81h, 3Eh, 77h, 6Ch, 75h, 00h, 75h, 11h, B8h, 04h, 00h, 8Bh, 76h, FCh, 89h, 04h                  ; .>wlu.u.....v...
-  ovl6:E879  1F029  db B8h, 1Dh, 12h, 89h, 06h, 79h, 6Ch, EBh, 18h, 81h, 3Eh, 77h, 6Ch, 75h, 00h, 7Eh                  ; .....yl...>wlu.~
-  ovl6:E889  1F039  db 09h, B8h, 49h, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h, B8h, 5Fh, 11h, 89h, 06h, 79h                  ; ..I...yl..._...y
-  ovl6:E899  1F049  db 6Ch, E9h, C5h, 01h, 81h, 3Eh, 77h, 6Ch, 80h, 00h, 7Ch, 0Eh, 8Bh, 76h, FCh, FFh                  ; l....>wl..|..v..
-  ovl6:E8A9  1F059  db 04h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h, B8h, 9Fh, 11h, 89h, 06h, 79h                  ; ......yl.......y
-  ovl6:E8B9  1F069  db 6Ch, E9h, A5h, 01h, 33h, C0h, 50h, 50h, 8Bh, 06h, 77h, 6Ch, 48h, 50h, B8h, 3Dh                  ; l...3.PP..wlHP.=
-  ovl6:E8C9  1F079  db 3Fh, 05h, 9Eh, 08h, 50h, E8h, 9Eh, 7Ch, 83h, C4h, 08h, 8Bh, 76h, FCh, FFh, 04h                  ; ?...P..|....v...
-  ovl6:E8D9  1F089  db E9h, 79h, 04h, 8Ah, 06h, 67h, 68h, 98h, 0Bh, C0h, 74h, 10h, 81h, 3Eh, 77h, 6Ch                  ; .y...gh...t..>wl
-  ovl6:E8E9  1F099  db 77h, 00h, 7Dh, 08h, B8h, 09h, 00h, 8Bh, 76h, FCh, 89h, 04h, 81h, 3Eh, 77h, 6Ch                  ; w.}.....v....>wl
-  ovl6:E8F9  1F0A9  db 73h, 00h, 74h, 0Ah, 8Bh, 76h, FCh, 8Bh, 04h, 83h, F8h, 09h, 75h, 11h, 8Bh, 76h                  ; s.t..v......u..v
-  ovl6:E909  1F0B9  db FCh, FFh, 04h, E8h, 51h, 04h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch, EBh, 18h, 81h                  ; ....Q......yl...
-  ovl6:E919  1F0C9  db 3Eh, 77h, 6Ch, 73h, 00h, 7Eh, 09h, B8h, 49h, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h                  ; >wls.~..I...yl..
-  ovl6:E929  1F0D9  db B8h, 5Fh, 11h, 89h, 06h, 79h, 6Ch, E9h, 2Fh, 01h, 81h, 3Eh, 77h, 6Ch, 7Eh, 00h                  ; ._...yl./..>wl~.
-  ovl6:E939  1F0E9  db 7Ch, 0Eh, 8Bh, 76h, FCh, FFh, 04h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h                  ; |..v........yl..
-  ovl6:E949  1F0F9  db B8h, F3h, 11h, 89h, 06h, 79h, 6Ch, E9h, 0Fh, 01h, B8h, 53h, 13h, 89h, 06h, 79h                  ; .....yl....S...y
-  ovl6:E959  1F109  db 6Ch, 8Bh, 76h, FCh, FFh, 04h, E9h, 00h, 01h, 81h, 3Eh, 77h, 6Ch, 74h, 00h, 75h                  ; l.v.......>wlt.u
-  ovl6:E969  1F119  db 11h, 8Bh, 76h, FCh, FFh, 04h, E8h, EEh, 03h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch                  ; ..v...........yl
-  ovl6:E979  1F129  db EBh, 18h, 81h, 3Eh, 77h, 6Ch, 74h, 00h, 7Dh, 09h, B8h, F3h, 11h, 89h, 06h, 79h                  ; ...>wlt.}......y
-  ovl6:E989  1F139  db 6Ch, EBh, 07h, B8h, C9h, 11h, 89h, 06h, 79h, 6Ch, E9h, CCh, 00h, 81h, 3Eh, 77h                  ; l.......yl....>w
-  ovl6:E999  1F149  db 6Ch, 77h, 00h, 75h, 11h, 81h, 06h, 77h, 6Ch, 58h, 00h, B8h, 0Bh, 00h, 8Bh, 76h                  ; lw.u...wlX.....v
-  ovl6:E9A9  1F159  db FCh, 89h, 04h, E9h, B2h, FEh, 81h, 3Eh, 77h, 6Ch, 77h, 00h, 7Dh, 09h, B8h, 5Fh                  ; .......>wlw.}.._
-  ovl6:E9B9  1F169  db 11h, 89h, 06h, 79h, 6Ch, EBh, 07h, B8h, 49h, 11h, 89h, 06h, 79h, 6Ch, E9h, 98h                  ; ...yl...I...yl..
-  ovl6:E9C9  1F179  db 00h, 81h, 3Eh, 77h, 6Ch, D1h, 00h, 75h, 2Bh, 81h, 2Eh, 77h, 6Ch, 58h, 00h, B8h                  ; ..>wl..u+..wlX..
-  ovl6:E9D9  1F189  db 0Ch, 00h, 8Bh, 76h, FCh, 89h, 04h, BEh, 77h, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h                  ; ...v....wj...i..
-  ovl6:E9E9  1F199  db 03h, F0h, 8Bh, 04h, BEh, 83h, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h                  ; ......j...i.....
-  ovl6:E9F9  1F1A9  db 04h, E9h, 64h, FEh, B8h, CDh, 12h, 89h, 06h, 79h, 6Ch, EBh, 5Ch, 8Bh, 76h, FCh                  ; ..d......yl.\.v.
-  ovl6:EA09  1F1B9  db 8Bh, 04h, 83h, F8h, 0Dh, 74h, 0Bh, B8h, 0Dh, 00h, 8Bh, 76h, FCh, 89h, 04h, E8h                  ; .....t.....v....
-  ovl6:EA19  1F1C9  db 4Bh, F8h, 81h, 3Eh, 77h, 6Ch, 79h, 00h, 7Dh, 09h, B8h, 5Fh, 11h, 89h, 06h, 79h                  ; K..>wly.}.._...y
-  ovl6:EA29  1F1D9  db 6Ch, EBh, 07h, B8h, 33h, 11h, 89h, 06h, 79h, 6Ch, 81h, 3Eh, 77h, 6Ch, 78h, 00h                  ; l...3...yl.>wlx.
-  ovl6:EA39  1F1E9  db 75h, 03h, E8h, 28h, F8h, EBh, 22h                                                               ; u..(.."
+  ovl6:E869  1F019  813e776c7500   cmp    word ptr [0x6c77], 0x75
+  ovl6:E86F  1F01F  7511           jne    0xe882
+  ovl6:E871  1F021  b80400         mov    ax, 4
+  ovl6:E874  1F024  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E877  1F027  8904           mov    word ptr [si], ax
+  ovl6:E879  1F029  b81d12         mov    ax, 0x121d
+  ovl6:E87C  1F02C  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E880  1F030  eb18           jmp    0xe89a
+  ovl6:E882  1F032  813e776c7500   cmp    word ptr [0x6c77], 0x75
+  ovl6:E888  1F038  7e09           jle    0xe893
+  ovl6:E88A  1F03A  b84911         mov    ax, 0x1149
+  ovl6:E88D  1F03D  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E891  1F041  eb07           jmp    0xe89a
+  ovl6:E893  1F043  b85f11         mov    ax, 0x115f
+  ovl6:E896  1F046  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E89A  1F04A  e9c501         jmp    0xea62
+  ovl6:E89D  1F04D  813e776c8000   cmp    word ptr [0x6c77], 0x80
+  ovl6:E8A3  1F053  7c0e           jl     0xe8b3
+  ovl6:E8A5  1F055  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E8A8  1F058  ff04           inc    word ptr [si]
+  ovl6:E8AA  1F05A  b81111         mov    ax, 0x1111
+  ovl6:E8AD  1F05D  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E8B1  1F061  eb07           jmp    0xe8ba
+  ovl6:E8B3  1F063  b89f11         mov    ax, 0x119f
+  ovl6:E8B6  1F066  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E8BA  1F06A  e9a501         jmp    0xea62
+  ovl6:E8BD  1F06D  33c0           xor    ax, ax
+  ovl6:E8BF  1F06F  50             push   ax
+  ovl6:E8C0  1F070  50             push   ax
+  ovl6:E8C1  1F071  8b06776c       mov    ax, word ptr [0x6c77]
+  ovl6:E8C5  1F075  48             dec    ax
+  ovl6:E8C6  1F076  50             push   ax
+  ovl6:E8C7  1F077  b83d3f         mov    ax, 0x3f3d
+  ovl6:E8CA  1F07A  059e08         add    ax, 0x89e
+  ovl6:E8CD  1F07D  50             push   ax
+  ovl6:E8CE  1F07E  e89e7c         call   rt_656f
+  ovl6:E8D1  1F081  83c408         add    sp, 8
+  ovl6:E8D4  1F084  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E8D7  1F087  ff04           inc    word ptr [si]
+  ovl6:E8D9  1F089  e97904         jmp    0xed55
+  ovl6:E8DC  1F08C  8a066768       mov    al, byte ptr [0x6867]
+  ovl6:E8E0  1F090  98             cwde
+  ovl6:E8E1  1F091  0bc0           or     ax, ax
+  ovl6:E8E3  1F093  7410           je     0xe8f5
+  ovl6:E8E5  1F095  813e776c7700   cmp    word ptr [0x6c77], 0x77
+  ovl6:E8EB  1F09B  7d08           jge    0xe8f5
+  ovl6:E8ED  1F09D  b80900         mov    ax, 9
+  ovl6:E8F0  1F0A0  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E8F3  1F0A3  8904           mov    word ptr [si], ax
+  ovl6:E8F5  1F0A5  813e776c7300   cmp    word ptr [0x6c77], 0x73
+  ovl6:E8FB  1F0AB  740a           je     0xe907
+  ovl6:E8FD  1F0AD  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E900  1F0B0  8b04           mov    ax, word ptr [si]
+  ovl6:E902  1F0B2  83f809         cmp    ax, 9
+  ovl6:E905  1F0B5  7511           jne    0xe918
+  ovl6:E907  1F0B7  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E90A  1F0BA  ff04           inc    word ptr [si]
+  ovl6:E90C  1F0BC  e85104         call   ovl6_ed60
+  ovl6:E90F  1F0BF  b81111         mov    ax, 0x1111
+  ovl6:E912  1F0C2  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E916  1F0C6  eb18           jmp    0xe930
+  ovl6:E918  1F0C8  813e776c7300   cmp    word ptr [0x6c77], 0x73
+  ovl6:E91E  1F0CE  7e09           jle    0xe929
+  ovl6:E920  1F0D0  b84911         mov    ax, 0x1149
+  ovl6:E923  1F0D3  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E927  1F0D7  eb07           jmp    0xe930
+  ovl6:E929  1F0D9  b85f11         mov    ax, 0x115f
+  ovl6:E92C  1F0DC  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E930  1F0E0  e92f01         jmp    0xea62
+  ovl6:E933  1F0E3  813e776c7e00   cmp    word ptr [0x6c77], 0x7e
+  ovl6:E939  1F0E9  7c0e           jl     0xe949
+  ovl6:E93B  1F0EB  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E93E  1F0EE  ff04           inc    word ptr [si]
+  ovl6:E940  1F0F0  b81111         mov    ax, 0x1111
+  ovl6:E943  1F0F3  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E947  1F0F7  eb07           jmp    0xe950
+  ovl6:E949  1F0F9  b8f311         mov    ax, 0x11f3
+  ovl6:E94C  1F0FC  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E950  1F100  e90f01         jmp    0xea62
+  ovl6:E953  1F103  b85313         mov    ax, 0x1353
+  ovl6:E956  1F106  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E95A  1F10A  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E95D  1F10D  ff04           inc    word ptr [si]
+  ovl6:E95F  1F10F  e90001         jmp    0xea62
+  ovl6:E962  1F112  813e776c7400   cmp    word ptr [0x6c77], 0x74
+  ovl6:E968  1F118  7511           jne    0xe97b
+  ovl6:E96A  1F11A  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E96D  1F11D  ff04           inc    word ptr [si]
+  ovl6:E96F  1F11F  e8ee03         call   ovl6_ed60
+  ovl6:E972  1F122  b81111         mov    ax, 0x1111
+  ovl6:E975  1F125  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E979  1F129  eb18           jmp    0xe993
+  ovl6:E97B  1F12B  813e776c7400   cmp    word ptr [0x6c77], 0x74
+  ovl6:E981  1F131  7d09           jge    0xe98c
+  ovl6:E983  1F133  b8f311         mov    ax, 0x11f3
+  ovl6:E986  1F136  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E98A  1F13A  eb07           jmp    0xe993
+  ovl6:E98C  1F13C  b8c911         mov    ax, 0x11c9
+  ovl6:E98F  1F13F  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E993  1F143  e9cc00         jmp    0xea62
+  ovl6:E996  1F146  813e776c7700   cmp    word ptr [0x6c77], 0x77
+  ovl6:E99C  1F14C  7511           jne    0xe9af
+  ovl6:E99E  1F14E  8106776c5800   add    word ptr [0x6c77], 0x58
+  ovl6:E9A4  1F154  b80b00         mov    ax, 0xb
+  ovl6:E9A7  1F157  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E9AA  1F15A  8904           mov    word ptr [si], ax
+  ovl6:E9AC  1F15C  e9b2fe         jmp    0xe861
+  ovl6:E9AF  1F15F  813e776c7700   cmp    word ptr [0x6c77], 0x77
+  ovl6:E9B5  1F165  7d09           jge    0xe9c0
+  ovl6:E9B7  1F167  b85f11         mov    ax, 0x115f
+  ovl6:E9BA  1F16A  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E9BE  1F16E  eb07           jmp    0xe9c7
+  ovl6:E9C0  1F170  b84911         mov    ax, 0x1149
+  ovl6:E9C3  1F173  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:E9C7  1F177  e99800         jmp    0xea62
+  ovl6:E9CA  1F17A  813e776cd100   cmp    word ptr [0x6c77], 0xd1
+  ovl6:E9D0  1F180  752b           jne    0xe9fd
+  ovl6:E9D2  1F182  812e776c5800   sub    word ptr [0x6c77], 0x58
+  ovl6:E9D8  1F188  b80c00         mov    ax, 0xc
+  ovl6:E9DB  1F18B  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:E9DE  1F18E  8904           mov    word ptr [si], ax
+  ovl6:E9E0  1F190  be776a         mov    si, 0x6a77
+  ovl6:E9E3  1F193  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl6:E9E7  1F197  d1e0           shl    ax, 1
+  ovl6:E9E9  1F199  03f0           add    si, ax
+  ovl6:E9EB  1F19B  8b04           mov    ax, word ptr [si]
+  ovl6:E9ED  1F19D  be836a         mov    si, 0x6a83
+  ovl6:E9F0  1F1A0  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl6:E9F4  1F1A4  d1e2           shl    dx, 1
+  ovl6:E9F6  1F1A6  03f2           add    si, dx
+  ovl6:E9F8  1F1A8  8904           mov    word ptr [si], ax
+  ovl6:E9FA  1F1AA  e964fe         jmp    0xe861
+  ovl6:E9FD  1F1AD  b8cd12         mov    ax, 0x12cd
+  ovl6:EA00  1F1B0  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EA04  1F1B4  eb5c           jmp    0xea62
+  ovl6:EA06  1F1B6  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EA09  1F1B9  8b04           mov    ax, word ptr [si]
+  ovl6:EA0B  1F1BB  83f80d         cmp    ax, 0xd
+  ovl6:EA0E  1F1BE  740b           je     0xea1b
+  ovl6:EA10  1F1C0  b80d00         mov    ax, 0xd
+  ovl6:EA13  1F1C3  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EA16  1F1C6  8904           mov    word ptr [si], ax
+  ovl6:EA18  1F1C8  e84bf8         call   ovl6_e266
+  ovl6:EA1B  1F1CB  813e776c7900   cmp    word ptr [0x6c77], 0x79
+  ovl6:EA21  1F1D1  7d09           jge    0xea2c
+  ovl6:EA23  1F1D3  b85f11         mov    ax, 0x115f
+  ovl6:EA26  1F1D6  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EA2A  1F1DA  eb07           jmp    0xea33
+  ovl6:EA2C  1F1DC  b83311         mov    ax, 0x1133
+  ovl6:EA2F  1F1DF  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EA33  1F1E3  813e776c7800   cmp    word ptr [0x6c77], 0x78
+  ovl6:EA39  1F1E9  7503           jne    0xea3e
+  ovl6:EA3B  1F1EB  e828f8         call   ovl6_e266
+  ovl6:EA3E  1F1EE  eb22           jmp    0xea62
   ovl6:EA40  1F1F0  50             push   ax
-  ovl6:EA41  1F1F1  e8c080         call   rt_6b04
-  ovl6:EA44  1F1F4  0000           add    byte ptr [bx + si], al
-  ovl6:EA46  1F1F6  0c00           or     al, 0
-  ovl6:EA48  1F1F8  06             push   es
-  ovl6:EA49  1F1F9  ea69e869e8     ljmp   0xe869:0xe869
-  ; ---- data / unreached bytes (23 bytes)
-  ovl6:EA4E  1F1FE  db 69h, E8h, 69h, E8h, 9Dh, E8h, BDh, E8h, DCh, E8h, 33h, E9h, 53h, E9h, 62h, E9h                  ; i.i.......3.S.b.
-  ovl6:EA5E  1F20E  db 96h, E9h, CAh, E9h, E9h, FFh, 01h                                                               ; .......
+  ovl6:EA41  1F1F1  e8c080         call   switch_helper
+  ovl6:EA44  1F1F4  dw 0, 12, EA06h                                                       ; switch table: lowest case 0, 12 cases, default EA06
+  ovl6:EA4A  1F1FA  dw E869h                                                                 ; case 0
+  ovl6:EA4C  1F1FC  dw E869h                                                                 ; case 1
+  ovl6:EA4E  1F1FE  dw E869h                                                                 ; case 2
+  ovl6:EA50  1F200  dw E869h                                                                 ; case 3
+  ovl6:EA52  1F202  dw E89Dh                                                                 ; case 4
+  ovl6:EA54  1F204  dw E8BDh                                                                 ; case 5
+  ovl6:EA56  1F206  dw E8DCh                                                                 ; case 6
+  ovl6:EA58  1F208  dw E933h                                                                 ; case 7
+  ovl6:EA5A  1F20A  dw E953h                                                                 ; case 8
+  ovl6:EA5C  1F20C  dw E962h                                                                 ; case 9
+  ovl6:EA5E  1F20E  dw E996h                                                                 ; case 10
+  ovl6:EA60  1F210  dw E9CAh                                                                 ; case 11
+  ovl6:EA62  1F212  e9ff01         jmp    0xec64
   ovl6:EA65  1F215  8b76fc         mov    si, word ptr [bp - 4]
   ovl6:EA68  1F218  8b04           mov    ax, word ptr [si]
   ovl6:EA6A  1F21A  e9d501         jmp    0xec42
-  ; ---- data / unreached bytes (469 bytes)
-  ovl6:EA6D  1F21D  db 81h, 3Eh, 77h, 6Ch, 66h, 00h, 75h, 11h, B8h, 04h, 00h, 8Bh, 76h, FCh, 89h, 04h                  ; .>wlf.u.....v...
-  ovl6:EA7D  1F22D  db B8h, 65h, 12h, 89h, 06h, 79h, 6Ch, EBh, 18h, 81h, 3Eh, 77h, 6Ch, 66h, 00h, 7Dh                  ; .e...yl...>wlf.}
-  ovl6:EA8D  1F23D  db 09h, B8h, 5Fh, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h, B8h, 49h, 11h, 89h, 06h, 79h                  ; .._...yl...I...y
-  ovl6:EA9D  1F24D  db 6Ch, E9h, C3h, 01h, 81h, 3Eh, 77h, 6Ch, 5Ah, 00h, 7Fh, 0Eh, 8Bh, 76h, FCh, FFh                  ; l....>wlZ....v..
-  ovl6:EAAD  1F25D  db 04h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h, B8h, 75h, 11h, 89h, 06h, 79h                  ; ......yl...u...y
-  ovl6:EABD  1F26D  db 6Ch, E9h, A3h, 01h, 33h, C0h, 50h, 50h, FFh, 36h, 77h, 6Ch, B8h, 3Dh, 3Fh, 05h                  ; l...3.PP.6wl.=?.
-  ovl6:EACD  1F27D  db D0h, 08h, 50h, E8h, 9Ch, 7Ah, 83h, C4h, 08h, 8Bh, 76h, FCh, FFh, 04h, E9h, 77h                  ; ..P..z....v....w
-  ovl6:EADD  1F28D  db 02h, 8Ah, 06h, 67h, 68h, 98h, 0Bh, C0h, 74h, 10h, 81h, 3Eh, 77h, 6Ch, 62h, 00h                  ; ...gh...t..>wlb.
-  ovl6:EAED  1F29D  db 7Eh, 08h, B8h, 09h, 00h, 8Bh, 76h, FCh, 89h, 04h, 81h, 3Eh, 77h, 6Ch, 67h, 00h                  ; ~.....v....>wlg.
-  ovl6:EAFD  1F2AD  db 74h, 0Ah, 8Bh, 76h, FCh, 8Bh, 04h, 83h, F8h, 09h, 75h, 11h, 8Bh, 76h, FCh, FFh                  ; t..v......u..v..
-  ovl6:EB0D  1F2BD  db 04h, E8h, 4Fh, 02h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch, EBh, 18h, 81h, 3Eh, 77h                  ; ..O......yl...>w
-  ovl6:EB1D  1F2CD  db 6Ch, 67h, 00h, 7Dh, 09h, B8h, 5Fh, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h, B8h, 49h                  ; lg.}.._...yl...I
-  ovl6:EB2D  1F2DD  db 11h, 89h, 06h, 79h, 6Ch, E9h, 2Fh, 01h, 81h, 3Eh, 77h, 6Ch, 59h, 00h, 7Fh, 0Eh                  ; ...yl./..>wlY...
-  ovl6:EB3D  1F2ED  db 8Bh, 76h, FCh, FFh, 04h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch, EBh, 07h, B8h, C9h                  ; .v........yl....
-  ovl6:EB4D  1F2FD  db 11h, 89h, 06h, 79h, 6Ch, E9h, 0Fh, 01h, B8h, EDh, 12h, 89h, 06h, 79h, 6Ch, 8Bh                  ; ...yl........yl.
-  ovl6:EB5D  1F30D  db 76h, FCh, FFh, 04h, E9h, 00h, 01h, 81h, 3Eh, 77h, 6Ch, 67h, 00h, 75h, 11h, 8Bh                  ; v.......>wlg.u..
-  ovl6:EB6D  1F31D  db 76h, FCh, FFh, 04h, E8h, ECh, 01h, B8h, 11h, 11h, 89h, 06h, 79h, 6Ch, EBh, 18h                  ; v...........yl..
-  ovl6:EB7D  1F32D  db 81h, 3Eh, 77h, 6Ch, 67h, 00h, 7Eh, 09h, B8h, C9h, 11h, 89h, 06h, 79h, 6Ch, EBh                  ; .>wlg.~......yl.
-  ovl6:EB8D  1F33D  db 07h, B8h, F3h, 11h, 89h, 06h, 79h, 6Ch, E9h, CCh, 00h, 81h, 3Eh, 77h, 6Ch, 61h                  ; ......yl....>wla
-  ovl6:EB9D  1F34D  db 00h, 75h, 11h, 81h, 06h, 77h, 6Ch, 58h, 00h, B8h, 0Bh, 00h, 8Bh, 76h, FCh, 89h                  ; .u...wlX.....v..
-  ovl6:EBAD  1F35D  db 04h, E9h, B4h, FEh, 81h, 3Eh, 77h, 6Ch, 61h, 00h, 7Eh, 09h, B8h, 49h, 11h, 89h                  ; .....>wla.~..I..
-  ovl6:EBBD  1F36D  db 06h, 79h, 6Ch, EBh, 07h, B8h, 5Fh, 11h, 89h, 06h, 79h, 6Ch, E9h, 98h, 00h, 81h                  ; .yl..._...yl....
-  ovl6:EBCD  1F37D  db 3Eh, 77h, 6Ch, B6h, 00h, 75h, 2Bh, 81h, 2Eh, 77h, 6Ch, 55h, 00h, B8h, 0Ch, 00h                  ; >wl..u+..wlU....
-  ovl6:EBDD  1F38D  db 8Bh, 76h, FCh, 89h, 04h, BEh, 8Fh, 6Ah, 8Bh, 06h, D1h, 69h, D1h, E0h, 03h, F0h                  ; .v.....j...i....
-  ovl6:EBED  1F39D  db 8Bh, 04h, BEh, 9Bh, 6Ah, 8Bh, 16h, D1h, 69h, D1h, E2h, 03h, F2h, 89h, 04h, E9h                  ; ....j...i.......
-  ovl6:EBFD  1F3AD  db 66h, FEh, B8h, ADh, 12h, 89h, 06h, 79h, 6Ch, EBh, 5Ch, 8Bh, 76h, FCh, 8Bh, 04h                  ; f......yl.\.v...
-  ovl6:EC0D  1F3BD  db 83h, F8h, 0Dh, 74h, 0Bh, B8h, 0Dh, 00h, 8Bh, 76h, FCh, 89h, 04h, E8h, 49h, F6h                  ; ...t.....v....I.
-  ovl6:EC1D  1F3CD  db 81h, 3Eh, 77h, 6Ch, 60h, 00h, 7Eh, 09h, B8h, 49h, 11h, 89h, 06h, 79h, 6Ch, EBh                  ; .>wl`.~..I...yl.
-  ovl6:EC2D  1F3DD  db 07h, B8h, 1Dh, 11h, 89h, 06h, 79h, 6Ch, 81h, 3Eh, 77h, 6Ch, 61h, 00h, 75h, 03h                  ; ......yl.>wla.u.
-  ovl6:EC3D  1F3ED  db E8h, 26h, F6h, EBh, 22h                                                                         ; .&.."
+  ovl6:EA6D  1F21D  813e776c6600   cmp    word ptr [0x6c77], 0x66
+  ovl6:EA73  1F223  7511           jne    0xea86
+  ovl6:EA75  1F225  b80400         mov    ax, 4
+  ovl6:EA78  1F228  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EA7B  1F22B  8904           mov    word ptr [si], ax
+  ovl6:EA7D  1F22D  b86512         mov    ax, 0x1265
+  ovl6:EA80  1F230  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EA84  1F234  eb18           jmp    0xea9e
+  ovl6:EA86  1F236  813e776c6600   cmp    word ptr [0x6c77], 0x66
+  ovl6:EA8C  1F23C  7d09           jge    0xea97
+  ovl6:EA8E  1F23E  b85f11         mov    ax, 0x115f
+  ovl6:EA91  1F241  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EA95  1F245  eb07           jmp    0xea9e
+  ovl6:EA97  1F247  b84911         mov    ax, 0x1149
+  ovl6:EA9A  1F24A  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EA9E  1F24E  e9c301         jmp    0xec64
+  ovl6:EAA1  1F251  813e776c5a00   cmp    word ptr [0x6c77], 0x5a
+  ovl6:EAA7  1F257  7f0e           jg     0xeab7
+  ovl6:EAA9  1F259  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EAAC  1F25C  ff04           inc    word ptr [si]
+  ovl6:EAAE  1F25E  b81111         mov    ax, 0x1111
+  ovl6:EAB1  1F261  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EAB5  1F265  eb07           jmp    0xeabe
+  ovl6:EAB7  1F267  b87511         mov    ax, 0x1175
+  ovl6:EABA  1F26A  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EABE  1F26E  e9a301         jmp    0xec64
+  ovl6:EAC1  1F271  33c0           xor    ax, ax
+  ovl6:EAC3  1F273  50             push   ax
+  ovl6:EAC4  1F274  50             push   ax
+  ovl6:EAC5  1F275  ff36776c       push   word ptr [0x6c77]
+  ovl6:EAC9  1F279  b83d3f         mov    ax, 0x3f3d
+  ovl6:EACC  1F27C  05d008         add    ax, 0x8d0
+  ovl6:EACF  1F27F  50             push   ax
+  ovl6:EAD0  1F280  e89c7a         call   rt_656f
+  ovl6:EAD3  1F283  83c408         add    sp, 8
+  ovl6:EAD6  1F286  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EAD9  1F289  ff04           inc    word ptr [si]
+  ovl6:EADB  1F28B  e97702         jmp    0xed55
+  ovl6:EADE  1F28E  8a066768       mov    al, byte ptr [0x6867]
+  ovl6:EAE2  1F292  98             cwde
+  ovl6:EAE3  1F293  0bc0           or     ax, ax
+  ovl6:EAE5  1F295  7410           je     0xeaf7
+  ovl6:EAE7  1F297  813e776c6200   cmp    word ptr [0x6c77], 0x62
+  ovl6:EAED  1F29D  7e08           jle    0xeaf7
+  ovl6:EAEF  1F29F  b80900         mov    ax, 9
+  ovl6:EAF2  1F2A2  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EAF5  1F2A5  8904           mov    word ptr [si], ax
+  ovl6:EAF7  1F2A7  813e776c6700   cmp    word ptr [0x6c77], 0x67
+  ovl6:EAFD  1F2AD  740a           je     0xeb09
+  ovl6:EAFF  1F2AF  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EB02  1F2B2  8b04           mov    ax, word ptr [si]
+  ovl6:EB04  1F2B4  83f809         cmp    ax, 9
+  ovl6:EB07  1F2B7  7511           jne    0xeb1a
+  ovl6:EB09  1F2B9  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EB0C  1F2BC  ff04           inc    word ptr [si]
+  ovl6:EB0E  1F2BE  e84f02         call   ovl6_ed60
+  ovl6:EB11  1F2C1  b81111         mov    ax, 0x1111
+  ovl6:EB14  1F2C4  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB18  1F2C8  eb18           jmp    0xeb32
+  ovl6:EB1A  1F2CA  813e776c6700   cmp    word ptr [0x6c77], 0x67
+  ovl6:EB20  1F2D0  7d09           jge    0xeb2b
+  ovl6:EB22  1F2D2  b85f11         mov    ax, 0x115f
+  ovl6:EB25  1F2D5  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB29  1F2D9  eb07           jmp    0xeb32
+  ovl6:EB2B  1F2DB  b84911         mov    ax, 0x1149
+  ovl6:EB2E  1F2DE  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB32  1F2E2  e92f01         jmp    0xec64
+  ovl6:EB35  1F2E5  813e776c5900   cmp    word ptr [0x6c77], 0x59
+  ovl6:EB3B  1F2EB  7f0e           jg     0xeb4b
+  ovl6:EB3D  1F2ED  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EB40  1F2F0  ff04           inc    word ptr [si]
+  ovl6:EB42  1F2F2  b81111         mov    ax, 0x1111
+  ovl6:EB45  1F2F5  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB49  1F2F9  eb07           jmp    0xeb52
+  ovl6:EB4B  1F2FB  b8c911         mov    ax, 0x11c9
+  ovl6:EB4E  1F2FE  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB52  1F302  e90f01         jmp    0xec64
+  ovl6:EB55  1F305  b8ed12         mov    ax, 0x12ed
+  ovl6:EB58  1F308  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB5C  1F30C  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EB5F  1F30F  ff04           inc    word ptr [si]
+  ovl6:EB61  1F311  e90001         jmp    0xec64
+  ovl6:EB64  1F314  813e776c6700   cmp    word ptr [0x6c77], 0x67
+  ovl6:EB6A  1F31A  7511           jne    0xeb7d
+  ovl6:EB6C  1F31C  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EB6F  1F31F  ff04           inc    word ptr [si]
+  ovl6:EB71  1F321  e8ec01         call   ovl6_ed60
+  ovl6:EB74  1F324  b81111         mov    ax, 0x1111
+  ovl6:EB77  1F327  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB7B  1F32B  eb18           jmp    0xeb95
+  ovl6:EB7D  1F32D  813e776c6700   cmp    word ptr [0x6c77], 0x67
+  ovl6:EB83  1F333  7e09           jle    0xeb8e
+  ovl6:EB85  1F335  b8c911         mov    ax, 0x11c9
+  ovl6:EB88  1F338  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB8C  1F33C  eb07           jmp    0xeb95
+  ovl6:EB8E  1F33E  b8f311         mov    ax, 0x11f3
+  ovl6:EB91  1F341  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EB95  1F345  e9cc00         jmp    0xec64
+  ovl6:EB98  1F348  813e776c6100   cmp    word ptr [0x6c77], 0x61
+  ovl6:EB9E  1F34E  7511           jne    0xebb1
+  ovl6:EBA0  1F350  8106776c5800   add    word ptr [0x6c77], 0x58
+  ovl6:EBA6  1F356  b80b00         mov    ax, 0xb
+  ovl6:EBA9  1F359  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EBAC  1F35C  8904           mov    word ptr [si], ax
+  ovl6:EBAE  1F35E  e9b4fe         jmp    0xea65
+  ovl6:EBB1  1F361  813e776c6100   cmp    word ptr [0x6c77], 0x61
+  ovl6:EBB7  1F367  7e09           jle    0xebc2
+  ovl6:EBB9  1F369  b84911         mov    ax, 0x1149
+  ovl6:EBBC  1F36C  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EBC0  1F370  eb07           jmp    0xebc9
+  ovl6:EBC2  1F372  b85f11         mov    ax, 0x115f
+  ovl6:EBC5  1F375  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EBC9  1F379  e99800         jmp    0xec64
+  ovl6:EBCC  1F37C  813e776cb600   cmp    word ptr [0x6c77], 0xb6
+  ovl6:EBD2  1F382  752b           jne    0xebff
+  ovl6:EBD4  1F384  812e776c5500   sub    word ptr [0x6c77], 0x55
+  ovl6:EBDA  1F38A  b80c00         mov    ax, 0xc
+  ovl6:EBDD  1F38D  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EBE0  1F390  8904           mov    word ptr [si], ax
+  ovl6:EBE2  1F392  be8f6a         mov    si, 0x6a8f
+  ovl6:EBE5  1F395  8b06d169       mov    ax, word ptr [0x69d1]
+  ovl6:EBE9  1F399  d1e0           shl    ax, 1
+  ovl6:EBEB  1F39B  03f0           add    si, ax
+  ovl6:EBED  1F39D  8b04           mov    ax, word ptr [si]
+  ovl6:EBEF  1F39F  be9b6a         mov    si, 0x6a9b
+  ovl6:EBF2  1F3A2  8b16d169       mov    dx, word ptr [0x69d1]
+  ovl6:EBF6  1F3A6  d1e2           shl    dx, 1
+  ovl6:EBF8  1F3A8  03f2           add    si, dx
+  ovl6:EBFA  1F3AA  8904           mov    word ptr [si], ax
+  ovl6:EBFC  1F3AC  e966fe         jmp    0xea65
+  ovl6:EBFF  1F3AF  b8ad12         mov    ax, 0x12ad
+  ovl6:EC02  1F3B2  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EC06  1F3B6  eb5c           jmp    0xec64
+  ovl6:EC08  1F3B8  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EC0B  1F3BB  8b04           mov    ax, word ptr [si]
+  ovl6:EC0D  1F3BD  83f80d         cmp    ax, 0xd
+  ovl6:EC10  1F3C0  740b           je     0xec1d
+  ovl6:EC12  1F3C2  b80d00         mov    ax, 0xd
+  ovl6:EC15  1F3C5  8b76fc         mov    si, word ptr [bp - 4]
+  ovl6:EC18  1F3C8  8904           mov    word ptr [si], ax
+  ovl6:EC1A  1F3CA  e849f6         call   ovl6_e266
+  ovl6:EC1D  1F3CD  813e776c6000   cmp    word ptr [0x6c77], 0x60
+  ovl6:EC23  1F3D3  7e09           jle    0xec2e
+  ovl6:EC25  1F3D5  b84911         mov    ax, 0x1149
+  ovl6:EC28  1F3D8  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EC2C  1F3DC  eb07           jmp    0xec35
+  ovl6:EC2E  1F3DE  b81d11         mov    ax, 0x111d
+  ovl6:EC31  1F3E1  8906796c       mov    word ptr [0x6c79], ax
+  ovl6:EC35  1F3E5  813e776c6100   cmp    word ptr [0x6c77], 0x61
+  ovl6:EC3B  1F3EB  7503           jne    0xec40
+  ovl6:EC3D  1F3ED  e826f6         call   ovl6_e266
+  ovl6:EC40  1F3F0  eb22           jmp    0xec64
   ovl6:EC42  1F3F2  50             push   ax
-  ovl6:EC43  1F3F3  e8be7e         call   rt_6b04
-  ovl6:EC46  1F3F6  0000           add    byte ptr [bx + si], al
-  ovl6:EC48  1F3F8  0c00           or     al, 0
-  ovl6:EC4A  1F3FA  08ec           or     ah, ch
-  ovl6:EC4C  1F3FC  6d             insw   word ptr es:[di], dx
-  ovl6:EC4D  1F3FD  ea6dea6dea     ljmp   0xea6d:0xea6d
-  ; ---- data / unreached bytes (18 bytes)
-  ovl6:EC52  1F402  db 6Dh, EAh, A1h, EAh, C1h, EAh, DEh, EAh, 35h, EBh, 55h, EBh, 64h, EBh, 98h, EBh                  ; m.......5.U.d...
-  ovl6:EC62  1F412  db CCh, EBh                                                                                        ; ..
+  ovl6:EC43  1F3F3  e8be7e         call   switch_helper
+  ovl6:EC46  1F3F6  dw 0, 12, EC08h                                                       ; switch table: lowest case 0, 12 cases, default EC08
+  ovl6:EC4C  1F3FC  dw EA6Dh                                                                 ; case 0
+  ovl6:EC4E  1F3FE  dw EA6Dh                                                                 ; case 1
+  ovl6:EC50  1F400  dw EA6Dh                                                                 ; case 2
+  ovl6:EC52  1F402  dw EA6Dh                                                                 ; case 3
+  ovl6:EC54  1F404  dw EAA1h                                                                 ; case 4
+  ovl6:EC56  1F406  dw EAC1h                                                                 ; case 5
+  ovl6:EC58  1F408  dw EADEh                                                                 ; case 6
+  ovl6:EC5A  1F40A  dw EB35h                                                                 ; case 7
+  ovl6:EC5C  1F40C  dw EB55h                                                                 ; case 8
+  ovl6:EC5E  1F40E  dw EB64h                                                                 ; case 9
+  ovl6:EC60  1F410  dw EB98h                                                                 ; case 10
+  ovl6:EC62  1F412  dw EBCCh                                                                 ; case 11
   ovl6:EC64  1F414  8b36796c       mov    si, word ptr [0x6c79]
   ovl6:EC68  1F418  8106796c0200   add    word ptr [0x6c79], 2
   ovl6:EC6E  1F41E  8b04           mov    ax, word ptr [si]
@@ -51062,7 +53226,7 @@ ovl6_e7f1:
   ovl6:ED5E  1F50E  5d             pop    bp
   ovl6:ED5F  1F50F  c3             ret
 
-; ---- ovl6_ed60   (called from 1 place)
+; ---- ovl6_ed60   (called from 5 places)
 ovl6_ed60:
   ovl6:ED60  1F510  55             push   bp
   ovl6:ED61  1F511  8bec           mov    bp, sp
@@ -51962,26 +54126,60 @@ ovl6_f551:
   ovl6:F5C8  1FD78  8a04           mov    al, byte ptr [si]
   ovl6:F5CA  1FD7A  30e4           xor    ah, ah
   ovl6:F5CC  1FD7C  e98200         jmp    0xf651
-  ; ---- data / unreached bytes (130 bytes)
-  ovl6:F5CF  1FD7F  db 8Bh, 06h, 89h, 64h, 05h, 74h, 47h, 89h, 46h, F6h, E9h, 89h, 00h, 8Bh, 06h, 89h                  ; ...d.tG.F.......
-  ovl6:F5DF  1FD8F  db 64h, 05h, 8Eh, 47h, 89h, 46h, F6h, EBh, 7Dh, 8Bh, 06h, 89h, 64h, 05h, A8h, 47h                  ; d..G.F..}...d..G
-  ovl6:F5EF  1FD9F  db 89h, 46h, F6h, BEh, 4Fh, 6Bh, 03h, 76h, FCh, 8Ah, 04h, 25h, FFh, 00h, 74h, 0Ah                  ; .F..Ok.v...%..t.
-  ovl6:F5FF  1FDAF  db 8Bh, 06h, 89h, 64h, 05h, BCh, 47h, 89h, 46h, F6h, EBh, 5Ah, 8Bh, 06h, 89h, 64h                  ; ...d..G.F..Z...d
-  ovl6:F60F  1FDBF  db 05h, D0h, 47h, 89h, 46h, F6h, BEh, 4Fh, 6Bh, 03h, 76h, FCh, 8Ah, 04h, 25h, FFh                  ; ..G.F..Ok.v...%.
-  ovl6:F61F  1FDCF  db 00h, 74h, 0Ah, 8Bh, 06h, 89h, 64h, 05h, E4h, 47h, 89h, 46h, F6h, EBh, 37h, 8Bh                  ; .t....d..G.F..7.
-  ovl6:F62F  1FDDF  db 06h, 89h, 64h, 05h, F8h, 47h, 89h, 46h, F6h, BEh, 4Fh, 6Bh, 03h, 76h, FCh, 8Ah                  ; ..d..G.F..Ok.v..
-  ovl6:F63F  1FDEF  db 04h, 25h, FFh, 00h, 74h, 0Ah, 8Bh, 06h, 89h, 64h, 05h, 0Ch, 48h, 89h, 46h, F6h                  ; .%..t....d..H.F.
-  ovl6:F64F  1FDFF  db EBh, 14h                                                                                        ; ..
+  ovl6:F5CF  1FD7F  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F5D3  1FD83  057447         add    ax, 0x4774
+  ovl6:F5D6  1FD86  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F5D9  1FD89  e98900         jmp    0xf665
+  ovl6:F5DC  1FD8C  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F5E0  1FD90  058e47         add    ax, 0x478e
+  ovl6:F5E3  1FD93  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F5E6  1FD96  eb7d           jmp    0xf665
+  ovl6:F5E8  1FD98  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F5EC  1FD9C  05a847         add    ax, 0x47a8
+  ovl6:F5EF  1FD9F  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F5F2  1FDA2  be4f6b         mov    si, 0x6b4f
+  ovl6:F5F5  1FDA5  0376fc         add    si, word ptr [bp - 4]
+  ovl6:F5F8  1FDA8  8a04           mov    al, byte ptr [si]
+  ovl6:F5FA  1FDAA  25ff00         and    ax, 0xff
+  ovl6:F5FD  1FDAD  740a           je     0xf609
+  ovl6:F5FF  1FDAF  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F603  1FDB3  05bc47         add    ax, 0x47bc
+  ovl6:F606  1FDB6  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F609  1FDB9  eb5a           jmp    0xf665
+  ovl6:F60B  1FDBB  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F60F  1FDBF  05d047         add    ax, 0x47d0
+  ovl6:F612  1FDC2  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F615  1FDC5  be4f6b         mov    si, 0x6b4f
+  ovl6:F618  1FDC8  0376fc         add    si, word ptr [bp - 4]
+  ovl6:F61B  1FDCB  8a04           mov    al, byte ptr [si]
+  ovl6:F61D  1FDCD  25ff00         and    ax, 0xff
+  ovl6:F620  1FDD0  740a           je     0xf62c
+  ovl6:F622  1FDD2  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F626  1FDD6  05e447         add    ax, 0x47e4
+  ovl6:F629  1FDD9  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F62C  1FDDC  eb37           jmp    0xf665
+  ovl6:F62E  1FDDE  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F632  1FDE2  05f847         add    ax, 0x47f8
+  ovl6:F635  1FDE5  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F638  1FDE8  be4f6b         mov    si, 0x6b4f
+  ovl6:F63B  1FDEB  0376fc         add    si, word ptr [bp - 4]
+  ovl6:F63E  1FDEE  8a04           mov    al, byte ptr [si]
+  ovl6:F640  1FDF0  25ff00         and    ax, 0xff
+  ovl6:F643  1FDF3  740a           je     0xf64f
+  ovl6:F645  1FDF5  8b068964       mov    ax, word ptr [0x6489]
+  ovl6:F649  1FDF9  050c48         add    ax, 0x480c
+  ovl6:F64C  1FDFC  8946f6         mov    word ptr [bp - 0xa], ax
+  ovl6:F64F  1FDFF  eb14           jmp    0xf665
   ovl6:F651  1FE01  50             push   ax
-  ovl6:F652  1FE02  e8af74         call   rt_6b04
-  ovl6:F655  1FE05  0200           add    al, byte ptr [bx + si]
-  ovl6:F657  1FE07  050065         add    ax, 0x6500
-  ovl6:F65A  1FE0A  f6cff5         test   bh, -0xb
-  ovl6:F65D  1FE0D  dcf5           fdivr  st(5), st(0)
-  ovl6:F65F  1FE0F  e8f50b         call   rt_0257
-  ovl6:F662  1FE12  f62ef68b       imul   byte ptr [0x8bf6]
-  ovl6:F666  1FE16  46             inc    si
-  ovl6:F667  1FE17  f60bc0         test   byte ptr [bp + di], -0x40
+  ovl6:F652  1FE02  e8af74         call   switch_helper
+  ovl6:F655  1FE05  dw 2, 5, F665h                                                       ; switch table: lowest case 2, 5 cases, default F665
+  ovl6:F65B  1FE0B  dw F5CFh                                                                 ; case 2
+  ovl6:F65D  1FE0D  dw F5DCh                                                                 ; case 3
+  ovl6:F65F  1FE0F  dw F5E8h                                                                 ; case 4
+  ovl6:F661  1FE11  dw F60Bh                                                                 ; case 5
+  ovl6:F663  1FE13  dw F62Eh                                                                 ; case 6
+  ovl6:F665  1FE15  8b46f6         mov    ax, word ptr [bp - 0xa]
+  ovl6:F668  1FE18  0bc0           or     ax, ax
   ovl6:F66A  1FE1A  7438           je     0xf6a4
   ovl6:F66C  1FE1C  33c0           xor    ax, ax
   ovl6:F66E  1FE1E  50             push   ax
@@ -52649,26 +54847,54 @@ ovl6_fc39:
   ovl6:FC3A  203EA  8bec           mov    bp, sp
   ovl6:FC3C  203EC  8b06d369       mov    ax, word ptr [0x69d3]
   ovl6:FC40  203F0  eb4c           jmp    0xfc8e
-  ; ---- data / unreached bytes (76 bytes)
-  ovl6:FC42  203F2  db B8h, 04h, 00h, 50h, B0h, 0Ah, 50h, B8h, C0h, 03h, 50h, E8h, 78h, 31h, 83h, C4h                  ; ...P..P...P.x1..
-  ovl6:FC52  20402  db 06h, EBh, 51h, B8h, 04h, 00h, 50h, B0h, 06h, 50h, B8h, D4h, 03h, 50h, E8h, 65h                  ; ..Q...P..P...P.e
-  ovl6:FC62  20412  db 31h, 83h, C4h, 06h, EBh, 3Eh, B8h, 04h, 00h, 50h, B0h, 0Ch, 50h, B8h, A6h, 02h                  ; 1....>...P..P...
-  ovl6:FC72  20422  db 50h, E8h, 52h, 31h, 83h, C4h, 06h, EBh, 2Bh, B8h, 04h, 00h, 50h, B0h, 0Ch, 50h                  ; P.R1....+...P..P
-  ovl6:FC82  20432  db B8h, B4h, 02h, 50h, E8h, 3Fh, 31h, 83h, C4h, 06h, EBh, 18h                                      ; ...P.?1.....
+  ovl6:FC42  203F2  b80400         mov    ax, 4
+  ovl6:FC45  203F5  50             push   ax
+  ovl6:FC46  203F6  b00a           mov    al, 0xa
+  ovl6:FC48  203F8  50             push   ax
+  ovl6:FC49  203F9  b8c003         mov    ax, 0x3c0
+  ovl6:FC4C  203FC  50             push   ax
+  ovl6:FC4D  203FD  e87831         call   invert_block
+  ovl6:FC50  20400  83c406         add    sp, 6
+  ovl6:FC53  20403  eb51           jmp    0xfca6
+  ovl6:FC55  20405  b80400         mov    ax, 4
+  ovl6:FC58  20408  50             push   ax
+  ovl6:FC59  20409  b006           mov    al, 6
+  ovl6:FC5B  2040B  50             push   ax
+  ovl6:FC5C  2040C  b8d403         mov    ax, 0x3d4
+  ovl6:FC5F  2040F  50             push   ax
+  ovl6:FC60  20410  e86531         call   invert_block
+  ovl6:FC63  20413  83c406         add    sp, 6
+  ovl6:FC66  20416  eb3e           jmp    0xfca6
+  ovl6:FC68  20418  b80400         mov    ax, 4
+  ovl6:FC6B  2041B  50             push   ax
+  ovl6:FC6C  2041C  b00c           mov    al, 0xc
+  ovl6:FC6E  2041E  50             push   ax
+  ovl6:FC6F  2041F  b8a602         mov    ax, 0x2a6                    ; DS:02A6 "BLACK"
+  ovl6:FC72  20422  50             push   ax
+  ovl6:FC73  20423  e85231         call   invert_block
+  ovl6:FC76  20426  83c406         add    sp, 6
+  ovl6:FC79  20429  eb2b           jmp    0xfca6
+  ovl6:FC7B  2042B  b80400         mov    ax, 4
+  ovl6:FC7E  2042E  50             push   ax
+  ovl6:FC7F  2042F  b00c           mov    al, 0xc
+  ovl6:FC81  20431  50             push   ax
+  ovl6:FC82  20432  b8b402         mov    ax, 0x2b4
+  ovl6:FC85  20435  50             push   ax
+  ovl6:FC86  20436  e83f31         call   invert_block
+  ovl6:FC89  20439  83c406         add    sp, 6
+  ovl6:FC8C  2043C  eb18           jmp    0xfca6
   ovl6:FC8E  2043E  50             push   ax
-  ovl6:FC8F  2043F  e83e6e         call   rt_6ad0
-  ovl6:FC92  20442  0400           add    al, 0
-  ovl6:FC94  20444  43             inc    bx
-  ovl6:FC95  20445  004f00         add    byte ptr [bx], cl
-  ovl6:FC98  20448  41             inc    cx
-  ovl6:FC99  20449  005300         add    byte ptr [bp + di], dl
-  ovl6:FC9C  2044C  a6             cmpsb  byte ptr [si], byte ptr es:[di]
-  ovl6:FC9D  2044D  fc             cld
-  ovl6:FC9E  2044E  7bfc           jnp    0xfc9c
-  ovl6:FCA0  20450  68fc55         push   0x55fc
-  ovl6:FCA3  20453  fc             cld
-  ovl6:FCA4  20454  42             inc    dx
-  ovl6:FCA5  20455  fc             cld
+  ovl6:FC8F  2043F  e83e6e         call   sparse_switch
+  ovl6:FC92  20442  dw 4                                                                    ; sparse switch table: 4 values, then 5 targets (the default first)
+  ovl6:FC94  20444  dw 67                                                                   ; value 0
+  ovl6:FC96  20446  dw 79                                                                   ; value 1
+  ovl6:FC98  20448  dw 65                                                                   ; value 2
+  ovl6:FC9A  2044A  dw 83                                                                   ; value 3
+  ovl6:FC9C  2044C  dw FCA6h                                                                 ; default
+  ovl6:FC9E  2044E  dw FC7Bh                                                                 ; case 67
+  ovl6:FCA0  20450  dw FC68h                                                                 ; case 79
+  ovl6:FCA2  20452  dw FC55h                                                                 ; case 65
+  ovl6:FCA4  20454  dw FC42h                                                                 ; case 83
   ovl6:FCA6  20456  8be5           mov    sp, bp
   ovl6:FCA8  20458  5d             pop    bp
   ovl6:FCA9  20459  c3             ret
@@ -53747,7 +55973,7 @@ boarding_load_b:
   ovl7:D442  20F62  5d             pop    bp
   ovl7:D443  20F63  c3             ret
 
-; ---- ovl7_d444   (called from 5 places)
+; ---- ovl7_d444   (called from 6 places)
 ovl7_d444:
   ovl7:D444  20F64  55             push   bp
   ovl7:D445  20F65  8bec           mov    bp, sp
@@ -53967,54 +56193,212 @@ ovl7_d579:
   ovl7:D654  21174  8a46fc         mov    al, byte ptr [bp - 4]
   ovl7:D657  21177  98             cwde
   ovl7:D658  21178  e90c02         jmp    0xd867
-  ; ---- data / unreached bytes (524 bytes)
-  ovl7:D65B  2117B  db 8Ah, 06h, DDh, 6Dh, 30h, E4h, 83h, F8h, 01h, 74h, 0Bh, 8Ah, 06h, DEh, 6Dh, 25h                  ; ...m0....t....m%
-  ovl7:D66B  2118B  db FFh, 00h, 75h, 02h, EBh, 12h, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 74h, 44h, BEh                  ; ..u......m%..tD.
-  ovl7:D67B  2119B  db C9h, 6Dh, 8Bh, 04h, 0Bh, C0h, 74h, 3Bh, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 74h                  ; .m....t;...m%..t
-  ovl7:D68B  211AB  db 0Ch, B8h, 01h, 00h, 88h, 06h, DDh, 6Dh, E8h, 0Ch, 03h, EBh, 0Ah, B8h, 01h, 00h                  ; .......m........
-  ovl7:D69B  211BB  db 88h, 06h, DEh, 6Dh, E8h, 2Ah, 03h, B8h, 42h, 04h, 50h, E8h, ACh, 5Ch, 5Fh, B8h                  ; ...m.*..B.P..\_.
-  ovl7:D6AB  211CB  db 04h, 00h, 8Ah, 16h, DFh, 6Dh, 81h, E2h, FFh, 00h, 03h, D0h, 88h, 16h, DFh, 6Dh                  ; .....m.........m
-  ovl7:D6BB  211DB  db E8h, 74h, 35h, E9h, CEh, 01h, 8Ah, 06h, DDh, 6Dh, 30h, E4h, 83h, F8h, 02h, 74h                  ; .t5......m0....t
-  ovl7:D6CB  211EB  db 0Bh, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 75h, 02h, EBh, 12h, 8Ah, 06h, DEh, 6Dh                  ; ....m%..u......m
-  ovl7:D6DB  211FB  db 25h, FFh, 00h, 74h, 44h, BEh, CBh, 6Dh, 8Bh, 04h, 0Bh, C0h, 74h, 3Bh, 8Ah, 06h                  ; %..tD..m....t;..
-  ovl7:D6EB  2120B  db DEh, 6Dh, 25h, FFh, 00h, 74h, 0Ch, B8h, 02h, 00h, 88h, 06h, DDh, 6Dh, E8h, A6h                  ; .m%..t.......m..
-  ovl7:D6FB  2121B  db 02h, EBh, 0Ah, B8h, 02h, 00h, 88h, 06h, DEh, 6Dh, E8h, C4h, 02h, B8h, 47h, 04h                  ; .........m....G.
-  ovl7:D70B  2122B  db 50h, E8h, 46h, 5Ch, 5Fh, B8h, 0Bh, 00h, 8Ah, 16h, DFh, 6Dh, 81h, E2h, FFh, 00h                  ; P.F\_......m....
-  ovl7:D71B  2123B  db 03h, D0h, 88h, 16h, DFh, 6Dh, E8h, 0Eh, 35h, E9h, 68h, 01h, 8Ah, 06h, DDh, 6Dh                  ; .....m..5.h....m
-  ovl7:D72B  2124B  db 30h, E4h, 83h, F8h, 03h, 74h, 0Bh, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 75h, 02h                  ; 0....t....m%..u.
-  ovl7:D73B  2125B  db EBh, 12h, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 74h, 44h, BEh, CDh, 6Dh, 8Bh, 04h                  ; .....m%..tD..m..
-  ovl7:D74B  2126B  db 0Bh, C0h, 74h, 3Bh, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 74h, 0Ch, B8h, 03h, 00h                  ; ..t;...m%..t....
-  ovl7:D75B  2127B  db 88h, 06h, DDh, 6Dh, E8h, 40h, 02h, EBh, 0Ah, B8h, 03h, 00h, 88h, 06h, DEh, 6Dh                  ; ...m.@.........m
-  ovl7:D76B  2128B  db E8h, 5Eh, 02h, B8h, 53h, 04h, 50h, E8h, E0h, 5Bh, 5Fh, B8h, 08h, 00h, 8Ah, 16h                  ; .^..S.P..[_.....
-  ovl7:D77B  2129B  db DFh, 6Dh, 81h, E2h, FFh, 00h, 03h, D0h, 88h, 16h, DFh, 6Dh, E8h, A8h, 34h, E9h                  ; .m.........m..4.
-  ovl7:D78B  212AB  db 02h, 01h, 8Ah, 06h, DDh, 6Dh, 30h, E4h, 83h, F8h, 04h, 74h, 0Bh, 8Ah, 06h, DEh                  ; .....m0....t....
-  ovl7:D79B  212BB  db 6Dh, 25h, FFh, 00h, 75h, 02h, EBh, 12h, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 74h                  ; m%..u......m%..t
-  ovl7:D7AB  212CB  db 44h, BEh, CFh, 6Dh, 8Bh, 04h, 0Bh, C0h, 74h, 3Bh, 8Ah, 06h, DEh, 6Dh, 25h, FFh                  ; D..m....t;...m%.
-  ovl7:D7BB  212DB  db 00h, 74h, 0Ch, B8h, 04h, 00h, 88h, 06h, DDh, 6Dh, E8h, DAh, 01h, EBh, 0Ah, B8h                  ; .t.......m......
-  ovl7:D7CB  212EB  db 04h, 00h, 88h, 06h, DEh, 6Dh, E8h, F8h, 01h, B8h, 5Ch, 04h, 50h, E8h, 7Ah, 5Bh                  ; .....m....\.P.z[
-  ovl7:D7DB  212FB  db 5Fh, B8h, 07h, 00h, 8Ah, 16h, DFh, 6Dh, 81h, E2h, FFh, 00h, 03h, D0h, 88h, 16h                  ; _......m........
-  ovl7:D7EB  2130B  db DFh, 6Dh, E8h, 42h, 34h, E9h, 9Ch, 00h, 8Ah, 06h, DEh, 6Dh, 25h, FFh, 00h, 75h                  ; .m.B4......m%..u
-  ovl7:D7FB  2131B  db 2Bh, 8Ah, 06h, DDh, 6Dh, 30h, E4h, 83h, F8h, 01h, 74h, 20h, 8Ah, 06h, DDh, 6Dh                  ; +...m0....t ...m
-  ovl7:D80B  2132B  db 30h, E4h, 83h, F8h, 02h, 74h, 15h, B8h, 05h, 00h, 88h, 06h, DEh, 6Dh, E8h, B0h                  ; 0....t.......m..
-  ovl7:D81B  2133B  db 01h, B8h, 64h, 04h, 50h, E8h, 32h, 5Bh, 5Fh, E8h, 0Bh, 34h, EBh, 66h, 8Ah, 06h                  ; ..d.P.2[_..4.f..
-  ovl7:D82B  2134B  db DEh, 6Dh, 25h, FFh, 00h, 74h, 15h, 8Ah, 06h, DEh, 6Dh, 30h, E4h, 83h, F8h, 09h                  ; .m%..t....m0....
-  ovl7:D83B  2135B  db 74h, 0Ah, B8h, 02h, 00h, 89h, 06h, BEh, 6Dh, E8h, EBh, 33h, EBh, 46h, B8h, 17h                  ; t.......m..3.F..
-  ovl7:D84B  2136B  db 00h, 50h, E8h, F8h, 53h, 5Fh, B8h, 09h, 00h, 88h, 06h, DEh, 6Dh, 25h, FFh, 00h                  ; .P..S_......m%..
-  ovl7:D85B  2137B  db 88h, 06h, DDh, 6Dh, E8h, E2h, FBh, E8h, CDh, 33h, EBh, 28h                                      ; ...m.....3.(
+  ovl7:D65B  2117B  8a06dd6d       mov    al, byte ptr [0x6ddd]
+  ovl7:D65F  2117F  30e4           xor    ah, ah
+  ovl7:D661  21181  83f801         cmp    ax, 1
+  ovl7:D664  21184  740b           je     0xd671
+  ovl7:D666  21186  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D66A  2118A  25ff00         and    ax, 0xff
+  ovl7:D66D  2118D  7502           jne    0xd671
+  ovl7:D66F  2118F  eb12           jmp    0xd683
+  ovl7:D671  21191  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D675  21195  25ff00         and    ax, 0xff
+  ovl7:D678  21198  7444           je     0xd6be
+  ovl7:D67A  2119A  bec96d         mov    si, 0x6dc9
+  ovl7:D67D  2119D  8b04           mov    ax, word ptr [si]
+  ovl7:D67F  2119F  0bc0           or     ax, ax
+  ovl7:D681  211A1  743b           je     0xd6be
+  ovl7:D683  211A3  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D687  211A7  25ff00         and    ax, 0xff
+  ovl7:D68A  211AA  740c           je     0xd698
+  ovl7:D68C  211AC  b80100         mov    ax, 1
+  ovl7:D68F  211AF  8806dd6d       mov    byte ptr [0x6ddd], al
+  ovl7:D693  211B3  e80c03         call   ovl7_d9a2
+  ovl7:D696  211B6  eb0a           jmp    0xd6a2
+  ovl7:D698  211B8  b80100         mov    ax, 1
+  ovl7:D69B  211BB  8806de6d       mov    byte ptr [0x6dde], al
+  ovl7:D69F  211BF  e82a03         call   ovl7_d9cc
+  ovl7:D6A2  211C2  b84204         mov    ax, 0x442                    ; DS:0442 "FLAG"
+  ovl7:D6A5  211C5  50             push   ax
+  ovl7:D6A6  211C6  e8ac5c         call   print_string
+  ovl7:D6A9  211C9  5f             pop    di
+  ovl7:D6AA  211CA  b80400         mov    ax, 4
+  ovl7:D6AD  211CD  8a16df6d       mov    dl, byte ptr [0x6ddf]
+  ovl7:D6B1  211D1  81e2ff00       and    dx, 0xff
+  ovl7:D6B5  211D5  03d0           add    dx, ax
+  ovl7:D6B7  211D7  8816df6d       mov    byte ptr [0x6ddf], dl
+  ovl7:D6BB  211DB  e87435         call   beep_low
+  ovl7:D6BE  211DE  e9ce01         jmp    0xd88f
+  ovl7:D6C1  211E1  8a06dd6d       mov    al, byte ptr [0x6ddd]
+  ovl7:D6C5  211E5  30e4           xor    ah, ah
+  ovl7:D6C7  211E7  83f802         cmp    ax, 2
+  ovl7:D6CA  211EA  740b           je     0xd6d7
+  ovl7:D6CC  211EC  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D6D0  211F0  25ff00         and    ax, 0xff
+  ovl7:D6D3  211F3  7502           jne    0xd6d7
+  ovl7:D6D5  211F5  eb12           jmp    0xd6e9
+  ovl7:D6D7  211F7  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D6DB  211FB  25ff00         and    ax, 0xff
+  ovl7:D6DE  211FE  7444           je     0xd724
+  ovl7:D6E0  21200  becb6d         mov    si, 0x6dcb
+  ovl7:D6E3  21203  8b04           mov    ax, word ptr [si]
+  ovl7:D6E5  21205  0bc0           or     ax, ax
+  ovl7:D6E7  21207  743b           je     0xd724
+  ovl7:D6E9  21209  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D6ED  2120D  25ff00         and    ax, 0xff
+  ovl7:D6F0  21210  740c           je     0xd6fe
+  ovl7:D6F2  21212  b80200         mov    ax, 2
+  ovl7:D6F5  21215  8806dd6d       mov    byte ptr [0x6ddd], al
+  ovl7:D6F9  21219  e8a602         call   ovl7_d9a2
+  ovl7:D6FC  2121C  eb0a           jmp    0xd708
+  ovl7:D6FE  2121E  b80200         mov    ax, 2
+  ovl7:D701  21221  8806de6d       mov    byte ptr [0x6dde], al
+  ovl7:D705  21225  e8c402         call   ovl7_d9cc
+  ovl7:D708  21228  b84704         mov    ax, 0x447                    ; DS:0447 "QUARTERDECK"
+  ovl7:D70B  2122B  50             push   ax
+  ovl7:D70C  2122C  e8465c         call   print_string
+  ovl7:D70F  2122F  5f             pop    di
+  ovl7:D710  21230  b80b00         mov    ax, 0xb
+  ovl7:D713  21233  8a16df6d       mov    dl, byte ptr [0x6ddf]
+  ovl7:D717  21237  81e2ff00       and    dx, 0xff
+  ovl7:D71B  2123B  03d0           add    dx, ax
+  ovl7:D71D  2123D  8816df6d       mov    byte ptr [0x6ddf], dl
+  ovl7:D721  21241  e80e35         call   beep_low
+  ovl7:D724  21244  e96801         jmp    0xd88f
+  ovl7:D727  21247  8a06dd6d       mov    al, byte ptr [0x6ddd]
+  ovl7:D72B  2124B  30e4           xor    ah, ah
+  ovl7:D72D  2124D  83f803         cmp    ax, 3
+  ovl7:D730  21250  740b           je     0xd73d
+  ovl7:D732  21252  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D736  21256  25ff00         and    ax, 0xff
+  ovl7:D739  21259  7502           jne    0xd73d
+  ovl7:D73B  2125B  eb12           jmp    0xd74f
+  ovl7:D73D  2125D  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D741  21261  25ff00         and    ax, 0xff
+  ovl7:D744  21264  7444           je     0xd78a
+  ovl7:D746  21266  becd6d         mov    si, 0x6dcd
+  ovl7:D749  21269  8b04           mov    ax, word ptr [si]
+  ovl7:D74B  2126B  0bc0           or     ax, ax
+  ovl7:D74D  2126D  743b           je     0xd78a
+  ovl7:D74F  2126F  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D753  21273  25ff00         and    ax, 0xff
+  ovl7:D756  21276  740c           je     0xd764
+  ovl7:D758  21278  b80300         mov    ax, 3
+  ovl7:D75B  2127B  8806dd6d       mov    byte ptr [0x6ddd], al
+  ovl7:D75F  2127F  e84002         call   ovl7_d9a2
+  ovl7:D762  21282  eb0a           jmp    0xd76e
+  ovl7:D764  21284  b80300         mov    ax, 3
+  ovl7:D767  21287  8806de6d       mov    byte ptr [0x6dde], al
+  ovl7:D76B  2128B  e85e02         call   ovl7_d9cc
+  ovl7:D76E  2128E  b85304         mov    ax, 0x453                    ; DS:0453 "POOPDECK"
+  ovl7:D771  21291  50             push   ax
+  ovl7:D772  21292  e8e05b         call   print_string
+  ovl7:D775  21295  5f             pop    di
+  ovl7:D776  21296  b80800         mov    ax, 8
+  ovl7:D779  21299  8a16df6d       mov    dl, byte ptr [0x6ddf]
+  ovl7:D77D  2129D  81e2ff00       and    dx, 0xff
+  ovl7:D781  212A1  03d0           add    dx, ax
+  ovl7:D783  212A3  8816df6d       mov    byte ptr [0x6ddf], dl
+  ovl7:D787  212A7  e8a834         call   beep_low
+  ovl7:D78A  212AA  e90201         jmp    0xd88f
+  ovl7:D78D  212AD  8a06dd6d       mov    al, byte ptr [0x6ddd]
+  ovl7:D791  212B1  30e4           xor    ah, ah
+  ovl7:D793  212B3  83f804         cmp    ax, 4
+  ovl7:D796  212B6  740b           je     0xd7a3
+  ovl7:D798  212B8  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D79C  212BC  25ff00         and    ax, 0xff
+  ovl7:D79F  212BF  7502           jne    0xd7a3
+  ovl7:D7A1  212C1  eb12           jmp    0xd7b5
+  ovl7:D7A3  212C3  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D7A7  212C7  25ff00         and    ax, 0xff
+  ovl7:D7AA  212CA  7444           je     0xd7f0
+  ovl7:D7AC  212CC  becf6d         mov    si, 0x6dcf
+  ovl7:D7AF  212CF  8b04           mov    ax, word ptr [si]
+  ovl7:D7B1  212D1  0bc0           or     ax, ax
+  ovl7:D7B3  212D3  743b           je     0xd7f0
+  ovl7:D7B5  212D5  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D7B9  212D9  25ff00         and    ax, 0xff
+  ovl7:D7BC  212DC  740c           je     0xd7ca
+  ovl7:D7BE  212DE  b80400         mov    ax, 4
+  ovl7:D7C1  212E1  8806dd6d       mov    byte ptr [0x6ddd], al
+  ovl7:D7C5  212E5  e8da01         call   ovl7_d9a2
+  ovl7:D7C8  212E8  eb0a           jmp    0xd7d4
+  ovl7:D7CA  212EA  b80400         mov    ax, 4
+  ovl7:D7CD  212ED  8806de6d       mov    byte ptr [0x6dde], al
+  ovl7:D7D1  212F1  e8f801         call   ovl7_d9cc
+  ovl7:D7D4  212F4  b85c04         mov    ax, 0x45c                    ; DS:045C "RAILING"
+  ovl7:D7D7  212F7  50             push   ax
+  ovl7:D7D8  212F8  e87a5b         call   print_string
+  ovl7:D7DB  212FB  5f             pop    di
+  ovl7:D7DC  212FC  b80700         mov    ax, 7
+  ovl7:D7DF  212FF  8a16df6d       mov    dl, byte ptr [0x6ddf]
+  ovl7:D7E3  21303  81e2ff00       and    dx, 0xff
+  ovl7:D7E7  21307  03d0           add    dx, ax
+  ovl7:D7E9  21309  8816df6d       mov    byte ptr [0x6ddf], dl
+  ovl7:D7ED  2130D  e84234         call   beep_low
+  ovl7:D7F0  21310  e99c00         jmp    0xd88f
+  ovl7:D7F3  21313  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D7F7  21317  25ff00         and    ax, 0xff
+  ovl7:D7FA  2131A  752b           jne    0xd827
+  ovl7:D7FC  2131C  8a06dd6d       mov    al, byte ptr [0x6ddd]
+  ovl7:D800  21320  30e4           xor    ah, ah
+  ovl7:D802  21322  83f801         cmp    ax, 1
+  ovl7:D805  21325  7420           je     0xd827
+  ovl7:D807  21327  8a06dd6d       mov    al, byte ptr [0x6ddd]
+  ovl7:D80B  2132B  30e4           xor    ah, ah
+  ovl7:D80D  2132D  83f802         cmp    ax, 2
+  ovl7:D810  21330  7415           je     0xd827
+  ovl7:D812  21332  b80500         mov    ax, 5
+  ovl7:D815  21335  8806de6d       mov    byte ptr [0x6dde], al
+  ovl7:D819  21339  e8b001         call   ovl7_d9cc
+  ovl7:D81C  2133C  b86404         mov    ax, 0x464                    ; DS:0464 "ENEMY FLAG"
+  ovl7:D81F  2133F  50             push   ax
+  ovl7:D820  21340  e8325b         call   print_string
+  ovl7:D823  21343  5f             pop    di
+  ovl7:D824  21344  e80b34         call   beep_low
+  ovl7:D827  21347  eb66           jmp    0xd88f
+  ovl7:D829  21349  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D82D  2134D  25ff00         and    ax, 0xff
+  ovl7:D830  21350  7415           je     0xd847
+  ovl7:D832  21352  8a06de6d       mov    al, byte ptr [0x6dde]
+  ovl7:D836  21356  30e4           xor    ah, ah
+  ovl7:D838  21358  83f809         cmp    ax, 9
+  ovl7:D83B  2135B  740a           je     0xd847
+  ovl7:D83D  2135D  b80200         mov    ax, 2
+  ovl7:D840  21360  8906be6d       mov    word ptr [0x6dbe], ax
+  ovl7:D844  21364  e8eb33         call   beep_low
+  ovl7:D847  21367  eb46           jmp    0xd88f
+  ovl7:D849  21369  b81700         mov    ax, 0x17
+  ovl7:D84C  2136C  50             push   ax
+  ovl7:D84D  2136D  e8f853         call   clear_text_row
+  ovl7:D850  21370  5f             pop    di
+  ovl7:D851  21371  b80900         mov    ax, 9
+  ovl7:D854  21374  8806de6d       mov    byte ptr [0x6dde], al
+  ovl7:D858  21378  25ff00         and    ax, 0xff
+  ovl7:D85B  2137B  8806dd6d       mov    byte ptr [0x6ddd], al
+  ovl7:D85F  2137F  e8e2fb         call   ovl7_d444
+  ovl7:D862  21382  e8cd33         call   beep_low
+  ovl7:D865  21385  eb28           jmp    0xd88f
   ovl7:D867  21387  50             push   ax
-  ovl7:D868  21388  e86592         call   rt_6ad0
-  ovl7:D86B  2138B  0800           or     byte ptr [bx + si], al
-  ovl7:D86D  2138D  1b00           sbb    ax, word ptr [bx + si]
-  ovl7:D86F  2138F  0800           or     byte ptr [bx + si], al
-  ovl7:D871  21391  41             inc    cx
-  ovl7:D872  21392  004300         add    byte ptr [bp + di], al
-  ovl7:D875  21395  52             push   dx
-  ovl7:D876  21396  005000         add    byte ptr [bx + si], dl
-  ovl7:D879  21399  51             push   cx
-  ovl7:D87A  2139A  004600         add    byte ptr [bp], al
-  ; ---- data / unreached bytes (18 bytes)
-  ovl7:D87D  2139D  db 8Fh, D8h, 49h, D8h, 49h, D8h, 29h, D8h, F3h, D7h, 8Dh, D7h, 27h, D7h, C1h, D6h                  ; ..I.I.).....'...
-  ovl7:D88D  213AD  db 5Bh, D6h                                                                                        ; [.
+  ovl7:D868  21388  e86592         call   sparse_switch
+  ovl7:D86B  2138B  dw 8                                                                    ; sparse switch table: 8 values, then 9 targets (the default first)
+  ovl7:D86D  2138D  dw 27                                                                   ; value 0
+  ovl7:D86F  2138F  dw 8                                                                    ; value 1
+  ovl7:D871  21391  dw 65                                                                   ; value 2
+  ovl7:D873  21393  dw 67                                                                   ; value 3
+  ovl7:D875  21395  dw 82                                                                   ; value 4
+  ovl7:D877  21397  dw 80                                                                   ; value 5
+  ovl7:D879  21399  dw 81                                                                   ; value 6
+  ovl7:D87B  2139B  dw 70                                                                   ; value 7
+  ovl7:D87D  2139D  dw D88Fh                                                                 ; default
+  ovl7:D87F  2139F  dw D849h                                                                 ; case 27
+  ovl7:D881  213A1  dw D849h                                                                 ; case 8
+  ovl7:D883  213A3  dw D829h                                                                 ; case 65
+  ovl7:D885  213A5  dw D7F3h                                                                 ; case 67
+  ovl7:D887  213A7  dw D78Dh                                                                 ; case 82
+  ovl7:D889  213A9  dw D727h                                                                 ; case 80
+  ovl7:D88B  213AB  dw D6C1h                                                                 ; case 81
+  ovl7:D88D  213AD  dw D65Bh                                                                 ; case 70
   ovl7:D88F  213AF  8b069364       mov    ax, word ptr [0x6493]
   ovl7:D893  213B3  0bc0           or     ax, ax
   ovl7:D895  213B5  7403           je     0xd89a
@@ -54144,7 +56528,7 @@ ovl7_d987:
   ovl7:D9A0  214C0  5d             pop    bp
   ovl7:D9A1  214C1  c3             ret
 
-; ---- ovl7_d9a2
+; ---- ovl7_d9a2   (called from 4 places)
 ovl7_d9a2:
   ovl7:D9A2  214C2  55             push   bp
   ovl7:D9A3  214C3  8bec           mov    bp, sp
@@ -54166,7 +56550,7 @@ ovl7_d9a2:
   ovl7:D9CA  214EA  5d             pop    bp
   ovl7:D9CB  214EB  c3             ret
 
-; ---- ovl7_d9cc
+; ---- ovl7_d9cc   (called from 5 places)
 ovl7_d9cc:
   ovl7:D9CC  214EC  55             push   bp
   ovl7:D9CD  214ED  8bec           mov    bp, sp
@@ -55209,26 +57593,75 @@ ovl7_def1:
   ovl7:E466  21F86  5f             pop    di
   ovl7:E467  21F87  8946f8         mov    word ptr [bp - 8], ax
   ovl7:E46A  21F8A  e98500         jmp    0xe4f2
-  ; ---- data / unreached bytes (133 bytes)
-  ovl7:E46D  21F8D  db 8Bh, 36h, F6h, 6Ch, 8Bh, 46h, F6h, D1h, E0h, 03h, F0h, 8Bh, 04h, 83h, F8h, FFh                  ; .6.l.F..........
-  ovl7:E47D  21F9D  db 75h, 0Bh, B8h, 8Bh, 19h, 8Bh, 36h, BCh, 6Dh, 89h, 04h, EBh, 09h, B8h, 5Bh, 1Bh                  ; u.....6.m.....[.
-  ovl7:E48D  21FAD  db 8Bh, 36h, BCh, 6Dh, 89h, 04h, FFh, 76h, F6h, E8h, E1h, 0Ch, 5Fh, EBh, 7Eh, B8h                  ; .6.m...v...._.~.
-  ovl7:E49D  21FBD  db 8Dh, 1Bh, 8Bh, 36h, BCh, 6Dh, 89h, 04h, EBh, 73h, B8h, E5h, 19h, 8Bh, 36h, BCh                  ; ...6.m...s....6.
-  ovl7:E4AD  21FCD  db 6Dh, 89h, 04h, B8h, BDh, 19h, 8Bh, 36h, BCh, 6Dh, 89h, 04h, EBh, 5Fh, B8h, 71h                  ; m......6.m..._.q
-  ovl7:E4BD  21FDD  db 1Bh, 8Bh, 36h, BCh, 6Dh, 89h, 04h, EBh, 54h, B8h, A1h, 19h, 8Bh, 36h, BCh, 6Dh                  ; ..6.m...T....6.m
-  ovl7:E4CD  21FED  db 89h, 04h, EBh, 49h, B8h, D1h, 19h, 8Bh, 36h, BCh, 6Dh, 89h, 04h, EBh, 3Eh, B8h                  ; ...I....6.m...>.
-  ovl7:E4DD  21FFD  db F3h, 19h, 8Bh, 36h, BCh, 6Dh, 89h, 04h, EBh, 33h, B8h, A1h, 1Bh, 8Bh, 36h, BCh                  ; ...6.m...3....6.
-  ovl7:E4ED  2200D  db 6Dh, 89h, 04h, EBh, 28h                                                                         ; m...(
+  ovl7:E46D  21F8D  8b36f66c       mov    si, word ptr [0x6cf6]
+  ovl7:E471  21F91  8b46f6         mov    ax, word ptr [bp - 0xa]
+  ovl7:E474  21F94  d1e0           shl    ax, 1
+  ovl7:E476  21F96  03f0           add    si, ax
+  ovl7:E478  21F98  8b04           mov    ax, word ptr [si]
+  ovl7:E47A  21F9A  83f8ff         cmp    ax, -1
+  ovl7:E47D  21F9D  750b           jne    0xe48a
+  ovl7:E47F  21F9F  b88b19         mov    ax, 0x198b
+  ovl7:E482  21FA2  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E486  21FA6  8904           mov    word ptr [si], ax
+  ovl7:E488  21FA8  eb09           jmp    0xe493
+  ovl7:E48A  21FAA  b85b1b         mov    ax, 0x1b5b
+  ovl7:E48D  21FAD  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E491  21FB1  8904           mov    word ptr [si], ax
+  ovl7:E493  21FB3  ff76f6         push   word ptr [bp - 0xa]
+  ovl7:E496  21FB6  e8e10c         call   ovl7_f17a
+  ovl7:E499  21FB9  5f             pop    di
+  ovl7:E49A  21FBA  eb7e           jmp    0xe51a
+  ovl7:E49C  21FBC  b88d1b         mov    ax, 0x1b8d
+  ovl7:E49F  21FBF  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4A3  21FC3  8904           mov    word ptr [si], ax
+  ovl7:E4A5  21FC5  eb73           jmp    0xe51a
+  ovl7:E4A7  21FC7  b8e519         mov    ax, 0x19e5
+  ovl7:E4AA  21FCA  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4AE  21FCE  8904           mov    word ptr [si], ax
+  ovl7:E4B0  21FD0  b8bd19         mov    ax, 0x19bd
+  ovl7:E4B3  21FD3  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4B7  21FD7  8904           mov    word ptr [si], ax
+  ovl7:E4B9  21FD9  eb5f           jmp    0xe51a
+  ovl7:E4BB  21FDB  b8711b         mov    ax, 0x1b71
+  ovl7:E4BE  21FDE  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4C2  21FE2  8904           mov    word ptr [si], ax
+  ovl7:E4C4  21FE4  eb54           jmp    0xe51a
+  ovl7:E4C6  21FE6  b8a119         mov    ax, 0x19a1
+  ovl7:E4C9  21FE9  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4CD  21FED  8904           mov    word ptr [si], ax
+  ovl7:E4CF  21FEF  eb49           jmp    0xe51a
+  ovl7:E4D1  21FF1  b8d119         mov    ax, 0x19d1
+  ovl7:E4D4  21FF4  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4D8  21FF8  8904           mov    word ptr [si], ax
+  ovl7:E4DA  21FFA  eb3e           jmp    0xe51a
+  ovl7:E4DC  21FFC  b8f319         mov    ax, 0x19f3
+  ovl7:E4DF  21FFF  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4E3  22003  8904           mov    word ptr [si], ax
+  ovl7:E4E5  22005  eb33           jmp    0xe51a
+  ovl7:E4E7  22007  b8a11b         mov    ax, 0x1ba1
+  ovl7:E4EA  2200A  8b36bc6d       mov    si, word ptr [0x6dbc]
+  ovl7:E4EE  2200E  8904           mov    word ptr [si], ax
+  ovl7:E4F0  22010  eb28           jmp    0xe51a
   ovl7:E4F2  22012  50             push   ax
-  ovl7:E4F3  22013  e8da85         call   rt_6ad0
-  ovl7:E4F6  22016  0800           or     byte ptr [bx + si], al
-  ovl7:E4F8  22018  a000a1         mov    al, byte ptr [0xa100]
-  ovl7:E4FB  2201B  0001           add    byte ptr [bx + di], al
-  ovl7:E4FD  2201D  00ff           add    bh, bh
-  ovl7:E4FF  2201F  ff61ff         jmp    word ptr [bx + di - 1]
-  ; ---- data / unreached bytes (24 bytes)
-  ovl7:E502  22022  db 60h, FFh, 5Fh, FFh, 00h, 00h, E7h, E4h, DCh, E4h, D1h, E4h, C6h, E4h, BBh, E4h                  ; `._.............
-  ovl7:E512  22032  db B0h, E4h, A7h, E4h, 9Ch, E4h, 6Dh, E4h                                                          ; ......m.
+  ovl7:E4F3  22013  e8da85         call   sparse_switch
+  ovl7:E4F6  22016  dw 8                                                                    ; sparse switch table: 8 values, then 9 targets (the default first)
+  ovl7:E4F8  22018  dw 160                                                                  ; value 0
+  ovl7:E4FA  2201A  dw 161                                                                  ; value 1
+  ovl7:E4FC  2201C  dw 1                                                                    ; value 2
+  ovl7:E4FE  2201E  dw -1                                                                   ; value 3
+  ovl7:E500  22020  dw -159                                                                 ; value 4
+  ovl7:E502  22022  dw -160                                                                 ; value 5
+  ovl7:E504  22024  dw -161                                                                 ; value 6
+  ovl7:E506  22026  dw 0                                                                    ; value 7
+  ovl7:E508  22028  dw E4E7h                                                                 ; default
+  ovl7:E50A  2202A  dw E4DCh                                                                 ; case 160
+  ovl7:E50C  2202C  dw E4D1h                                                                 ; case 161
+  ovl7:E50E  2202E  dw E4C6h                                                                 ; case 1
+  ovl7:E510  22030  dw E4BBh                                                                 ; case -1
+  ovl7:E512  22032  dw E4B0h                                                                 ; case -159
+  ovl7:E514  22034  dw E4A7h                                                                 ; case -160
+  ovl7:E516  22036  dw E49Ch                                                                 ; case -161
+  ovl7:E518  22038  dw E46Dh                                                                 ; case 0
   ovl7:E51A  2203A  8b36006d       mov    si, word ptr [0x6d00]
   ovl7:E51E  2203E  0376f6         add    si, word ptr [bp - 0xa]
   ovl7:E521  22041  8a04           mov    al, byte ptr [si]
@@ -56421,7 +58854,7 @@ ovl7_f06f:
   ovl7:F178  22C98  5d             pop    bp
   ovl7:F179  22C99  c3             ret
 
-; ---- ovl7_f17a
+; ---- ovl7_f17a   (called from 1 place)
 ovl7_f17a:
   ovl7:F17A  22C9A  55             push   bp
   ovl7:F17B  22C9B  8bec           mov    bp, sp
