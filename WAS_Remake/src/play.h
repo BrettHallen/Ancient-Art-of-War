@@ -8,6 +8,9 @@
  * play.h: campaign play on the sea map (overlay 4 of WAS.EXE, campaign_play
  * ovl4:7650), ported routine by routine. Step 2: the map, the marker,
  * scrolling, the command lines, Info, Fleet, Time, Pause and Surrender.
+ * Step 3: the rules: tracing paths, sailing, the wind, supplies, repairs,
+ * ports and crowns, rough and shallow water, sighting, encounters and the
+ * fights on the map, Detach and Join, and the end of the game.
  * The fields keep WAS.EXE's units: x in bytes of 4 pixels, y in line pairs.
  */
 #ifndef WAS_PLAY_H
@@ -23,6 +26,13 @@
 #define VIEW_MARGIN    86      /* the marker stays between the top and top + 86 line pairs */
 #define CX_MAX         78      /* the marker's x limit (77 while tracing) */
 #define CY_MAX         195     /* its y limit (193 while tracing) */
+#define NUM_CELLS      200     /* the map: 10 x 20 tiles */
+#define PATH_SIZE      1500    /* DS:4E53: the traced paths, a ring of address steps */
+#define ROUTE_SIZE     600     /* DS:542F: the routes (the enemy and the merchants, step 5) */
+#define PATH_END       99      /* the step that ends a path */
+#define NO_DEST        0x270F  /* 9999 */
+#define MAX_PORTS      75      /* DS:689C: ports a merchant can sail to */
+#define DELAY_UNIT_US  50.0    /* one unit of WAS.EXE's delay() on an IBM PC/XT (as WAR's) */
 
 /* WAS.EXE's scan codes are used as key codes (as in the WAR remake). */
 enum {
@@ -35,13 +45,16 @@ enum {
     PK_ALT_S = 0x11F,          /* Alt+S: save the game (step 6) */
 };
 
-typedef enum {               /* DS:65AA */
+typedef enum {               /* DS:65AA, and the remake's numbers for WAS.EXE's waiting loops */
     PM_NORMAL = 0,           /* the marker is a cross; Time Fleet Pause Surrender */
     PM_SQUAD  = 1,           /* the marker is over a squadron: its commands are shown */
-    PM_TRACE  = 2,           /* tracing a path (step 3) */
+    PM_TRACE  = 2,           /* tracing a path: the marker is a box, time stands still */
     PM_INFO   = 4,           /* Info: the squadron's ships (the original waits in a loop, ovl4:7D69) */
-    PM_FLEET  = 97,          /* Fleet: the ships on each side (remake's own number; ovl4:AD63 waits for a key) */
-    PM_PAUSE  = 98,          /* Pause (remake's own number; ovl4:7C34 waits for a key) */
+    PM_END    = 93,          /* "You Won" / "You Lost" blinking until a key (ovl4:A129) */
+    PM_OFFER  = 94,          /* the opponent offers to surrender: Y or N (ovl4:A0E7) */
+    PM_DETACH = 95,          /* Detach or Join: moving ships between two squadrons (ovl4:A347) */
+    PM_FLEET  = 97,          /* Fleet: the ships on each side (ovl4:AD63 waits for a key) */
+    PM_PAUSE  = 98,          /* Pause (ovl4:7C34 waits for a key) */
     PM_PROMPT = 99,          /* a question, or the game is over: time stops */
 } PlayMode;
 
@@ -49,18 +62,25 @@ typedef enum { PLAY_RUNNING, PLAY_WON, PLAY_LOST, PLAY_QUIT, PLAY_SAVE } PlayRes
 
 typedef struct {
     bool used;               /* 5D2D != 9999 */
-    int  side;               /* 5CDD: -1 the player's, 0 the enemy's */
+    int  side;               /* 5CDD: -1 the player's, 0 the enemy's (it flips while fighting) */
     int  speed;              /* 5D2D: 0 anchored, 1 half sail, 2 full sail */
-    int  x, y;               /* 5D7D, 5DCD: byte column, line pair */
-    int  supplies;           /* 5E1D */
+    int  x, y;               /* 5D7D, 5DCD: byte column, line pair; the map address is (y + 1) * 80 + x */
+    int  supplies;           /* 5E1D: 0-20 */
     int  mark;               /* 5EBD: 0, 1 a flagship aboard (the pennant), 2 merchant */
-    int  ctrl;               /* 5EE5: -2 at the start; 0 not under the player's command; -1 always */
+    int  ctrl;               /* 5EE5: -2 free; 1.. an encounter's countdown; then -1 or 0 fighting */
     int  heading;            /* 5FD5: 0-15, N clockwise */
-    bool battle;             /* 56FF: in an encounter (the crossed swords; Zoom) */
+    int  partner;            /* 56FF: the other squadron of an encounter + 1 (the crossed swords; Zoom) */
     bool seen;               /* 574F */
     bool has_path;           /* 583F: on a traced path (Info's S changes the speed) */
-    bool has_route;          /* 588F: on a route (the enemy) */
-    int  port_speed;         /* 6581: the speed before it put into port */
+    bool has_route;          /* 588F: on a route (the enemy, step 5) */
+    int  port_speed;         /* 6581: the speed before an encounter (Info's S sets it too) */
+    int  path_pos;           /* 579F: its next step in the path ring */
+    int  route_pos;          /* 57EF */
+    int  countdown;          /* 56AF: ticks until its next step */
+    int  move_delay;         /* 64E1: ticks a step takes */
+    int  dest;               /* 6316: where its traced path ends (the little cross), or NO_DEST */
+    int  merchant_dest;      /* 5F35: the port a merchant sails for */
+    bool routed;             /* 5687 */
 } PSquad;
 
 typedef struct {
@@ -78,22 +98,75 @@ typedef struct {
 
     PlayMode mode;
     int      sel;            /* 62FB: the squadron under the marker */
-    int      free_slot;      /* 62FD: an empty squadron slot, or -1 */
+    int      free_slot;      /* 62FD: an empty squadron slot (Detach) or Join's partner, or -1 */
     bool     over_squad;     /* 688C */
     int      cx, cy;         /* 5CC7, 5CC9: the marker */
     int      view_top;       /* 3F3B: the line pair at the top of the view */
 
     int      time_div;       /* 6312: 64 slow, 16 medium, 4 fast, 1 faster */
     int      tick_count;     /* 6310 */
-    int      ticks;          /* 688A */
-    int      wind;           /* 6314: 0-3, the wind's direction */
+    int      ticks;          /* 688A: 0-30, what happens on ticks 10, 20, 25 and 31 */
+    int      sq_turn;        /* campaign_play's l2: the next squadron to eat (ovl4_9345) */
+    int      wind;           /* 6314: 0-3, the wind blows from N, E, S, W */
+    bool     wind_on;        /* 6865: the Options Shoppe's wind */
+    int      fight_delay;    /* 6851: ticks before an encounter is fought out on the map (250, 500, 1000) */
+
+    /* the map */
+    uint8_t  map[NUM_CELLS];        /* DS:5BFF */
+    uint16_t coast[NUM_CELLS];      /* 425D: the shape of each cell's shore (rt_2523) */
+    int      port_sup[NUM_CELLS];   /* 4965: what a port or crown has left */
+    bool     inverted[NUM_CELLS];   /* the tile is drawn inverted (rt_2e61): a port with nothing left */
+    int      port_cell[MAX_PORTS];  /* 689C: ports merchants can reach, -1 after the last */
+    int      port_source[MAX_PORTS];/* 6932: where on the edge of the map their merchants come from */
+    int      ports_supply, ports_repair, crowns;   /* 6499, 649B, 649D */
+
+    /* the paths */
+    int8_t   path[PATH_SIZE + ROUTE_SIZE];
+    int      path_w;         /* 62F7: where tracing writes */
+    int      trace_skip;     /* 64D1: the marker moves every other iteration while tracing */
+
+    int      rules[NUM_RULES];  /* 64AD-64BD: repairs, port supplies, ?, rough water, eating,
+                                   visibility, shallow water, wind changes, ? */
+    int16_t  opp[OPP_WORDS];    /* 604D-607D: the opponent's values (SO2) */
 
     int      text_rows;      /* 645B: text rows below the map */
     int      msg_rows;       /* 645D: message rows */
+    int      msg_last;       /* 6890: the last message, not repeated */
+    int      msg_timer;      /* 630D */
     char     text[25][41];
-    uint8_t  panel[25][40];  /* text written over the map (Info's panel), shown until the map is drawn again */
+    uint8_t  panel[25][40];  /* text written over the map (Info, Detach, the offer), shown in those modes */
+    struct { uint16_t off; int8_t x; } icon[25][2];   /* icons on the text rows (rt_2cc4) */
     int      trow, tcol;     /* the text position (goto_xy) */
     int      fleet[6];       /* 64C3, 64BF, 64C1, 64C9, 64C5, 64C7: flags, lines, frigates (yours, theirs) */
+
+    int      dist;           /* 689A: the distance between the last two squadrons compared */
+    int      losses[4];      /* 64A5, 64A7, 64A9, 64AB: your ships, theirs, your flagships, theirs */
+    int      battle_a, battle_b;   /* 6301, 6303: the last Zoom's squadrons (step 4) */
+    int      crown_threat;   /* 6309 */
+    int      merchant_lost;  /* 6898 */
+    int      ai_done;        /* 64DD: a squadron that finished its path (step 5) */
+    int      water_value[2]; /* 65B2, 65B4 (rt_2523, for step 5) */
+    bool     in_encounters;  /* inside ovl4_8BCD: an accepted surrender does not end the game */
+    bool     no_flags[2];    /* 65BA, 65BB: you, they began with no flagship but have a crown:
+                                losing every flagship does not end the game */
+    bool     zoomed;         /* 630F: set by a sea battle (step 4); the end codes become 14 and 4 */
+
+    /* Detach and Join (ovl4:A347) */
+    int      dj_other[3];    /* 69C8: the ships of the second squadron */
+    int      dj_pos;         /* the ship marked: 0-2 the first squadron, 3-5 the second */
+    bool     dj_new;         /* the second squadron was empty (Detach) */
+    PlayMode back_mode;      /* the mode Detach, Join or the offer goes back to */
+
+    /* the end */
+    bool     offer_ends;     /* Y to the offer ends the game */
+    bool     offer_at_start; /* the offer came as the game began (over the menus in WAS.EXE) */
+    int      end_won;        /* ovl4:A129's argument: 1 lost, 0 or 2 won */
+    int      end_frame;
+    int      end_key;        /* a key pressed during the blinking, read at the end of a blink */
+    bool     end_quit;       /* the game ends straight after the key (ovl4:C51A) */
+
+    uint16_t rnd, rnd_ptr;   /* random() (rt:2F0D): DS:0808 and 080A */
+    int      stall;          /* iterations WAS.EXE spends in delay() */
 
     int      key;            /* the key for this iteration (DS:6896) */
     bool     jump;           /* Shift held: -/+ jump to the top / bottom (DS:081A) */
@@ -102,11 +175,13 @@ typedef struct {
     bool     ended;          /* the game is over: waiting for Enter */
     PlayResult outcome;      /* the result once Enter is pressed */
     PlayResult result;       /* not PLAY_RUNNING once play is over */
-    int      result_code;    /* 649F: 11 you surrendered */
+    int      result_code;    /* 649F: 0, 2, 3, 4 won; 10, 12, 13, 14 lost; 1 their surrender accepted; 11 yours */
     int      beeps;          /* sounds asked for (step 8 plays them): counted for the tests */
 } Play;
 
-void play_start(Play *p, const Campaign *c, const GameAssets *ga);
+/* Start a new game of campaign c. seed: the random number state (WAS.EXE
+ * takes it from the clock). */
+void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed);
 
 /* A key was pressed (PK_ code); Shift held selects jump scrolling. */
 void play_key(Play *p, int key, bool shift);
@@ -118,5 +193,8 @@ void play_draw(const Play *p, Screen *s, GfxMode mode);
 
 /* The height of the map on screen: 200 - 8 x text rows - 2 (182 with two rows) */
 int  play_map_h(const Play *p);
+
+/* The squadron's map cell (squadron_cell rt:1985) */
+int  play_cell(const Play *p, int sq);
 
 #endif

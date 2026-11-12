@@ -26,6 +26,9 @@
 #define FONT_COUNT  95     /* space .. '~' */
 #define DS_SIZE     0x3F10 /* initialised part of WAS.EXE's data segment */
 #define DS_FONT     0x089C /* the 8x8 font (the same as WAR.EXE's) */
+#define RND_CODE    0x2330 /* resident code bytes read by WAS.EXE's random() (rt:2F0D) */
+#define OPP_WORDS   25     /* an opponent's values: SO2 + 277h + 50 x opponent -> DS:604D */
+#define SCNF_SIZE   29     /* SCNF: the Options Shoppe's settings -> DS:684C */
 
 typedef struct { uint8_t r, g, b; } RGB;
 
@@ -90,6 +93,10 @@ typedef struct {
     int8_t   heading_dy[16];                  /* DS:075A: 0 or 1 line pair lower for each heading */
     uint8_t  so5[0x374];                      /* SO5: campaign-play messages (DS:4AF5), zero-terminated */
     bool     have_so5;
+    uint8_t  code[RND_CODE];                  /* the start of WAS.EXE's resident code (random) */
+    int16_t  opp[6][OPP_WORDS];               /* SO2: the six opponents' values */
+    bool     have_so2;
+    uint8_t  scnf[SCNF_SIZE];                 /* SCNF, or WAS.EXE's defaults (ovl1_startup) */
     AssetSet set[MODE_COUNT];
 } GameAssets;
 
@@ -109,6 +116,9 @@ void assets_free(GameAssets *ga);
 
 /* Load a file from the game folder, ignoring case. Free with SDL_free. */
 void *assets_load_file(const char *dir, const char *name, size_t *size);
+
+/* The Options Shoppe's word at DS:offset (684C-6868), from SCNF */
+int  assets_scnf_word(const GameAssets *ga, unsigned ds_offset);
 
 /* A zero-terminated string from WAS.EXE's data segment or SO5 ("" if out of range). */
 const char *assets_ds_string(const GameAssets *ga, unsigned offset);

@@ -5,7 +5,8 @@
  * Original game by Dave Murry & Barry Murry
  * Published by Brøderbund Software Inc.
  *
- * main.c: the window, the asset viewer (step 1) and campaign play (step 2).
+ * main.c: the window, the asset viewer (step 1) and campaign play (steps 2
+ * and 3).
  *
  * Everything is drawn from the player's own copy of the original game, in
  * the CGA colours (WAS.EXE) or the 16 colours of the Tandy 1000 version
@@ -21,9 +22,11 @@
  *        Esc         quit
  *
  * Playing: the original keys (arrows or keypad move the marker, -/+ scroll,
- *        I Info, E End, T Time, F Fleet, P Pause, S Surrender, C Clear,
- *        Y/N answers, Enter at the end), plus Tab CGA/16 colours, F2 aspect,
- *        Alt/Cmd+Enter full screen, Esc leave the game.
+ *        M Move (trace, M marks, C cancels), I Info (S speed), D Detach,
+ *        J Join (-/+ mark, S switch, E end), E End, T Time, F Fleet,
+ *        P Pause, S Surrender, C Clear, Y/N answers, Enter at the end), plus
+ *        Tab CGA/16 colours, F2 aspect, Alt/Cmd+Enter full screen, Esc leave
+ *        the game.
  *
  * Usage: AncientArtOfWarAtSea [game-folder]
  *        AncientArtOfWarAtSea --screenshots OUTDIR [game-folder]   (write BMPs, no window)
@@ -338,7 +341,7 @@ static void start_play(App *app)
     const Campaign *c = &app->campaigns[app->viewer.index - SCREEN_MAP_FIRST];
     if (!c->loaded) return;
     app->game = *c;
-    play_start(&app->play, &app->game, &app->ga);
+    play_start(&app->play, &app->game, &app->ga, (unsigned)SDL_GetTicks());
     app->playing = true;
     app->tapped = 0;
 }

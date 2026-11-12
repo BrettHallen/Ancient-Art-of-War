@@ -44,7 +44,18 @@ Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/R
    - checked in DOSBox (WAS_Analysis/tools/dosbox): the start, the command line over a squadron, Info, Fleet and the Surrender question are pixel-identical; the marker moves 27 bytes a second at 300 cycles (video at 30 fps), hence PLAY_HZ 27
    - tests: test_play.c, fuzz_play.c, test_app.c
    - left for step 3: Move (tracing a path), "In Port" in Info (port_of_cell ovl4:C268), the ticks' work (sailing, wind, sighting, ports, supplies); Detach, Join, Practice and Zoom with steps 3-4
-3. Strategic rules: movement and speed (anchored / half sail / full sail), wind, ports (repair, supplies), rough and shallow water, merchants, sighting, crowns.
+3. Strategic rules - done (12 Nov)
+   - play.c, the clock (campaign_play ovl4:7959): every [6312] iterations a tick: encounters (ovl4:8BCD), the enemy (4 x ovl4:C79A, step 5), move_squadrons (ovl4:96A0, with set_move_delays ovl4:9AB2), eat (ovl4:9345) for two squadrons; tick 10 restock_ports (ovl4:BCD2), tick 20 crowns_check (ovl4:C51A), tick 25 the wind (ovl4:C658, rule 64BB), tick 31 the messages' timer. Every iteration map_battles (ovl4:8EDE)
+   - Move: start_move_order (ovl4:89E4, find_free_path_run ovl4:ECD1), trace_prompt (ovl4:ACDA), the marker as a box moving every other iteration (campaign_input ovl4:81A8-85CC, trace_blocked ovl4:B3E5: land tiles, land bytes in the map buffer, the shore's slant), the steps into the path ring DS:4E53 (at most 80 a step), end_trace (ovl4:8A75: 99, full sail, the destination mark rt:2AB8), cancel_path (ovl4:8A2C), clear_paths (rt:0F55); step_heading (ovl4:9A3C)
+   - sailing: 3 - speed ticks a step, doubled for ships of the line, +1/+2 for torn sails, shifted by DS:0ECD into the wind; losses in rough and shallow water (lost_at_sea ovl4:9D7E, rules 64B3 and 64B9, promote_at_sea ovl4:C302)
+   - ports and crowns: coast_init (rt:2523, the shore types DS:425D and the table DS:0796), repair/supply_port_beside (rt:1AA8, 19D6), crown_beside (rt:1B7D), port_of_cell (ovl4:C268), port_supplies (ovl4:C197), invert_empty_ports (ovl4:C21C), port_call (ovl4:BD86), port_sources and sea_way (ovl4:C07C, E5BF, WAS.EXE's search kept as it is); "In Port" in Info
+   - encounters, merchants met and taken (ovl4:BB29, BACD), sighting (rule 64B7); map battles (battle_hit ovl4:9154, count_loss ovl4:92B7); end_check (ovl4:9E4F: the opponent's values, the last ship, the last flagship (flags_check ovl4:C3C9 with 65BA/65BB), the offer to surrender), crown_check (ovl4:C44E), game_over (ovl4:A129)
+   - Detach and Join (detach_join ovl4:A347, place_detached rt:1F2D); join_partner fixed: a squadron of up to two ships can join ([6458], not [6457])
+   - the messages (message_row ovl4:BBBC, print_map_region ovl4:BC2D) and WAS.EXE's pauses (delay rt:2F6E: 50 us a unit on an XT) as iterations skipped
+   - assets: SO2's six opponents (50 bytes from SO2+277h, copied to DS:604D), SCNF (the fight delay 6851, the wind 6865), the code words random() reads; game_init's new-game part (ovl1:77AD: flagships promoted where a side has none and no crown, ovl1_7A3F)
+   - checked in DOSBox: tracing (the box, the land stopping it), the mark, sailing to the end, Join and Detach (all four screens each), the sighting/encounter/fighting/battle messages, "In Port", the wind's face (North and South), a crown taken on tick 20 with "You Won" (a key then ends the game at once, as WAS.EXE does after ovl4:C51A), the offer to surrender: pixel-identical, apart from the enemy's moves
+   - tests: test_rules.c; fuzz_play.c also traces paths at the fastest time and checks the path ring
+   - left for step 5: the merchants (created at ovl4:BEE3 with the enemy's routes, db21), port_side (ovl4:BD3C, the strength map ovl4:E805); for step 4: Zoom, Practice; for step 8: the crown's flashing tune
 4. Battles: the sea battle (overlays 5 and 6: Zoom, courses, firing, orders) and boarding (overlay 7).
 5. The enemy commander.
 6. Menus, options, saved games, battle report, the opening and the demo.
@@ -58,6 +69,8 @@ Each step: tests (scripted walkthroughs with screenshots, fuzzers under ASan), t
 - Esc in play asks "Quit to the title page? (Y or N)" (no Esc in WAS.EXE); until step 6 it goes back to the viewer, as does Enter after a surrender.
 - Info, Fleet and Pause are screens of the main loop rather than loops of their own (WAS.EXE waits in them); time is stopped in them as in the original.
 - Keys other than the marker's act once per press (WAS.EXE reads a held key again every iteration, so a held T steps the time on more than once).
+- Detach / Join, the opponent's offer and "You Won" / "You Lost" are screens of the main loop too; WAS.EXE's delays (after a message, a command) skip iterations rather than stop the program, and a key pressed meanwhile waits, as in the keyboard buffer.
+- Until step 6 the opponent's offer to surrender at the start of a game is shown over the map (WAS.EXE shows it over the opponent's page, before the map).
 - (The viewer itself is the remake's own, as in WAR.)
 
 ## Tooling still to make

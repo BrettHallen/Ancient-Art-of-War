@@ -6,17 +6,27 @@ The remake uses the original pictures, map tiles, sprites and font, in either th
 **No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `AD`, `B`, the `S` files and `SITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
 ## Status
-Steps 1 and 2 of the plan (`WAS_Remake_plan.md`) are done.
+Steps 1 to 3 of the plan (`WAS_Remake_plan.md`) are done.
 
-**Campaign play, the map** (step 2, overlay 4 of WAS.EXE): press **Enter** on a campaign's map in the viewer to play it. The game starts as the original does, at the bottom of the map with the marker in the middle:
+**Campaign play, the rules** (step 3, overlay 4 of WAS.EXE): your squadrons can now be sailed, and the game follows the original's rules:
+- **Move**: over one of your squadrons press **M**, trace its path with the marker (it becomes a box that stays on the sea and moves at half speed, as in the original), and press **M** to mark the end (**C** cancels). The squadron sets out at full sail and a little cross marks where it will stop; in **Info**, **S** changes its speed (anchored, half sail, full sail)
+- sailing: how long each step takes depends on the speed, the kind of ships (ships of the line are slower than frigates), torn sails and, with the wind on in the Options Shoppe's file (SCNF), the wind; the wind's face on the map shows where it blows from, and it changes now and then
+- rough water (dark) may sink frigates, shallow water (light) ships of the line, as the campaign's rules say
+- supplies: squadrons eat; hungry ones suffer damage; a squadron at anchor beside a supply port, a repair port or its crown takes supplies and repairs ("In Port" in Info), and a port with nothing left is drawn inverted
+- sighting: the enemy's squadrons appear when yours come close enough (the campaign's visibility), with *ALERT - ENEMY SIGHTED IN THE ...*
+- encounters: squadrons that meet are marked with crossed swords; unless you Zoom (step 4), they fight it out on the map after a while: *WARNING - ENCOUNTER*, *A L E R T - FIGHTING*, *NOTICE - BATTLE WON / LOST*, and flagships taken
+- **Detach** (**D**) and **Join** (**J**): move ships between a squadron and a new one, or one beside it (**-** / **+** mark a ship, **S** switches it, **E** ends)
+- the end: the last ship or the last flagship of a side lost, or a crown taken (*BLACK CROWN CAPTURED*), shows *You Won* or *You Lost*; the opponent may offer to surrender (Y or N)
+
+The tracing box, the path's mark, sailing to the end of a path, Join, Detach, the messages, "In Port", the wind's face, a crown taken with *You Won*, and the opponent's offer match the original pixel for pixel (checked in DOSBox). The enemy does not move yet (step 5), and neither do the merchants that bring supplies to ports (step 5, as they use the enemy's routes); Zoom and Practice come with step 4.
+
+**Campaign play, the map** (step 2): press **Enter** on a campaign's map in the viewer to play it. The game starts as the original does, at the bottom of the map with the marker in the middle:
 - the marker (the arrows or the keypad, held down to keep moving; it moves 27 times a second, as the original on an IBM PC/XT) and scrolling (- and +; with Shift, to the top or bottom)
 - the command line: *Time (slow) Fleet Pause Surrender*; over a squadron *Move Info Detach Join Zoom Practice*, as the original shows them
 - **Info**: the squadron's ships in a panel over the map: name, type, sails and hull, supplies, speed. **E** ends
 - **Fleet**: how many flagships, ships of the line and frigates each side has
 - **Time**: slow, medium, fast, faster. **Pause**. **Surrender** (Y or N)
-- the squadrons are drawn as the original draws them: at anchor, the pennant over a squadron with a flagship; the enemy's are hidden unless the campaign's rules make them always seen
-
-These screens match the original pixel for pixel (checked in DOSBox). Time passes, but nothing moves yet: sailing, the wind, ports and the rest of the rules come with step 3.
+- the squadrons are drawn as the original draws them: at anchor or under sail in 16 headings, the pennant over a squadron with a flagship; the enemy's are hidden unless seen or the campaign's rules make them always seen
 
 **The asset viewer** (step 1) shows
 - every picture: the title pages, the scrolls, the opponents, the menu scenes, the Options Shoppe, the four battle reports, the opening's face and the deck for boarding (the 16-colour version has no third and fourth battle report, so those two are shown in their CGA colours)
@@ -25,7 +35,7 @@ These screens match the original pixel for pixel (checked in DOSBox). Time passe
 - the map sprites: the anchor, the crossed swords of an encounter, a ship under sail in 16 headings, the flagship's pennant and the merchant's cargo, each as the player's (white with a black outline) and the enemy's (black with a white outline)
 - the eleven campaigns: the map with every squadron where it starts (at anchor, with the pennant over a squadron that has a flagship), the opponent and the number of ships on each side; **I** shows the campaign's story, then its squadrons and ships; **Enter** plays it
 
-The rest follows the build order in the plan: the rules, the sea battle and boarding, the enemy, the menus, the editors and sound.
+The rest follows the build order in the plan: the sea battle and boarding, the enemy, the menus, the editors and sound.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):
@@ -79,12 +89,15 @@ The original keys:
 |-----|--------|
 | Arrows, keypad | Move the marker (Home, Page Up, End, Page Down and keypad 7, 9, 1, 3 go diagonally; holding two arrows does too) |
 | - / +, Tab / Ctrl | Scroll the map; with Shift, jump to the top or bottom |
-| I | Info about the squadron under the marker; E ends |
+| M | Over your squadron: trace its path; M again marks the end, C cancels |
+| I | Info about the squadron under the marker (S: its speed, on a traced path); E ends |
+| D, J | Detach, Join: - and + mark a ship, S switches it to the other squadron, E ends |
 | F | Fleet: the ships on each side; any key returns |
 | T | Time: slow, medium, fast, faster |
 | P | Pause; any key goes on |
 | C | Clear the messages |
 | S | Surrender (Y or N) |
+| Y, N | Answer the opponent's offer to surrender |
 | Enter | After the game is over: back to the viewer |
 
 And the remake's own: **Tab** switches between the CGA and 16 colours (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)* (for now it goes back to the viewer).

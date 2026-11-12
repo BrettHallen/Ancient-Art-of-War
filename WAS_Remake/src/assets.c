@@ -142,6 +142,7 @@ static bool load_exe(GameAssets *ga, char *err, size_t errlen)
             size_t ds = (size_t)rd16(e + 14) * 16;
             if (ds + DS_SIZE > exe.size) break;
             SDL_memcpy(ga->ds, d + ds, DS_SIZE);
+            if (img + RND_CODE <= exe.size) SDL_memcpy(ga->code, d + img, RND_CODE);   /* rt is the image's first segment */
             SDL_memcpy(ga->font, ga->ds + DS_FONT, sizeof ga->font);
             /* sanity: space is empty, 'A' is not, the sprites are 2 bytes wide */
             int blank = 0, a = 0;
@@ -400,7 +401,30 @@ bool assets_load(GameAssets *ga, const char *dir, char *err, size_t errlen)
     ga->have_so5 = so5 && n >= 0x2C9;
     if (so5) SDL_memcpy(ga->so5, so5, SDL_min(n, sizeof ga->so5 - 1));
     SDL_free(so5);
+    /* SO2: the opponents' values (copied to DS:604D when one is chosen, ovl1:90F7) */
+    uint8_t *so2 = assets_load_file(dir, "SO2", &n);
+    if (so2 && n >= 0x277 + 6 * OPP_WORDS * 2) {
+        for (int k = 0; k < 6; k++)
+            for (int i = 0; i < OPP_WORDS; i++) ga->opp[k][i] = (int16_t)rd16(so2 + 0x277 + k * OPP_WORDS * 2 + i * 2);
+        ga->have_so2 = true;
+    }
+    SDL_free(so2);
+    /* SCNF: the options (ovl1_startup sets these defaults, then reads 29 bytes to DS:684C) */
+    static const uint8_t SCNF_DEFAULT[SCNF_SIZE] = {
+        0x2D, 0x01, 0x00, 0x02, 0x00, 0xF4, 0x01,   /* 684C, 684D = 1, sound 684F = 2, fight delay 6851 = 500 */
+        [0x6868 - 0x684C] = 1,                      /* the wind 6865 off */
+    };
+    SDL_memcpy(ga->scnf, SCNF_DEFAULT, sizeof ga->scnf);
+    uint8_t *scnf = assets_load_file(dir, "SCNF", &n);
+    if (scnf && n >= SCNF_SIZE) SDL_memcpy(ga->scnf, scnf, SCNF_SIZE);
+    SDL_free(scnf);
     return true;
+}
+
+int assets_scnf_word(const GameAssets *ga, unsigned ds_offset)
+{
+    if (ds_offset < 0x684C || ds_offset + 2 > 0x684C + SCNF_SIZE) return 0;
+    return (int16_t)rd16(ga->scnf + ds_offset - 0x684C);
 }
 
 void assets_free(GameAssets *ga)

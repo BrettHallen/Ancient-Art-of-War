@@ -39,9 +39,9 @@ int main(int argc, char **argv)
     campaigns_load(cs, argv[1]);
     int bad = 0, ended = 0;
     for (int c = 0; c < NUM_CAMPAIGNS; c++) {
-        play_start(&p, &cs[c], &ga);
+        play_start(&p, &cs[c], &ga, 1234);
         for (int f = 0; f < frames; f++) {
-            if (p.result != PLAY_RUNNING) { ended++; play_start(&p, &cs[c], &ga); }
+            if (p.result != PLAY_RUNNING) { ended++; play_start(&p, &cs[c], &ga, 1234); }
             uint32_t r = rnd() % 10;
             if (r < 3) play_key(&p, KEYS[rnd() % (sizeof KEYS / sizeof KEYS[0])], rnd() % 4 == 0);
             int held = (r >= 3 && r < 8) ? PK_HOME + (int)(rnd() % 11) : 0;
@@ -53,6 +53,56 @@ int main(int argc, char **argv)
             }
         }
     }
+    /* the rules: no Esc or Y (the game goes on), the clock at its fastest */
+    int paths = 0, ends = 0, lost = 0, msgs = 0;
+    for (int c = 0; c < NUM_CAMPAIGNS; c++) {
+        play_start(&p, &cs[c], &ga, 99 + c);
+        for (int f = 0; f < frames; f++) {
+            if (p.result != PLAY_RUNNING) {
+                ends++;
+                lost += p.losses[0] + p.losses[1];
+                play_start(&p, &cs[c], &ga, 99 + c + f);
+            }
+            if (f == frames - 1) lost += p.losses[0] + p.losses[1];
+            if (p.msg_rows && p.text[25 - p.text_rows][0] != ' ' && p.stall == 1) msgs++;
+            if (p.time_div != 1 && (p.mode == PM_NORMAL)) play_key(&p, PK_T, false);
+            if (f % 150 == 0 && (p.mode == PM_NORMAL || p.mode == PM_SQUAD) && !p.stall) {   /* a squadron, M, a path, M */
+                int i = (int)(rnd() % MAX_SHIPS);
+                if (p.sq[i].used && p.sq[i].side == -1 && p.sq[i].x > 2) {
+                    p.cx = p.sq[i].x - 1;
+                    p.cy = p.sq[i].y + 1;
+                    p.view_top = SDL_clamp(p.cy - 40, 0, VIEW_TOP_MAX);
+                    play_frame(&p, PK_RIGHT);
+                    play_key(&p, PK_M, false);
+                    play_frame(&p, 0);
+                    int dir = PK_HOME + (int)(rnd() % 11);
+                    for (int t = 0; t < 400 && p.mode == PM_TRACE; t++) {
+                        play_frame(&p, t < 60 ? dir : 0);
+                        if (t == 60) play_key(&p, PK_M, false);
+                    }
+                }
+            }
+            uint32_t r = rnd() % 10;
+            int k = KEYS[rnd() % (sizeof KEYS / sizeof KEYS[0])];
+            if (r < 2 && k != PK_ESC && k != PK_Y) play_key(&p, k, false);
+            if (p.mode == PM_END && r == 9) play_key(&p, PK_ENTER, false);
+            int held = (r >= 3 && r < 7) ? PK_HOME + (int)(rnd() % 11) : 0;
+            play_frame(&p, held);
+            if (f % 13 == 0) play_draw(&p, &s, (GfxMode)(f % 2));
+            for (int i = 0; i < MAX_SHIPS; i++) {   /* a sailing squadron's path ends with 99 */
+                const PSquad *q = &p.sq[i];
+                if (!q->used || !q->has_path) continue;
+                paths++;
+                int k2 = q->path_pos, n = 0;
+                while (n < PATH_SIZE && p.path[k2] != PATH_END && p.path[k2] != 0) { k2 = k2 + 1 > PATH_SIZE - 1 ? 0 : k2 + 1; n++; }
+                if (p.path[k2] != PATH_END && bad++ < 10) SDL_Log("S%d frame %d: squadron %d's path is broken", c, f, i);
+                if (q->x < 0 || q->x > 79 || q->y < -2 || q->y > 199) { if (bad++ < 10) SDL_Log("S%d: squadron %d at %d,%d", c, i, q->x, q->y); }
+            }
+            for (int i = 0; i < MAX_SHIPS; i++)
+                if (p.sq[i].used && (p.sq[i].supplies < 0 || p.sq[i].supplies > 20) && bad++ < 10) SDL_Log("S%d: supplies %d", c, p.sq[i].supplies);
+        }
+    }
+    SDL_Log("fuzz_play rules: %d games ended, %d path checks, %d ships lost, %d messages", ends, paths, lost, msgs);
     assets_free(&ga);
     SDL_Log("fuzz_play: %d frames a campaign, %d games ended, %d problems", frames, ended, bad);
     return bad ? 1 : 0;

@@ -85,7 +85,7 @@ int main(int argc, char **argv)
     CHECK(ga.have_so5, "SO5");
     CHECK(campaigns_load(cs, argv[1]) == NUM_CAMPAIGNS, "campaigns");
 
-    play_start(&p, &cs[0], &ga);
+    play_start(&p, &cs[0], &ga, 1234);
     CHECK(p.view_top == 109 && p.cx == 38 && p.cy == 145, "start: the bottom of the map, marker 38,145");
     CHECK(play_map_h(&p) == 182, "182 lines of map");
     CHECK(SDL_strcmp(row(&p, 24), "Time (slow)    Fleet  Pause  Surrender") == 0, "command line '%s'", row(&p, 24));
@@ -160,7 +160,7 @@ int main(int argc, char **argv)
 
     /* every campaign starts and draws; a hidden enemy is not selectable */
     for (int i = 0; i < NUM_CAMPAIGNS; i++) {
-        play_start(&p, &cs[i], &ga);
+        play_start(&p, &cs[i], &ga, 1234);
         play_draw(&p, &scr, MODE_CGA);
         play_draw(&p, &scr, MODE_16);
         CHECK(p.result == PLAY_RUNNING, "S%d", i);
