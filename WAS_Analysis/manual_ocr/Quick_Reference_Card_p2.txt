@@ -1,0 +1,53 @@
+MAP FEATURES
+
+Repair Port: looks like a fort. Increases the condition of a ship’s sails and hull.
+Supply Port: looks like a town. Provides supplies to ships.
+
+Crown: A crown provides both supplies and repairs to ships of the same color and represents the heart of
+a side’s homeland. When either side’s crown is captured, the game ends.
+
+Rough Water: represented by dark water areas. Dangerous for Frigates. Safe for Ships-of-the-line, Flag-
+ships and Merchantships.
+
+Shallow Water: represented by light water areas. Dangerous for Ships-of-the-line and Flagships. Safe for
+Frigates and Merchantships.
+
+SHIPS
+
+Squadrons: a group of between | and 3 ships.
+
+Fleet: All the squadrons of the same color form a fleet.
+
+Flagship: This is a ship-of-the-line with an Admiral aboard. It is the most powerful ship on the high seas.
+Ship-of-the-line: a mighty warship, nearly as strong as a flagship.
+
+Frigate: A small and fast warship.
+
+Merchantship: brings supplies to ports.
+
+HINTS
+
+To receive supplies or repairs from a port or a crown, you must anchor where there is a flat shore across the
+entire length of the port. Check a squadron’s “Info” to see if it is “in port.”
+
+The cannons can only fire out of the sides of the ship and the crew can only be on one side of the ship at
+a time.
+
+HOW THE CAMPAIGN ENDS
+
+1. When the last ship on either side is captured or sunk, or
+
+2. When the last flagship on either side is captured or sunk, or
+3. When one side captures the other side’s crown, or
+
+4. When either side surrenders.
+
+TO LEAVE THE GAME
+
+From the Title Page: press + or — until “Quit” appears on the banner, then press Enter.
+
+During a Campaign: If you want to continue a game later, you can save it by pressing Alt S (be sure to
+have a blank disk or data disk handy). If you don’t want to continue later, press S to Surrender.
+
+Quick Exit: At any point in the game, press theAlt, Ctrl and Del keys all at the same time. This will im-
+mediately exit the program and leave you with the A> prompt.
