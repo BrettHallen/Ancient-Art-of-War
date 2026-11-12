@@ -10,7 +10,8 @@ The game starts as the original does (overlay 1 of WAR.EXE):
 - **the title pages**: *presented by*, then the barbarian with *go to war / make changes / quit* in the blinking box
 - **the scrolls**: the campaign titles, the story and the rules unroll on the parchment, written in the original scroll font, with the sword pointer. The rules can be changed with the Space bar before you go to war. *( data disk )* at the end of the titles opens the data disk (see Saved games)
 - **the opponents**: the eight portraits, the blinking frame and each general's description; then a quote from Sun Tzu and *PREPARE FOR WAR!*
-- **make changes**: the six scenes of the campaign menu. *Ye Olde Options Shoppe* works (display, fight delay, sounds, joystick; saved as `CNF`) and *Return to title page*; the campaign and formation editors come in step 7
+- **make changes**: the six scenes of the campaign menu. *Ye Olde Options Shoppe* works (display, fight delay, which data disk is in the drive, sounds, joystick; saved as `CNF`) and *Return to title page*
+- **the campaign editor** (overlays 1, 3 and 4 of WAR.EXE): *Make a new campaign* takes the original's six steps: the map maker (four pages of 18 tiles, A–S put one down, P turns the page), the squads and flags (Squad, Flag, Total; over a squad Info, Size, Formation, Get and Remove), the enemy leader, the rules, the story and the title, each written on the scroll with the quill. *Change a campaign* chooses one from the data disk, then the rulebook, storybook, map maker, enemy or army, each asking *Save the last changes?* as the original does. *Remove a campaign* wipes its title off the scroll. The campaigns are written to the data disk as the original writes them (a `T` file and `TITLES`), so the original game can play them too
 - **the battle report**: victory or defeat, how it was won, and the men captured, the casualties and the flags taken on each side
 - **the demo**: left alone on the title page for 23 seconds, the box says *DEMO* and the computer plays one of the campaigns T3–TA against the first opponent, every squad in sight, at the fastest time, scrolling to what happens. It zooms into the first encounter, and the title page comes back when that battle ends. Any key stops it
 - **saved games**: **Alt+S** during play saves the game (*WARNING: Any previously saved game ... will be erased*, *Saving Game*, *<C>ontinue with game or <Q>uit?*). To carry on a saved game, choose *( data disk )* at the end of the titles and answer **S** for *Saved game*
@@ -37,7 +38,9 @@ The map, the rules and the enemy work as they do in the original program (overla
 
 - **sound**: the PC speaker as WAR.EXE plays it: the opening tune at *presented by*, the victory and defeat tunes on the battle report, the bugle calls when a battle begins and when a side retreats (the battle waits for them, as in the original), the low tones at the start and end of a game (a new game opens with a "da-dum", a pause and two more: in the original the pause is the time the enemy commander spends planning its first five moves, about 0.8 s on an IBM PC/XT, which the remake keeps as silence), a beep for each message on the map and each order in battle, the buzz as the cursor comes onto a squad, the click of arrows and falling men, and the crackle of the unrolling scroll. The *Options Shoppe* sounds setting works as on a Tandy 1000 or PCjr: *all sounds are off*, *do not play music*, *internal speaker* (the PC speaker), or *external speaker*, which plays the tunes and bugle calls in three voices on the Tandy/PCjr sound chip
 
-Still to come: the campaign editor and the formation editor (step 7). The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`.
+- **the formation editor** (overlay 5): *Teach squads new formations* shows the 14 men of each formation on the field, with how many of each kind and the formation's plan. - and + choose it; formations 1–5 can be looked at, 6–9 changed: **M** brings a pointer, **M** over a man picks him up, the arrows walk him across the field (the original's walking soldiers), **A**, **B** and **K** make him an archer, barbarian or knight, and **M** puts him down. **S** saves the formations; squads use them at once
+
+The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`. The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):
@@ -67,10 +70,20 @@ build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar ../WAR_Original_Files_3
 
 The app also looks in a `game` folder next to itself and in the current folder. Press **O** in the viewer to choose a different folder.
 
-### Saved games and the data disk
-The original kept saved games and new campaigns on a *data disk*. The remake uses a folder for it: `~/Library/Application Support/AncientArtOfWar/Remake/` on macOS. It holds `S` (the saved game, in the remake's own format), `CNF` (the options) and `TITLES` (the data disk's list of campaigns, first made from `DTITLES`).
+### Saved games and the data disks
+The original kept saved games and new campaigns on *data disks*, swapped in the drive. The remake keeps them in its folder, `~/Library/Application Support/AncientArtOfWar/Remake/` on macOS:
 
-Campaigns made with the original game's editor can be played: copy the files from your old data disk (`TITLES` and the `T` files) into this folder, then choose *( data disk )* at the end of the titles. Saved games from the original (`S` on the data disk) can't be carried on yet.
+| | |
+|---|---|
+| `CNF` | the options |
+| `F` | the formations, once some have been taught (the remake uses it in place of the game's own `F`) |
+| `DRIVE` | the name of the data disk in the drive |
+| `Data Disks/Data Disk 1/` | a data disk: `TITLES` (its list of campaigns, first made from `DTITLES`), the `T` files of its campaigns, and `S`, its saved game |
+| `Data Disks/…/` | more data disks: any folder here is one (up to 12) |
+
+The data disk in the drive is chosen in the *Options Shoppe* (*disk …*, or *a new data disk*), or from the list that *( data disk )* shows when there is more than one. New campaigns are written to it, and its saved game is the one carried on.
+
+To use an old data disk, make a new folder in `Data Disks` (any name) and copy the floppy's files into it as they are; upper or lower case doesn't matter. Its campaigns can be played and changed. Saved games from the original (`S`) can't be carried on yet.
 
 ### Title page and menus
 | Key | Action |
@@ -83,6 +96,15 @@ Campaigns made with the original game's editor can be played: copy the files fro
 | C / Q | After saving: continue with the game, or quit to the title page |
 | F12 | The asset viewer |
 | (no key for 23 s) | The demo; any key stops it |
+
+### Campaign editor
+| Where | Keys |
+|-------|------|
+| Map maker | Arrows move the cursor (left and right go on to the next row), **A**–**S** put down a tile of the page shown (there is no P), **P** the next page, **Enter** when done |
+| Squads and flags | Arrows and - / + move the cursor and scroll; **S** a new squad, **F** a new flag, **T** the total of men; over a squad **I**nfo, **S**ize, **F**ormation, **G**et (then **P**ut) and **R**emove; over a flag **F** friend or foe and **R**emove; **Enter** when done. In Size, **K B A S** add or take away a knight, barbarian, archer or spy, **I** and **D** switch between adding and taking away, **E** ends (14 men at most). In Info, **C** condition, **F** food, **S** speed, **T** friend or foe |
+| Story and title | Type on the scroll (capitals take two places); arrows move the quill, Backspace rubs out, Enter starts the next line. **Esc** when the story is done, **Enter** when the title is done |
+| Formations | - / + choose the formation; for 6–9 **M** the pointer, **S** save, **Enter** when done. With the pointer: arrows move it, **M** picks up the man under it, **E** ends. Moving a man: arrows walk him, **A B K** archer, barbarian or knight, **M** puts him down |
+| The questions | **Y** or **N** |
 
 ### Viewer keys
 | Key | Action |
@@ -146,7 +168,10 @@ This writes every screen in both colour sets as BMP files (320x200), without ope
 | `src/battle.c` | The battle screen, following overlay 7 of WAR.EXE: the background from the terrain, formations, the soldiers' animation scripts, choosing targets, fighting, archers and arrows, retreats, the order menus and the losses. Runs at 8 frames a second |
 | `src/icon.c`, `tools/make_icon.c` | The app icon from the player's own copy of the game: the opening title page in its 4:3 shape on a rounded square; `make_icon` writes the macOS `.iconset` at build time and `iconutil` turns it into `AppIcon.icns` |
 | `src/sound.c` | The PC speaker (timer 2 square wave) and the Tandy/PCjr SN76496 (three tone voices), played through SDL audio. The sounds and tunes are WAR.EXE's own: its timer divisors and lengths, the tunes from O2 and the bugle calls from O7, at the speed of an IBM PC/XT: about 50 microseconds per unit of its delay routine (DOSBox plays them about 2.6 times faster) |
-| `src/menu.c` | The title pages, scrolls, opponents, quote, campaign menu, Options Shoppe, battle report and saving, following overlay 1 of WAR.EXE. It draws into its own canvas as the original draws into video memory (pictures, XOR boxes, the AND-drawn pointer), so a scroll unrolls over what was on the screen |
+| `src/menu.c` | The title pages, scrolls, opponents, quote, campaign menu, Options Shoppe, battle report and saving, following overlay 1 of WAR.EXE. It draws into its own canvas as the original draws into video memory (pictures, XOR boxes, the AND-drawn pointer), so a scroll unrolls over what was on the screen. Also the data disks, and the campaign editor's steps: the editor menu, the scroll editor for the story and title, writing the `T` files and `TITLES` |
+| `src/mapedit.c` | The map maker, following overlay 4 of WAR.EXE |
+| `src/sqedit.c` | Putting squads and flags on the map, following overlay 3 of WAR.EXE. As in the original, it uses the game's own map drawing (play.c) |
+| `src/formed.c` | Teaching squads new formations, following overlay 5 of WAR.EXE: the soldiers walk by O8's scripts |
 | `src/main.c` | Window, scaling (sharp 4:3 or whole-number square pixels), keys, choosing the game folder, the menus (20 Hz), the 20 Hz game loop and the 8 Hz battle loop |
 
 The file formats are described in [WAR_Analysis/README.md](../WAR_Analysis/README.md).
@@ -158,5 +183,5 @@ The file formats are described in [WAR_Analysis/README.md](../WAR_Analysis/READM
 4. Battles: the fight screen, formations, archers, knights and barbarians (battles on the map and the battle screen done)
 5. Opponent AI for the 8 generals, ported from the original program (done)
 6. Menus, options, saved games, the battle report and the demo (done)
-7. Campaign editor and formation editor
+7. Campaign editor and formation editor (done)
 8. Sound: PC speaker and Tandy sound (done)

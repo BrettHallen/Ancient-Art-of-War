@@ -16,6 +16,9 @@ add_executable(AncientArtOfWar MACOSX_BUNDLE
     src/menu.c
     src/sound.c
     src/icon.c
+    src/mapedit.c
+    src/sqedit.c
+    src/formed.c
 )
 target_link_libraries(AncientArtOfWar PRIVATE SDL3::SDL3)
 

@@ -422,6 +422,9 @@ static int play_keycode(SDL_Keycode k)
     case SDLK_M: return PK_M;   case SDLK_A: return PK_A;   case SDLK_B: return PK_B;
     case SDLK_K: return PK_K;   case SDLK_R: return PK_R;   case SDLK_BACKSPACE: return PK_BACKSPACE;
     case SDLK_Q: return PK_Q;   case SDLK_L: return PK_L;
+    case SDLK_W: return PK_W;   case SDLK_U: return PK_U;   case SDLK_O: return PK_O;
+    case SDLK_P: return PK_P;   case SDLK_G: return PK_G;   case SDLK_H: return PK_H;
+    case SDLK_X: return PK_X;
     case SDLK_RETURN: case SDLK_KP_ENTER: return PK_ENTER;
     case SDLK_SPACE: return PK_SPACE;
     case SDLK_MINUS: return PK_MINUS;
@@ -508,6 +511,12 @@ static void to_menu(App *app)
 /* What the menus asked for */
 static bool menu_step(App *app)
 {
+    if (menu_wants_held(app->menu)) {  /* the squads editor: the cursor moves while a key is held */
+        int held = held_cursor_key();
+        if (!held && app->tapped) held = app->tapped;
+        menu_held(app->menu, held);
+    }
+    app->tapped = 0;
     menu_frame(app->menu);
     switch (menu_action(app->menu)) {
     case MENU_START_GAME:
@@ -521,7 +530,7 @@ static bool menu_step(App *app)
             app->in_menu = false;
             app->in_battle = false;
         } else {
-            menu_title(app->menu);
+            menu_saved_game_failed(app->menu);
         }
         break;
     case MENU_CONTINUE:
@@ -659,6 +668,10 @@ int main(int argc, char **argv)
     bool running = true;
     Uint64 next_frame = SDL_GetTicksNS();
     while (running) {
+        bool want_text = app.in_menu && app.menu && menu_wants_text(app.menu);   /* the scroll editor */
+        if (want_text != SDL_TextInputActive(app.win)) {
+            if (want_text) SDL_StartTextInput(app.win); else SDL_StopTextInput(app.win);
+        }
         const Uint64 frame_ns = SDL_NS_PER_SECOND / (app.in_battle ? BATTLE_HZ : app.in_menu ? MENU_HZ : PLAY_HZ);
         SDL_Event e;
         bool dirty = false;
@@ -705,6 +718,10 @@ int main(int argc, char **argv)
                     else if (k == SDLK_F12) { app.in_menu = false; app.index = 0; }
                     else {
                         int pk = k == SDLK_ESCAPE ? PK_ESC : play_keycode(k);
+                        if (menu_wants_held(app.menu) && is_cursor_pk(pk)) {   /* held keys move the cursor */
+                            if (e.key.repeat) continue;
+                            app.tapped = pk;
+                        }
                         if (pk) menu_key(app.menu, pk);
                     }
                 }
@@ -747,6 +764,9 @@ int main(int argc, char **argv)
                     else if (k == SDLK_H) app.caption = !app.caption;
                     else if (k == SDLK_O) ask_for_folder(&app);
                 }
+                dirty = true;
+            } else if (e.type == SDL_EVENT_TEXT_INPUT && app.in_menu && app.menu) {
+                menu_text(app.menu, e.text.text);   /* the scroll editor */
                 dirty = true;
             } else if (e.type == SDL_EVENT_MOUSE_WHEEL && app.have_assets && !app.playing) {
                 scroll_map(&app, (int)SDL_roundf(-e.wheel.y * TILE_H / 2));

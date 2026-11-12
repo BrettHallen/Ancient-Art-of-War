@@ -33,6 +33,7 @@ enum {
     PK_KP_MINUS = 0x4A, PK_LEFT = 0x4B, PK_KP_5 = 0x4C, PK_RIGHT = 0x4D, PK_KP_PLUS = 0x4E,
     PK_END = 0x4F, PK_DOWN = 0x50, PK_PGDN = 0x51,
     PK_Q = 0x10, PK_L = 0x26, PK_TAB = 0x0F, PK_CTRL = 0x1D,
+    PK_W = 0x11, PK_U = 0x16, PK_O = 0x18, PK_P = 0x19, PK_G = 0x22, PK_H = 0x23, PK_X = 0x2D,
     PK_ALT_S = 0x11F,          /* Alt+S: save the game (ovl6:3BDA) */
 };
 

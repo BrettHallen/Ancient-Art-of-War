@@ -39,6 +39,7 @@ typedef struct {        /* the options in CNF (25 bytes from DS:A6DE) */
 
 typedef struct Menu Menu;
 
+/* data_dir: the data folder (CNF, F, DRIVE, and the data disks in Data Disks/) */
 Menu *menu_create(GameAssets *ga, Campaign *camps, const char *data_dir);
 void  menu_destroy(Menu *m);
 
@@ -51,6 +52,13 @@ void  menu_key(Menu *m, int key);             /* WAR.EXE scan codes (PK_...) */
 void  menu_frame(Menu *m);                    /* MENU_HZ times a second */
 void  menu_draw(Menu *m, Screen *s, GfxMode mode);
 
+/* step 7, the editors: the squads editor follows a held cursor key, the
+ * scroll editor takes typed text */
+void  menu_held(Menu *m, int held);           /* each frame, before menu_frame */
+bool  menu_wants_held(const Menu *m);
+bool  menu_wants_text(const Menu *m);
+void  menu_text(Menu *m, const char *utf8);   /* SDL text input */
+
 MenuAction menu_action(Menu *m);              /* and clears it */
 const Campaign *menu_game(const Menu *m);     /* the campaign to play */
 const MenuOptions *menu_options(const Menu *m);
@@ -59,5 +67,6 @@ uint32_t menu_seed(const Menu *m);
 /* Saved games (the remake's own format, in the data folder) */
 bool  menu_has_saved_game(const Menu *m);
 bool  menu_load_saved_game(Menu *m, Play *p, Campaign *c);
+void  menu_saved_game_failed(Menu *m);        /* why S can't be continued, then the title page */
 
 #endif

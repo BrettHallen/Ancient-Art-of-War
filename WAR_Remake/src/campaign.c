@@ -136,6 +136,32 @@ bool campaign_load_file(Campaign *c, const char *dir, const char *name)
     return true;
 }
 
+void campaign_refresh(Campaign *c)
+{
+    decode_armies(c);
+    clean_text(c->story, sizeof c->story, c->story_raw, 840);
+}
+
+bool campaign_save_file(const Campaign *c, const char *dir, const char *name)
+{
+    uint8_t d[T_FILE_SIZE];
+    SDL_memcpy(d, c->story_raw, 840);                  /* DS:9782 */
+    SDL_memcpy(d + 0x348, c->map, sizeof c->map);      /* DS:9D82 */
+    SDL_memcpy(d + 0x410, c->armies, sizeof c->armies);   /* DS:9E60 */
+    d[0x5A0] = (uint8_t)c->opponent; d[0x5A1] = 0;     /* A67C */
+    for (int r = 0; r < RULE_COUNT; r++) {             /* A705 */
+        d[0x5A2 + 2 * r] = (uint8_t)c->rules[r];
+        d[0x5A3 + 2 * r] = (uint8_t)(c->rules[r] >> 8);
+    }
+    /* a file copied from a floppy may have a lowercase name: write over it */
+    char path[1200];
+    int n = 0;
+    char **found = SDL_GlobDirectory(dir, name, SDL_GLOB_CASEINSENSITIVE, &n);
+    SDL_snprintf(path, sizeof path, "%s%s", dir, n > 0 ? found[0] : name);
+    SDL_free(found);
+    return SDL_SaveFile(path, d, sizeof d);
+}
+
 int campaigns_load(Campaign out[NUM_CAMPAIGNS], const char *dir)
 {
     int loaded = 0;

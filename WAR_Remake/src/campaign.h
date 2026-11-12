@@ -77,6 +77,11 @@ int  campaigns_load(Campaign out[NUM_CAMPAIGNS], const char *dir);
 /* One T file (T0-TB) from a folder: the WAR disk, or the data disk's campaigns. */
 bool campaign_load_file(Campaign *c, const char *dir, const char *name);
 
+/* Write a T file (1460 bytes) to a folder: what ovl1_7A71 writes. */
+bool campaign_save_file(const Campaign *c, const char *dir, const char *name);
+/* After an editor has changed armies[] or story_raw[]: the squads, flags and story again. */
+void campaign_refresh(Campaign *c);
+
 /* Draw just the map tiles: view_h lines from scroll_px down the map. */
 void campaign_draw_tiles(Screen *s, const GameAssets *ga, GfxMode mode, const Campaign *c, int scroll_px, int view_h);
 
