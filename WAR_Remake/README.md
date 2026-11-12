@@ -83,7 +83,9 @@ The original kept saved games and new campaigns on *data disks*, swapped in the 
 
 The data disk in the drive is chosen in the *Options Shoppe* (*disk …*, or *a new data disk*), or from the list that *( data disk )* shows when there is more than one. New campaigns are written to it, and its saved game is the one carried on.
 
-To use an old data disk, make a new folder in `Data Disks` (any name) and copy the floppy's files into it as they are; upper or lower case doesn't matter. Its campaigns can be played and changed. Saved games from the original (`S`) can't be carried on yet.
+To use an old data disk, make a new folder in `Data Disks` (any name) and copy the floppy's files into it as they are; upper or lower case doesn't matter. Its campaigns can be played and changed, and a game the original saved on it (`S`) can be carried on: choose *( data disk )*, then **S** for *Saved game*. The remake finds the campaign's title by its map, and carries on from the same moment: squads, paths, marks, battles under way, the enemy's plans and the time setting.
+
+If a file can't be written there (the disk is full, say), the remake says *Game not saved!* for a saved game, and *Unable to use data disk. Press any key to continue.* for the options, a campaign, `TITLES` or `F`, as the original does for a bad data disk. Your changes to a campaign are kept while you stay in the editor, so the next save that works writes them all (answering **N** to *Save the last changes?* reloads the campaign from its file); taught formations are used until you quit.
 
 ### Title page and menus
 | Key | Action |
@@ -171,6 +173,7 @@ This writes every screen in both colour sets as BMP files (320x200), without ope
 | `src/menu.c` | The title pages, scrolls, opponents, quote, campaign menu, Options Shoppe, battle report and saving, following overlay 1 of WAR.EXE. It draws into its own canvas as the original draws into video memory (pictures, XOR boxes, the AND-drawn pointer), so a scroll unrolls over what was on the screen. Also the data disks, and the campaign editor's steps: the editor menu, the scroll editor for the story and title, writing the `T` files and `TITLES` |
 | `src/mapedit.c` | The map maker, following overlay 4 of WAR.EXE |
 | `src/sqedit.c` | Putting squads and flags on the map, following overlay 3 of WAR.EXE. As in the original, it uses the game's own map drawing (play.c) |
+| `src/savegame.c` | Carrying on a game saved by the original: its `S` is WAR.EXE's data from DS:8868 to A9E5, copied field by field into the game |
 | `src/formed.c` | Teaching squads new formations, following overlay 5 of WAR.EXE: the soldiers walk by O8's scripts |
 | `src/main.c` | Window, scaling (sharp 4:3 or whole-number square pixels), keys, choosing the game folder, the menus (20 Hz), the 20 Hz game loop and the 8 Hz battle loop |
 

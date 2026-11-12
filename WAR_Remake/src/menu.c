@@ -20,6 +20,7 @@
 #include "menu.h"
 #include "formed.h"
 #include "mapedit.h"
+#include "savegame.h"
 #include "sound.h"
 #include "sqedit.h"
 
@@ -102,6 +103,8 @@ struct Menu {
     uint8_t     inv[16];          /* XOR 0xFF of each canvas index */
     int         state, frame, step;
     MenuAction  action;
+    bool        disk_error;       /* "Unable to use data disk." is up (ovl1_61fd) */
+    bool        tune_started;     /* this page's tune has been started (not again when Tab redraws it) */
     uint32_t    seed;
     uint32_t    rnd;
 
@@ -537,7 +540,15 @@ static void page_shoppe(Menu *m);
 static void page_report(Menu *m);
 static void page_edit_text(Menu *m, bool unroll);
 
-static void go(Menu *m, int state) { m->state = state; m->frame = 0; m->step = 0; m->drawn = false; }
+static void go(Menu *m, int state) { m->state = state; m->frame = 0; m->step = 0; m->drawn = false; m->tune_started = false; }
+
+/* a page's tune, once: a redraw after Tab or F2 doesn't start it again */
+static bool tune_once(Menu *m)
+{
+    if (m->tune_started) return false;
+    m->tune_started = true;
+    return true;
+}
 
 /* ovl1_4161 show_title_barbarian: the item box on PI */
 static const unsigned TITLE_ITEMS[3] = { 0x951, 0x95E, 0x96B };    /* go to war, make changes, quit */
@@ -586,7 +597,7 @@ static void page_presented(Menu *m)
 {
     show_picture(m, PIC_TITLE, false);
     print_at(m, 13, 12, DSS(m, 0x4C));
-    snd_tune(m->ga->o2, 0x447, 0x48B, 0x110D, 0x1157, 0x119F, 0x11E7);   /* ovl1:31FE: the opening tune */
+    if (tune_once(m)) snd_tune(m->ga->o2, 0x447, 0x48B, 0x110D, 0x1157, 0x119F, 0x11E7);   /* ovl1:31FE: the opening tune */
 }
 
 /* the TITLES scroll (ovl1_62FA) */
@@ -857,9 +868,14 @@ static void page_report(Menu *m)
         int c = m->report_code;
         print_at(m, 6, 2, O2S(m, c == 10 ? 0x107B : c == 11 ? 0x1093 : 0x10A8));
     }
-    if (won) snd_tune(m->ga->o2, 0x122F, 0x12C7, 0x122F, 0x1263, 0x1295, 0x12C7);   /* ovl1:55B2 */
-    else     snd_tune(m->ga->o2, 0x12F9, 0x133D, 0x12F9, 0x1311, 0x1327, 0x133D);   /* ovl1:567A */
-    m->step = 0;                       /* "Press any key" once the tune is over (menu_frame) */
+    if (tune_once(m)) {
+        if (won) snd_tune(m->ga->o2, 0x122F, 0x12C7, 0x122F, 0x1263, 0x1295, 0x12C7);   /* ovl1:55B2 */
+        else     snd_tune(m->ga->o2, 0x12F9, 0x133D, 0x12F9, 0x1311, 0x1327, 0x133D);   /* ovl1:567A */
+        m->step = 0;                   /* "Press any key" once the tune is over (menu_frame) */
+    } else if (m->step == 1) {         /* redrawn after the tune: the prompt again */
+        clear_row(m, 24);
+        print_at(m, 6, 24, O2S(m, 0x10BE));                       /* Press any key to continue. */
+    }
 }
 
 static void report_prompt(Menu *m)
@@ -978,6 +994,19 @@ static SDL_EnumerationResult SDLCALL old_file_found(void *ud, const char *dir, c
     return SDL_ENUM_CONTINUE;
 }
 
+/* disk_error (ovl1_61fd): "Unable to use data disk." / "Press any key to
+ * continue." on the bottom rows; everything waits for a key.  The remake
+ * shows it when a file can't be written (the original's DOS disk errors);
+ * menu_draw puts it over the screen, so the page under it is untouched. */
+static void disk_error(Menu *m) { m->disk_error = true; }
+
+static bool disk_write(Menu *m, const char *path, const void *d, size_t n)
+{
+    bool ok = SDL_SaveFile(path, d, n);
+    if (!ok) disk_error(m);
+    return ok;
+}
+
 static void disk_select(Menu *m, int i)
 {
     if (m->ndisks == 0) return;
@@ -985,7 +1014,7 @@ static void disk_select(Menu *m, int i)
     SDL_snprintf(m->data_dir, sizeof m->data_dir, "%s%s/%s/", m->data_root, DISKS_DIR, m->disks[m->disk]);
     char path[1200];
     root_path(m, "DRIVE", path, sizeof path);           /* remembered for next time */
-    SDL_SaveFile(path, m->disks[m->disk], SDL_strlen(m->disks[m->disk]));
+    disk_write(m, path, m->disks[m->disk], SDL_strlen(m->disks[m->disk]));
 }
 
 static void disks_scan(Menu *m)
@@ -1023,7 +1052,7 @@ static void disk_new(Menu *m)
         SDL_snprintf(path, sizeof path, "%s%s/%s", m->data_root, DISKS_DIR, name);
         if (!SDL_GetPathInfo(path, NULL)) break;
     }
-    SDL_CreateDirectory(path);
+    if (!SDL_CreateDirectory(path)) { disk_error(m); return; }
     disks_scan(m);
     for (int i = 0; i < m->ndisks; i++)
         if (!SDL_strcmp(m->disks[i], name)) disk_select(m, i);
@@ -1073,7 +1102,7 @@ static void options_save(Menu *m)
     options_to_raw(&m->opt);
     char path[1200];
     root_path(m, "CNF", path, sizeof path);
-    SDL_SaveFile(path, m->opt.raw, 25);
+    disk_write(m, path, m->opt.raw, 25);
 }
 
 /* The data folder plays the data disk: TITLES there lists its campaigns
@@ -1088,7 +1117,7 @@ static bool data_titles_load(Menu *m)
         SDL_free(d);
         d = assets_load_file(m->ga->dir, "DTITLES", &size);   /* a new data disk */
         if (!d || size < 876) { SDL_free(d); return false; }
-        SDL_SaveFile(path, d, 876);
+        disk_write(m, path, d, 876);
     }
     SDL_memcpy(m->data_titles, d, 876);
     SDL_free(d);
@@ -1123,10 +1152,47 @@ static bool save_write(Menu *m, const Play *p)
     return ok;
 }
 
+/* A game saved by the original: its campaign's title and story, found by
+ * its map among the WAR disk's campaigns and the data disk's */
+static void original_campaign(Menu *m, Campaign *c)
+{
+    for (int i = 0; i < NUM_CAMPAIGNS; i++)
+        if (m->camps[i].loaded && !SDL_memcmp(m->camps[i].map, c->map, sizeof c->map)) {
+            SDL_strlcpy(c->title, m->camps[i].title, sizeof c->title);
+            SDL_memcpy(c->story_raw, m->camps[i].story_raw, sizeof c->story_raw);
+            campaign_refresh(c);
+            return;
+        }
+    if (!data_titles_load(m)) return;
+    for (int k = 1; k < 12; k++) {
+        char name[4] = { (char)m->data_titles[k * 3], (char)m->data_titles[k * 3 + 1], 0, 0 };
+        Campaign t;
+        if (!campaign_load_file(&t, m->data_dir, name) || SDL_memcmp(t.map, c->map, sizeof c->map)) continue;
+        int row = 3 + 2 * k, n = 0;
+        char title[33];
+        for (int col = 2; col < 31; col++) {
+            uint8_t ch = m->data_titles[36 + row * 32 + col];
+            if (ch >= 0x20 && ch < 0x7F) title[n++] = (char)ch;
+        }
+        while (n > 0 && title[n - 1] == ' ') n--;
+        title[n] = 0;
+        if (n) SDL_strlcpy(c->title, title, sizeof c->title);
+        SDL_memcpy(c->story_raw, t.story_raw, sizeof c->story_raw);
+        campaign_refresh(c);
+        return;
+    }
+}
+
 bool menu_load_saved_game(Menu *m, Play *p, Campaign *c)
 {
     size_t size = 0;
     uint8_t *d = assets_load_file(m->data_dir, "S", &size);
+    if (d && size == ORIGINAL_S_SIZE) {             /* saved by the original (save_game, ovl1:35C4) */
+        bool imported = savegame_import(p, c, m->ga, d, size, (uint32_t)SDL_GetTicksNS());
+        SDL_free(d);
+        if (imported) original_campaign(m, c);
+        return imported;
+    }
     bool ok = d && size == 20 + sizeof(Campaign) + sizeof(Play) && SDL_memcmp(d, SAVE_MAGIC, 12) == 0;
     if (ok) {
         uint32_t sc, sp;
@@ -1152,8 +1218,8 @@ void menu_saved_game_failed(Menu *m)
     SDL_free(d);
     SDL_memset(m->message, 0, sizeof m->message);
     if (size == 0x217E) {                  /* save_game (ovl1:35C4): 217Eh bytes of WAR.EXE's data */
-        SDL_strlcpy(m->message[0], "  This game was saved by the original.", sizeof m->message[0]);
-        SDL_strlcpy(m->message[1], "  The remake can't continue it yet.", sizeof m->message[1]);
+        SDL_strlcpy(m->message[0], "  This game was saved by the original,", sizeof m->message[0]);
+        SDL_strlcpy(m->message[1], "  but the file could not be read.", sizeof m->message[1]);
     } else {
         SDL_strlcpy(m->message[0], "  This game was saved by another", sizeof m->message[0]);
         SDL_strlcpy(m->message[1], "  version of the remake.", sizeof m->message[1]);
@@ -1188,13 +1254,15 @@ static bool titles_save(Menu *m)               /* ovl1_7E09 */
 {
     char path[1200];
     disk_file_path(m, "TITLES", path, sizeof path);
-    return SDL_SaveFile(path, m->data_titles, sizeof m->data_titles);
+    return disk_write(m, path, m->data_titles, sizeof m->data_titles);
 }
 
 static bool edit_save(Menu *m)                 /* ovl1_7A71 (ovl1_3FC3 with 100) */
 {
     campaign_refresh(&m->game);
-    return campaign_save_file(&m->game, m->data_dir, m->edit_file);
+    bool ok = campaign_save_file(&m->game, m->data_dir, m->edit_file);
+    if (!ok) disk_error(m);                    /* the changes stay in m->game */
+    return ok;
 }
 
 static void edit_reload(Menu *m)               /* ovl1_3FC3 with 101: forget the changes */
@@ -1519,17 +1587,19 @@ static void formations_save(Menu *m, uint8_t f[420])   /* ovl5_454E */
     formed_sort(f);
     char path[1100];
     root_path(m, "F", path, sizeof path);
-    SDL_SaveFile(path, f, 420);
-    SDL_memcpy(m->ga->formations, f, 420);
+    disk_write(m, path, f, 420);
+    SDL_memcpy(m->ga->formations, f, 420);         /* used this session even if F wasn't written */
 }
 
 void menu_held(Menu *m, int held) { m->held = held; }
 bool menu_wants_held(const Menu *m)
 {
+    if (m->disk_error) return false;
     return m->state == MS_SQEDIT || (m->state == MS_FORMED && formed_wants_held(&m->formed));
 }
 bool menu_wants_text(const Menu *m)
 {
+    if (m->disk_error) return false;
     return m->state == MS_EDIT_TEXT && m->drawn && !m->anim && !m->ed_anim && !m->ed_wait;
 }
 
@@ -1640,6 +1710,7 @@ static void choose_campaign(Menu *m)
 void menu_key(Menu *m, int k)
 {
     if (!k) return;
+    if (m->disk_error) { m->disk_error = false; return; }   /* ovl1:622A: any key */
     switch (m->state) {
     case MS_PRESENTED:
         sound_stop();                      /* the remake: a key skips the tune too */
@@ -1940,6 +2011,7 @@ void menu_key(Menu *m, int k)
 
 void menu_frame(Menu *m)
 {
+    if (m->disk_error) return;             /* WAR.EXE waits in ovl1_61fd */
     if (!m->drawn) return;                 /* menu_draw makes the page first */
     m->frame++;
     switch (m->state) {
@@ -2077,7 +2149,29 @@ void menu_frame(Menu *m)
     }
 }
 
+/* ovl1_61fd's two rows, over whatever the screen shows */
+static void draw_disk_error(const Menu *m, Screen *s, GfxMode mode)
+{
+    uint8_t fg = 3, bg = 0;
+    if (mode != MODE_CGA) {
+        const RGB *cga = m->pal0 ? CGA_PALETTE_0 : CGA_PALETTE;
+        fg = nearest(s->pal, 16, cga[3]);
+        bg = nearest(s->pal, 16, cga[0]);
+    }
+    screen_fill(s, 0, 23 * 8, SCREEN_W, 16, bg);
+    screen_text(s, m->ga, 0, 23 * 8, DSS(m, 0xD6), fg, bg);       /* Unable to use data disk. */
+    screen_text(s, m->ga, 0, 24 * 8, DSS(m, 0xEF), fg, bg);       /* Press any key to continue. */
+}
+
+static void menu_draw_page(Menu *m, Screen *s, GfxMode mode);
+
 void menu_draw(Menu *m, Screen *s, GfxMode mode)
+{
+    menu_draw_page(m, s, mode);
+    if (m->disk_error) draw_disk_error(m, s, mode);
+}
+
+static void menu_draw_page(Menu *m, Screen *s, GfxMode mode)
 {
     if (m->state == MS_MAPEDIT || m->state == MS_SQEDIT || m->state == MS_FORMED) {   /* the editors draw the whole screen */
         m->mode = mode;

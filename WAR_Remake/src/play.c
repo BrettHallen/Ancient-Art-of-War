@@ -1763,6 +1763,41 @@ void play_resume(Play *p)
     check_over(p, 0);
 }
 
+/* The CGA map: terrain is read from its pixels, whichever colours are shown */
+static void build_terrain(Play *p)
+{
+    for (int row = 0; row < MAP_H; row++)
+        for (int col = 0; col < MAP_W; col++) {
+            int t = p->c->map[row][col] - 1;
+            const Image *tile = (t >= 0 && t < NUM_TILES) ? &p->ga->set[MODE_CGA].tiles[t] : NULL;
+            for (int y = 0; y < TILE_H; y++)
+                for (int x = 0; x < TILE_W; x++)
+                    p->terrain[row * TILE_H + y][col * TILE_W + x] =
+                        (tile && tile->px) ? (tile->px[y * TILE_W + x] & 3) : 0;
+        }
+}
+
+void play_prepare(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed)
+{
+    SDL_memset(p, 0, sizeof *p);
+    p->c = c;
+    p->ga = ga;
+    p->rnd = (uint16_t)(seed & 0xFF);
+    p->rnd_ptr = 0xBB8;
+    build_terrain(p);
+    for (int r = 0; r < 25; r++) clear_row(p, r);
+    p->view_top = VIEW_TOP_MAX;
+    p->cx = 0x26;
+    p->cy = 0x91;
+    p->time_div = 64;
+    p->text_rows = 2;
+    p->sel = -1;
+    p->result = PLAY_RUNNING;
+    p->fight_delay = 400;
+    p->zoom_squad = -1;
+    p->target_cell = p->attack_flag = -1;
+}
+
 static void start_game(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed, bool demo)
 {
     SDL_memset(p, 0, sizeof *p);
@@ -1800,16 +1835,7 @@ static void start_game(Play *p, const Campaign *c, const GameAssets *ga, uint32_
     }
 #undef W
 
-    /* the CGA map: terrain is read from its pixels, whichever colours are shown */
-    for (int row = 0; row < MAP_H; row++)
-        for (int col = 0; col < MAP_W; col++) {
-            int t = c->map[row][col] - 1;
-            const Image *tile = (t >= 0 && t < NUM_TILES) ? &ga->set[MODE_CGA].tiles[t] : NULL;
-            for (int y = 0; y < TILE_H; y++)
-                for (int x = 0; x < TILE_W; x++)
-                    p->terrain[row * TILE_H + y][col * TILE_W + x] =
-                        (tile && tile->px) ? (tile->px[y * TILE_W + x] & 3) : 0;
-        }
+    build_terrain(p);
 
     for (int r = 0; r < 25; r++) clear_row(p, r);
     p->view_top = VIEW_TOP_MAX;         /* ovl1:32B8 */

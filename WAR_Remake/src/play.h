@@ -164,6 +164,9 @@ typedef struct {
 } Play;
 
 void play_start(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed);
+/* A Play at the start, with no squads moved and no enemy plans: for an
+ * imported game (savegame.c), which fills in the rest */
+void play_prepare(Play *p, const Campaign *c, const GameAssets *ga, uint32_t seed);
 
 /* The demo (show_title_barbarian ovl1:42CC, game_init ovl1:33C9): the game plays
  * itself, fastest, scrolling the map, and zooms into the first encounter.
