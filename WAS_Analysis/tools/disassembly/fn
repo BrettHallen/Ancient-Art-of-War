@@ -1,0 +1,11 @@
+#!/bin/sh
+# dump a function compactly: fn NAME, or fn ovl6_XXXX / rt_XXXX (by address even after renaming)
+cd "${ASM_DIR:-$(dirname "$0")/../..}"
+name="$1"
+if ! grep -q "^$name:" WAS.EXE.asm; then
+  reg=${name%%_*}; addr=$(echo ${name#*_} | tr a-f A-F)
+  line=$(grep -n "^  $reg:$addr " WAS.EXE.asm | head -1 | cut -d: -f1)
+  [ -z "$line" ] && { echo "not found"; exit 1; }
+  name=$(head -n $line WAS.EXE.asm | grep -E "^[A-Za-z_0-9]+:$" | tail -1 | tr -d :)
+fi
+awk -v f="$name:" '$0==f{p=1;next} p&&/^; ---- /{exit} p' WAS.EXE.asm | awk '{a=$1; $1=$2=$3=""; print a": "$0}' | sed 's/   */ /g;s/^ovl[0-9]://;s/^rt://' | paste -sd'|'

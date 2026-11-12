@@ -16,5 +16,6 @@ assert d[0x7AB3:0x7AB5] in (b'\x75\x07', b'\xeb\x07'), 'not the expected WAS.EXE
 d[0x7AB3] = 0xEB
 open(p, 'wb').write(d)
 PY
-cp "$TOOLS/dosbox_was.conf" "$DOS/"
+cp "$TOOLS/dosbox_was.conf" "$TOOLS/dosbox_was_xt.conf" "$DOS/"
+python3 "$TOOLS/make_font8.py" > "$DOS/font8.txt"   # copy next to screentext.py (the game's font: not kept in the repo)
 echo "ready: CONF=dosbox_was.conf ../../../WAR_Analysis/tools/dosbox/dosrun2.sh"

@@ -36,7 +36,7 @@ Note for the remake: the At Sea 16-colour set is the **Tandy 1000** version. Its
 | 6 | 0x1D160 | 13,168 | C9B0 | Sea battle support: loads SO6, SO7, SO8; the results ("They lost N ships", "Leaving the battle.") |
 | 7 | 0x204D0 | 13,792 | C9B0 | Boarding: the fight on deck (picture B; Flag, Quarterdeck, Poopdeck, Railing; Attack / Leave / Cross / Again) |
 
-Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 25 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
+Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 48 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
 
 Font: the same 8x8 font as WAR.EXE (95 characters, byte-identical), at DS:089C.
 
@@ -104,14 +104,14 @@ Squadron and ship block (DS:5CDD, 480 bytes). **The word fields are per squadron
 | Offset | Size | DS | Field |
 |---|---|---|---|
 | 0 | 40 words | 5CDD | Squadron side: -1 the player's (white), 0 the enemy's (black; draw_squadrons hides it unless seen or rule [64B7] = 80) |
-| 80 | 40 words | 5D2D | Squadron slot: 9999 = empty; in play its speed (0 = anchored) |
+| 80 | 40 words | 5D2D | Squadron slot: 9999 = empty; in play its speed (0 anchored, 1 half sail, 2 full sail) |
 | 160 | 40 words | 5D7D | Squadron X: byte column in the map buffer (x4 = pixels) |
 | 240 | 40 words | 5DCD | Squadron Y: line pair (x2 = pixels) |
 | 320 | 40 bytes | 5E1D | Squadron supplies (20 when full; the editor and a new merchant squadron set 20; Info's supplies bar) |
 | 360 | 40 bytes | 5E45 | Ship: its squadron (0-39; 255 = not in a squadron, the name is kept in reserve). At most 3 ships to a squadron in every campaign |
 | 400 | 40 bytes | 5E6D | Ship: sails damage 0-5 (Info draws a bar 4 x (5 - damage)) |
 | 440 | 40 bytes | 5E95 | Ship: type: 1 LINE (ship-of-the-line), 2 FRIGATE, anything else is shown as FLAG (flagship, 3 in the files). A squadron with a type-3 ship gets the pennant (DS:5EBD = 1) |
-The ship names (0x604, 15 bytes each) and the hull damage (0x85C) are per ship too. A squadron's map address is (y+1)*80 + x (ship_map_addresses ovl1:C4D8). Runtime per squadron: DS:5EBD (0, 1 flagship, 2 merchant: set by ovl4:BFE8 when it makes a merchant squadron), DS:5F85 map address, DS:5FD5 heading 0-15, DS:56FF wrecked, DS:574F seen. The quick reference card: a squadron has 1-3 ships, all squadrons of one colour form the fleet; ship types are flagship, ship-of-the-line, frigate and merchantship.
+The ship names (0x604, 15 bytes each) and the hull damage (0x85C) are per ship too. A squadron's map address is (y+1)*80 + x (ship_map_addresses ovl1:C4D8). Runtime per squadron: DS:5EBD (0, 1 flagship, 2 merchant: set by ovl4:BFE8 when it makes a merchant squadron), DS:5F85 map address, DS:5FD5 heading 0-15, DS:56FF in an encounter, DS:574F seen, DS:583F on a traced path, DS:588F on a route, DS:5EE5 control (-2 at the start), DS:6581 speed before putting into port (README, Campaign play). The quick reference card: a squadron has 1-3 ships, all squadrons of one colour form the fleet; ship types are flagship, ship-of-the-line, frigate and merchantship.
 
 Rules (9 words): the rule lines in SO3 are "Ports repair ships", "Ports need supplies", "Wind changes", "Rough water is", "Shallow water is", "Visibility is", the crew ("green / average / crack") and cannon aim ("manual / automatic"), with values steadily/slowly/never, often/rarely/never, very risky/risky/mild, safe, short/medium/long/unlimited. Which word is which: to do. S0's are 20, 10, 0, 0, 1, 80, 0, 2, 0.
 
@@ -144,11 +144,12 @@ Opponents (SO2): Thor Foote, the Duke of Medina Sidonia, Blackbeard, Martin Trom
 | DS | Sprite |
 |---|---|
 | 049B | Anchor: a squadron that is not moving |
-| 04AD | Crossed bones: a wrecked squadron (DS:56FF) |
+| 04AD | Crossed swords: a squadron in an encounter (DS:56FF; Zoom) |
 | 04BF-059D | A squadron under sail, 16 headings N, NNE ... NNW (ovl4:B35E puts them in the table DS:607F; DS:075A moves headings 3-5 and 11-13, the east and west ones, one line pair lower) |
 | 05AF | Pennant, drawn one line pair above a squadron with a flagship |
 | 05BD | Cargo, drawn one line pair above a merchant squadron |
-- Icons at DS:05EF and DS:0607 (8x6, drawn by Info). From about DS:1100 on: more tables and sprite data, to be mapped as the code is named.
+- The keypad's marker steps at DS:0739 (dx) and DS:0744 (dy), for scan codes 47h-51h.
+- The digits of Info's 0-100 scale at DS:05EF-062A (8x6 icons). From about DS:1100 on: more tables and sprite data, to be mapped as the code is named.
 
 ## Documentation
 `WAS_Documentation`: the manual is being scanned (so far the cover, title, contents, credits and introduction: Book I instruction manual p3, Book II planning guide p31, Book III history of fighting sail p53, Book IV appendixes p105); the quick reference card and the hard-disk installation sheet. Text in `WAS_Analysis/manual_ocr/`.
