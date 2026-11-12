@@ -44,16 +44,18 @@ void viewer_key(Viewer *v, ViewerKey k)
     case VK_DOWN:    if (viewer_is_map(v) && !v->page) viewer_scroll(v, TILE_H); else viewer_key(v, VK_NEXT); break;
     case VK_TOP:     viewer_scroll(v, -MAP_PIXEL_H); break;
     case VK_BOTTOM:  viewer_scroll(v, MAP_PIXEL_H); break;
-    case VK_MODE: {
-        GfxMode next = v->mode == MODE_CGA ? MODE_16 : MODE_CGA;
-        if (v->ga->set[next].loaded) v->mode = next;
+    case VK_MODE:                    /* CGA, then 16 colours (if WAST.DAT is there), then Hercules */
+        if (v->herc) { v->herc = false; v->mode = MODE_CGA; }
+        else if (v->mode == MODE_CGA && v->ga->set[MODE_16].loaded) v->mode = MODE_16;
+        else { v->mode = MODE_CGA; v->herc = true; }
         break;
-    }
     case VK_CAPTION: v->caption = !v->caption; break;
     case VK_STORY:   if (viewer_is_map(v)) v->page = (v->page + 1) % 3; break;
     default: break;
     }
 }
+
+const char *viewer_mode_name(const Viewer *v) { return v->herc ? "Hercules" : mode_name(v->mode); }
 
 const char *viewer_title(const Viewer *v, int index)
 {
@@ -237,7 +239,7 @@ void viewer_draw(const Viewer *v, Screen *s)
         const char *note = "";
         if (v->index < PIC_COUNT && v->mode == MODE_16 && !v->ga->set[MODE_16].pictures[v->index].px)
             note = " (CGA only)";
-        SDL_snprintf(cap, sizeof cap, "%s %d/%d: %s%s", mode_name(v->mode), v->index + 1, NUM_SCREENS,
+        SDL_snprintf(cap, sizeof cap, "%s %d/%d: %s%s", viewer_mode_name(v), v->index + 1, NUM_SCREENS,
                      viewer_title(v, v->index), note);
         cap[40] = 0;   /* 40 characters per line */
         screen_fill(s, 0, SCREEN_H - 8, SCREEN_W, 8, black);

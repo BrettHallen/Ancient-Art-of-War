@@ -11,7 +11,8 @@
  * marker to F.D.Roosevelt's squadron (byte 3, line pair 186), Info, End, the
  * marker to (38, 150), Fleet, a key, Time, Pause, a key, Surrender. Checks
  * the text rows against what the original showed and writes a BMP of each
- * screen (compare_play.py compares them with the DOSBox screenshots).
+ * screen (compare_shots.py compares them with the DOSBox screenshots); the
+ * start also as on a Hercules card (p1_start_herc).
  *
  * Usage: test_play GAME-FOLDER OUT-FOLDER
  */
@@ -91,6 +92,16 @@ int main(int argc, char **argv)
     CHECK(SDL_strcmp(row(&p, 24), "Time (slow)    Fleet  Pause  Surrender") == 0, "command line '%s'", row(&p, 24));
     save(&p, MODE_CGA, "p1_start");
     save(&p, MODE_16, "p1_start_16");
+    {   /* WAS HERC: the same screen on a Hercules card (matched DOSBox's machine=hercules pixel for pixel) */
+        static uint32_t h[HERC_W * HERC_H];
+        play_draw(&p, &scr, MODE_CGA);
+        screen_to_herc(&scr, h);
+        SDL_Surface *surf = SDL_CreateSurfaceFrom(HERC_W, HERC_H, SDL_PIXELFORMAT_XRGB8888, h, HERC_W * 4);
+        char path[1200];
+        SDL_snprintf(path, sizeof path, "%s/p1_start_herc.bmp", outdir);
+        CHECK(surf && SDL_SaveBMP(surf, path), "can't write %s", path);
+        SDL_DestroySurface(surf);
+    }
 
     move_to(&p, 3, 186);
     CHECK(p.mode == PM_SQUAD, "over a squadron");

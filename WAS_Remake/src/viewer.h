@@ -7,7 +7,8 @@
  *
  * viewer.h: the asset viewer (step 1): every picture, the map tiles, the
  * font, the map sprites and the eleven campaign maps (with each one's story
- * and ships), in CGA or 16 colours. Enter on a map plays that campaign (main.c).
+ * and ships), in CGA, 16 colours or as on a Hercules card. Enter on a map
+ * plays that campaign (main.c).
  */
 #ifndef WAS_VIEWER_H
 #define WAS_VIEWER_H
@@ -30,6 +31,7 @@ typedef struct {
     const GameAssets *ga;
     const Campaign   *campaigns;      /* NUM_CAMPAIGNS */
     GfxMode           mode;
+    bool              herc;           /* shown as on a Hercules card (drawn with the CGA set) */
     int               index;          /* the screen shown */
     int               scroll[NUM_CAMPAIGNS];   /* pixels from the top of each map */
     bool              caption;
@@ -48,5 +50,8 @@ void viewer_scroll(Viewer *v, int delta);          /* on a map, in pixels */
 bool viewer_is_map(const Viewer *v);
 const char *viewer_title(const Viewer *v, int index);
 void viewer_draw(const Viewer *v, Screen *s);
+
+/* "CGA", "Tandy" or "Hercules" */
+const char *viewer_mode_name(const Viewer *v);
 
 #endif

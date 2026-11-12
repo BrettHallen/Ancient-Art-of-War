@@ -1,7 +1,7 @@
 # The Ancient Art of War at Sea - Remake
 A modern version of The Ancient Art of War at Sea (Brøderbund, 1987) for macOS, written in C with [SDL3](https://www.libsdl.org/). It also builds on Windows and Linux. It is built the same way as the [WAR remake](../WAR_Remake): the original program is ported routine by routine from its disassembly (`../WAS_Analysis/WAS.EXE.asm`) and checked against the original.
 
-The remake uses the original pictures, map tiles, sprites and font, in either the **CGA** (4-colour) version or the **16-colour** version made for the Tandy 1000.
+The remake uses the original pictures, map tiles, sprites and font, in either the **CGA** (4-colour) version or the **16-colour** version made for the Tandy 1000, or shown as on a **Hercules** monochrome card (the original's `WAS HERC`).
 
 **No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `AD`, `B`, the `S` files and `SITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
@@ -65,6 +65,12 @@ build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea ../WAS_Origin
 
 The app also looks in a `game` folder next to itself and in the current folder. Press **O** to choose a different folder.
 
+**Hercules:** as `WAS HERC` did, `HERC` on the command line starts the app on a Hercules card (Tab gets there too):
+```sh
+build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea HERC
+```
+WAS.EXE drew the same picture for Hercules as for CGA, with each 4-colour pixel shown as two black or lit pixels, 640x200 in the middle of the card's 720x348 screen; the remake shows that whole screen (4:3, or square pixels with F2), lit pixels in DOSBox's grey. It matches DOSBox's Hercules pixel for pixel.
+
 ### Viewer keys
 | Key | Action |
 |-----|--------|
@@ -73,7 +79,7 @@ The app also looks in a `game` folder next to itself and in the current folder. 
 | Shift + - / +, Home / End | Top / bottom of the map |
 | Enter | On a map: play that campaign |
 | I | On a map: the story, then the squadrons and ships, then the map again |
-| Tab | Switch between the CGA and 16 colours |
+| Tab | Switch between CGA, 16 colours and Hercules |
 | F2 or A | 4:3 like the original monitor, or square pixels |
 | H | Show or hide the caption |
 | F, Cmd+Enter, Alt+Enter | Full screen |
@@ -100,7 +106,7 @@ The original keys:
 | Y, N | Answer the opponent's offer to surrender |
 | Enter | After the game is over: back to the viewer |
 
-And the remake's own: **Tab** switches between the CGA and 16 colours (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)* (for now it goes back to the viewer).
+And the remake's own: **Tab** switches between CGA, 16 colours and Hercules (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)* (for now it goes back to the viewer).
 
 ## Tests
 See `test/README.md`.

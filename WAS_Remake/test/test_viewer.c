@@ -127,7 +127,36 @@ int main(int argc, char **argv)
         CHECK(v.index == 0, "wrapped round");
         viewer_key(&v, VK_MODE);
     }
-    CHECK(v.mode == MODE_CGA, "Tab twice");
+    CHECK(v.mode == MODE_CGA && v.herc, "Tab twice: Hercules");
+    CHECK(SDL_strcmp(viewer_mode_name(&v), "Hercules") == 0, "Hercules' name");
+    viewer_key(&v, VK_MODE);
+    CHECK(v.mode == MODE_CGA && !v.herc, "Tab three times: CGA");
+
+    /* Hercules (WAS HERC): each CGA pixel is two mono pixels, the screen at 32,72 of 720x348 */
+    {
+        static uint32_t h[HERC_W * HERC_H];
+        screen_set_palette(&s, CGA_PALETTE, 4);
+        screen_fill(&s, 0, 0, SCREEN_W, SCREEN_H, 0);
+        s.px[0] = 1; s.px[1] = 2; s.px[2] = 3;
+        s.px[SCREEN_W * SCREEN_H - 1] = 3;
+        screen_to_herc(&s, h);
+        const uint32_t L = 0xAAAAAA;
+        CHECK(h[72 * HERC_W + 32] == 0 && h[72 * HERC_W + 33] == L, "colour 1: dark, lit");
+        CHECK(h[72 * HERC_W + 34] == L && h[72 * HERC_W + 35] == 0, "colour 2: lit, dark");
+        CHECK(h[72 * HERC_W + 36] == L && h[72 * HERC_W + 37] == L, "colour 3: lit, lit");
+        CHECK(h[271 * HERC_W + 671] == L && h[271 * HERC_W + 672] == 0 && h[272 * HERC_W + 671] == 0, "the last pixel at 670,271");
+        CHECK(h[0] == 0 && h[71 * HERC_W + 33] == 0, "black round it");
+        v.herc = true;
+        v.index = PIC_TITLE_SHIP;
+        viewer_draw(&v, &s);
+        screen_to_herc(&s, h);
+        SDL_Surface *surf = SDL_CreateSurfaceFrom(HERC_W, HERC_H, SDL_PIXELFORMAT_XRGB8888, h, HERC_W * 4);
+        SDL_snprintf(path, sizeof path, "%s/Hercules_title.bmp", argv[2]);
+        CHECK(surf && SDL_SaveBMP(surf, path), "write %s", path);
+        SDL_DestroySurface(surf);
+        v.herc = false;
+        v.index = 0;
+    }
 
     /* keys: wrap backwards, scroll limits, caption */
     viewer_key(&v, VK_PREV);

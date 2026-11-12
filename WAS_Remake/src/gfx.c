@@ -100,3 +100,17 @@ void screen_to_xrgb(const Screen *s, uint32_t *out)
         lut[i] = 0xFF000000u | ((uint32_t)s->pal[i].r << 16) | ((uint32_t)s->pal[i].g << 8) | s->pal[i].b;
     for (int i = 0; i < SCREEN_W * SCREEN_H; i++) out[i] = lut[s->px[i] & 15];
 }
+
+void screen_to_herc(const Screen *s, uint32_t *out)
+{
+    const uint32_t lit = 0xAAAAAAu;          /* as DOSBox shows a Hercules card's pixels */
+    for (int i = 0; i < HERC_W * HERC_H; i++) out[i] = 0;
+    for (int y = 0; y < SCREEN_H; y++) {
+        uint32_t *row = out + (HERC_Y + y) * HERC_W + HERC_X;
+        for (int x = 0; x < SCREEN_W; x++) {
+            int c = s->px[y * SCREEN_W + x] & 3;
+            row[2 * x] = (c & 2) ? lit : 0;
+            row[2 * x + 1] = (c & 1) ? lit : 0;
+        }
+    }
+}

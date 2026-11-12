@@ -22,7 +22,7 @@ static SDL_Keycode SCRIPT[] = {
     SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT,   /* map 1 */
     SDLK_RETURN,                                   /* play */
     SDLK_LEFT, SDLK_LEFT, SDLK_LEFT, SDLK_DOWN,    /* the marker */
-    SDLK_F, SDLK_SPACE, SDLK_T, SDLK_TAB,          /* Fleet, Time, 16 colours */
+    SDLK_F, SDLK_SPACE, SDLK_T, SDLK_TAB, SDLK_TAB, /* Fleet, Time, 16 colours, Hercules */
     SDLK_ESCAPE, SDLK_Y,                           /* back to the viewer */
     SDLK_ESCAPE,                                   /* quit */
 };

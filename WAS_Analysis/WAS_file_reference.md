@@ -38,6 +38,8 @@ Note for the remake: the At Sea 16-colour set is the **Tandy 1000** version. Its
 
 Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 137 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
 
+Video: CGA mode 4, or Hercules with `WAS HERC` (an argument starting with H; see `README.md`): the same drawing, with the row table DS:0D3B pointing at Hercules scanlines 72-271 (from byte 4, 90 bytes a row, four banks), so the CGA bytes show as 1-bit pixels, 640x200 in the middle of 720x348. [0ECB]: 0 CGA, 1 Hercules, 2 when the BIOS equipment word's video bits are 00 (an EGA or VGA card).
+
 Font: the same 8x8 font as WAR.EXE (95 characters, byte-identical), at DS:089C.
 
 Copy protection: the key-disk check only: key_disk (ovl1:A9A9) calls key_disk_check (ovl1:CF96, same code as WAR.EXE: INT 13h reads of the original floppy) and looks for the copyright string DS:0BD9 in what it read; without it startup gives up (ovl1:76B3). `WAS_Analysis/tools/dosbox/setup_was.sh` patches a copy of WAS.EXE there (file offset 7AB3h, `75 07` -> `EB 07`) so it runs in DOSBox. **No manual word question** (no WarW-type file). "DPQZSJHIU 2:94 EBWF NVSSZ" (= "COPYRIGHT 1983 DAVE MURRY", shifted +1) is at DS:0835, as in WAR.

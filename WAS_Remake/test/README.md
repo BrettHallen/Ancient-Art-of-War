@@ -6,13 +6,13 @@ Build one with `./build.sh NAME` (or `bash build.sh NAME`): it compiles `NAME.c`
 
 | Test | What it checks |
 |---|---|
-| `test_viewer GAME OUT` | the asset loader and the viewer (step 1): both colour sets, every picture and tile, the font, the map sprites, the campaigns (titles, opponents, squadrons, ships, the Armada's ships on their right sides), the viewer's keys; writes every screen as BMPs |
+| `test_viewer GAME OUT` | the asset loader and the viewer (step 1): both colour sets, every picture and tile, Tab's three modes and the Hercules conversion, the font, the map sprites, the campaigns (titles, opponents, squadrons, ships, the Armada's ships on their right sides), the viewer's keys; writes every screen as BMPs |
 | `compare_extract.py OUT` | the remake's pictures and tiles (from `test_viewer`'s BMPs) against `../../WAS_Graphics/extract_graphics.py`: two decoders written separately must agree pixel for pixel |
 | `fuzz_assets GAME WORK [ROUNDS]` | damaged files (bytes changed, cut short, emptied) must load or be refused cleanly, and every viewer screen must draw |
 | `test_play GAME OUT` | campaign play, step 2, scripted as it was done in the original in DOSBox: the start, the marker to a squadron, Info, Fleet, Time, Pause, Surrender, scrolling and the marker's limits; checks the text rows against the original's and writes the screens as BMPs (they matched the DOSBox screenshots pixel for pixel) |
 | `test_rules GAME OUT` | campaign play, step 3, scripted as it was done in the original in DOSBox: tracing a path (the box, the land stopping it), the mark, sailing to the end; Join and Detach; sighting, an encounter and its fight; a crown taken ("You Won"); the opponent's offer to surrender; the wind; a frigate lost in rough water. Writes the screens as BMPs (they matched the DOSBox screenshots pixel for pixel, apart from the enemy's moves, which are step 5) |
 | `fuzz_play GAME [FRAMES]` | random keys in every campaign: the marker and the view stay in their limits, every frame draws; then, with the clock at its fastest, paths traced from random squadrons: every sailing squadron's path still ends with 99, supplies stay 0-20 |
-| `compare_shots.py DOSBOX.png REMAKE.bmp` | pixel differences between a DOSBox screenshot of the original and a remake screen |
+| `compare_shots.py DOSBOX.png REMAKE.bmp` | pixel differences between a DOSBox screenshot of the original and a remake screen (640x400 against 320x200, or two 720x348 Hercules screens) |
 | `test_app GAME OUT` | the whole app (`main.c`) with SDL's offscreen driver and scripted key events: the viewer, Enter to play, the marker, Fleet, Time, Tab, Esc and Y, quit. Run with `SDL_VIDEODRIVER=offscreen` (and `ASAN_OPTIONS=detect_leaks=0`: the GL driver keeps a little memory) |
 
 Run them all:
