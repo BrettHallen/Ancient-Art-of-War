@@ -424,11 +424,19 @@ static void scroll_show(Menu *m)    /* blit_buffer_to_cga, and the pointer */
 }
 
 /* ovl1_7499: palette 0, then the top and the bottom curl of the scroll */
-static void scroll_open(Menu *m)
+/* the scroll's colours (CGA palette 0, or PE's palette). Called before a
+ * scroll page prints its help rows: the text colours (c4) come from the
+ * palette, and after Tab the old mode's colours would print the rows black. */
+static void scroll_palette(Menu *m)
 {
     const Image *pe = picture(m, PIC_SCROLL_1);
     if (m->mode == MODE_CGA) set_palette(m, CGA_PALETTE_0, 4, true);
     else set_palette(m, pe->pal, pe->ncolors, true);
+}
+
+static void scroll_open(Menu *m)
+{
+    scroll_palette(m);
     m->view = 0;
     scroll_build(m);
     scroll_copy(m, 0, 0, 36);
@@ -613,6 +621,7 @@ static void titles_count(Menu *m)
 
 static void page_titles(Menu *m, bool unroll)
 {
+    scroll_palette(m);
     bool editing = m->edit == EDIT_CHANGE || m->edit == EDIT_REMOVE;
     const uint8_t *src = (m->data_list || editing) ? m->data_titles : m->ga->titles;
     SDL_memcpy(m->text, src + 36, 840);
@@ -648,9 +657,7 @@ static void page_titles(Menu *m, bool unroll)
     }
     if (unroll) scroll_open(m);
     else {
-        const Image *pe = picture(m, PIC_SCROLL_1);
-        if (m->mode == MODE_CGA) set_palette(m, CGA_PALETTE_0, 4, true);
-        else set_palette(m, pe->pal, pe->ncolors, true);
+        scroll_palette(m);
         scroll_build(m);
         scroll_show(m);
     }
@@ -658,6 +665,7 @@ static void page_titles(Menu *m, bool unroll)
 
 static void page_story(Menu *m)
 {
+    scroll_palette(m);
     SDL_memcpy(m->text, m->game.story_raw, 840);
     m->a692 = 4;
     for (int r = 23; r < 25; r++) clear_row(m, r);
@@ -688,6 +696,7 @@ static void rules_help(Menu *m)            /* ovl1:66EE */
 
 static void page_rules(Menu *m)
 {
+    scroll_palette(m);
     m->a692 = m->edit == EDIT_NEW ? 11 : m->edit == EDIT_CHANGE ? 6 : 2;
     rules_text(m);
     m->rule = 0;
@@ -1441,12 +1450,11 @@ static void page_edit_text(Menu *m, bool unroll)
         }
         m->ed_wait = m->a692 == 0;
     }
+    scroll_palette(m);
     ed_help(m);
     if (unroll) scroll_open(m);
     else {
-        const Image *pe = picture(m, PIC_SCROLL_1);
-        if (m->mode == MODE_CGA) set_palette(m, CGA_PALETTE_0, 4, true);
-        else set_palette(m, pe->pal, pe->ncolors, true);
+        scroll_palette(m);
         scroll_build(m);
         scroll_show(m);
         if (m->state == MS_EDIT_ASK) {
