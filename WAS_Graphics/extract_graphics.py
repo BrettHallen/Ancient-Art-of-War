@@ -14,9 +14,9 @@ CGA (WAS.EXE):
              each = word N, then N codes; code c <= 200 repeats the next
              byte c times, c > 200 copies the next c - 200 bytes
              (load_picture ovl1:CBEA in WAS.EXE)
-  WAS.EXE never changes the CGA palette for these pictures: they show in
-  the BIOS default for mode 4, palette 1 high intensity (black, cyan,
-  magenta, white).
+  The pictures show in CGA palette 1, high intensity (black, cyan, magenta,
+  white), except the scrolls SPE and SPF: show_scroll (ovl1:7F1A) switches
+  to palette 0 (black, green, red, yellow) for them, as WAR.EXE did.
 EGA / Tandy 16-colour (WAST.EXE):
   WAST.DAT   archive in the same format as WARET.DAT (see
              WAR_Analysis/WAR_file_reference.md): 16-colour pictures and map
@@ -34,6 +34,9 @@ VGA_DIR = os.path.join(HERE, 'VGA')
 
 # CGA palette 1, high intensity: black, cyan, magenta, white
 CGA_PALETTE = [(0, 0, 0), (85, 255, 255), (255, 85, 255), (255, 255, 255)]
+# CGA palette 0, high intensity: black, green, red, yellow (the scrolls)
+CGA_PALETTE_0 = [(0, 0, 0), (85, 255, 85), (255, 85, 85), (255, 255, 85)]
+PALETTE_0_PICTURES = ('SPE', 'SPF')
 # the standard 16 colours (CGA/EGA/Tandy), used by every WAST.DAT picture
 EGA_PALETTE = [(0, 0, 0), (0, 0, 170), (0, 170, 0), (0, 170, 170),
                (170, 0, 0), (170, 0, 170), (170, 85, 0), (170, 170, 170),
@@ -63,7 +66,7 @@ def read(name):
 
 
 # ---------------------------------------------------------------- drawing
-def draw_2bpp(data, width_bytes, rows, row_offset):
+def draw_2bpp(data, width_bytes, rows, row_offset, palette=CGA_PALETTE):
     im = Image.new('RGB', (width_bytes * 4, rows))
     px = im.load()
     for y in range(rows):
@@ -71,7 +74,7 @@ def draw_2bpp(data, width_bytes, rows, row_offset):
         for xb in range(width_bytes):
             v = data[base + xb]
             for p in range(4):
-                px[xb * 4 + p, y] = CGA_PALETTE[(v >> (6 - 2 * p)) & 3]
+                px[xb * 4 + p, y] = palette[(v >> (6 - 2 * p)) & 3]
     return im
 
 
@@ -146,7 +149,8 @@ def cga_picture(name):
         assert len(field) == 8000, f'{name}: field of {len(field)} bytes'
         out += field
     # even lines in the first 8000 bytes, odd lines in the second
-    return draw_2bpp(out, 80, 200, lambda y: (y % 2) * 8000 + (y // 2) * 80)
+    pal = CGA_PALETTE_0 if name in PALETTE_0_PICTURES else CGA_PALETTE
+    return draw_2bpp(out, 80, 200, lambda y: (y % 2) * 8000 + (y // 2) * 80, pal)
 
 
 # ---------------------------------------------------------------- 16 colours
