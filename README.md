@@ -30,13 +30,13 @@ A modern version of the game in C and SDL3, using the original CGA or VGA graphi
 Work in progress.<br>
 
 ## [Ancient Art of War at Sea Analysis](/WAS_Analysis)
-Analysis of the files from the At Sea disk: the [file reference](/WAS_Analysis/WAS_file_reference.md), the findings and the annotated disassembly of WAS.EXE.
+Analysis of the files from the AAWS disk: the [file reference](/WAS_Analysis/WAS_file_reference.md), the findings and the annotated disassembly of WAS.EXE.
 
 ## [Ancient Art of War at Sea Graphics](/WAS_Graphics)
-Graphics decoded from the At Sea disk: the map tiles and full-screen pictures from both the [CGA](/WAS_Graphics/CGA) version and the 16-colour [Tandy 1000](/WAS_Graphics/VGA) version, plus the script that extracts them.
+Graphics decoded from the AAWS disk: the map tiles and full-screen pictures from both the [CGA](/WAS_Graphics/CGA) version and the 16-colour [Tandy 1000](/WAS_Graphics/VGA) version, plus the script that extracts them.
 
 ## [Ancient Art of War at Sea Remake](/WAS_Remake)
-Planned: a modern version of At Sea, built the same way as the WAR remake.<br>
+Planned: a modern version of AAWS, built the same way as the WAR remake.<br>
 
 ## Useful Links
 - [Official developer site](https://www.evryware.com/index.html)
