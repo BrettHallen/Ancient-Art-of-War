@@ -1,0 +1,36 @@
+‘ANCIENT ART
+‘WAR AT SEA
+
+INSTRUCTIONS FOR HARD DISK INSTALLATION
+
+lf your computer has a hard disk you can install the Ancient Art of
+War at Sea on it by performing the following steps:
+
+:.
+
+oe
+
+Start up your computer using DOS 2.0 or higher.
+
+Set your active drive and current working directory to the
+location where you would like to install the Ancient Art of
+War at Sea (for example C:\AAWS). If you need more
+information on creating and using directories, please
+consult your DOS manual.
+
+Insert the Ancient Art of War at Sea disk in drive A and
+close the drive door.
+
+Type COPY A:*.* and press ENTER. This will copy all of
+the files from the Ancient Art of War at Sea disk onto your
+hard disk.
+
+To run the program from the hard disk make sure the Ancient Art
+of War at Sea floppy disk is in drive A and the C> prompt is
+displayed on the screen (if it isn't, type C: and press ENTER),
+then type WAS and press RETURN.
+
+The copy protection scheme for the Ancient Art of War at Sea
+requires that the original floppy disk be in drive A when the
+program initially starts up. Once the title page is displayed you
+may remove the floppy disk from drive A.
