@@ -76,7 +76,7 @@
 ; thunk_14  0000:3096  -> overlay 1 at 39AA  show_scroll
 ; thunk_15  0000:30A2  -> overlay 1 at 389B  ensure_war_disk
 ; thunk_16  0000:30AE  -> overlay 1 at 3EB6  editor_menu
-; thunk_17  0000:30BA  -> overlay 1 at 3FC3  ovl1_entry_3fc3
+; thunk_17  0000:30BA  -> overlay 1 at 3FC3  save_or_reload
 ; thunk_18  0000:30C6  -> overlay 1 at 4808  choose_opponent
 ; thunk_19  0000:30D2  -> overlay 1 at 7EDA  init_hardware
 ; thunk_20  0000:30DE  -> overlay 2 at 8520  copy_protection
@@ -240,7 +240,7 @@
 ; ovl1:3E08  campaign_intro             thunk 10. Story scrolls (show_scroll) and choose_opponent
 ; ovl1:3EB6  editor_menu                thunk 16. Loads PH (scene sheet 2: rulebook, storybook...) and O4
 ; ovl1:3FA0  clear_all_text_rows        Clear text rows 24 down to 0 (a black screen)
-; ovl1:3FC3  ovl1_entry_3fc3            thunk 17
+; ovl1:3FC3  save_or_reload             thunk 17. Editors: 100 writes the T file (ovl1_7A71), 101 reads it again (forget
 ; ovl1:4000  select_campaign            thunk 11. Copy the campaign file name (table of T0-TA at DS:08C1, 3 bytes each, 
 ; ovl1:4125  scroll_erase_line          Clear a scroll line cell by cell with a click each (removing a campaign)
 ; ovl1:4161  show_title_barbarian       Loads PI (title screen with barbarian); 189 turns with no key start the demo: on
@@ -249,7 +249,12 @@
 ; ovl1:469F  play_tune_tandy            play_tune_tandy(v0, v1, v2, lengths): three voices on the SN76496 (divisor / 15,
 ; ovl1:4808  choose_opponent            thunk 18. Loads PJ (the 8 opponent portraits)
 ; ovl1:4D08  help_change_select         Row 24: [+] or [-] to change, [Enter] ...
+; ovl1:4D52  story_step_words           "The fifth step is to write a story. Press any key."
+; ovl1:4D9E  esc_when_done              "[Esc] when done." under the scroll editor
+; ovl1:4DD9  title_step                 A new title: the quill goes down past the titles; "The last step is to write a t
 ; ovl1:4EB2  data_disk                  thunk 7. Data disk handling (ovl1_61fd prints "Unable to use data disk.")
+; ovl1:4F55  blank_armies               A new campaign: no squads (9999), march, friend, formation 1, no men, no flags
+; ovl1:4FF2  default_rules              A new campaign's rules: 1, 0, 2, 60, 2, 80, 20, 8, 6
 ; ovl1:5030  rules_text                 The RULES scroll: one sentence per rule
 ; ovl1:53AE  battle_report              thunk 5. Loads PN (victory) or PO (defeat): captured / casualties / flags taken
 ; ovl1:5706  report_number              Battle report: a number right-aligned in three cells of the scroll digits
@@ -275,7 +280,10 @@
 ; ovl1:6EDE  scroll_row_up              Scroll pointer up a row; the window follows
 ; ovl1:6F6D  scroll_row_down            Scroll pointer down a row; the window follows
 ; ovl1:6FE0  scroll_advance             Next scroll cell (skipping the 0x01 after a capital)
+; ovl1:7059  scroll_back                Scroll editor: back a cell (over the second cell of a capital)
 ; ovl1:70C7  scroll_char                One scroll cell: clear it, draw the glyph (capital 16x10, small capital 8x8 two 
+; ovl1:73D1  is_capital                 A to Z?
+; ovl1:740F  scroll_key_ok              Scroll editor: false for \ > < ~ @ # $ % ^ & * = + ` (no letter on the scroll)
 ; ovl1:7499  scroll_open                CGA palette 0, then the top and the bottom curl of the scroll
 ; ovl1:74D1  scroll_write_text          Write the 26 x 32 text at DS:9782 onto the scroll, count the titles ([A8CD])
 ; ovl1:75C5  scroll_unroll              Unroll the scroll down the screen (with clicks)
@@ -284,7 +292,10 @@
 ; ovl1:7816  make_data_path             Copy file name to DS:0B3E, prefixed with "A:" or "B:" for the data disk
 ; ovl1:7870  load_campaign_file         Read a T file: story, map, armies, opponent, rules
 ; ovl1:79B7  squad_addresses            Map buffer addresses of the squads and flags
+; ovl1:7A71  write_campaign_file        Write the T file of campaign [bp+4] (name from the table at DS:08C1): story, map
 ; ovl1:7B3D  campaign_source            TITLES from the WAR disk or the data disk; "Saved game / New campaigns" when the
+; ovl1:7E09  write_titles               Write TITLES to the data disk: the 12 file names (DS:08C1) and the 26 x 32 text
+; ovl1:7E9A  read_ascii_key             BIOS key read: the ASCII code, or 1Bh then the scan code of an extended key
 ; ovl1:7EDA  init_hardware              thunk 19. Hook INT 05h (Print Screen) and INT 1Bh (Ctrl-Break), read equipment l
 ; ovl1:7FBD  scroll_copy_lines          Copy line pairs of the scroll buffer to the screen
 ; ovl1:7FFC  copy_glyph                 Copy an O3 glyph (width words, height line pairs) into the buffer
@@ -307,9 +318,69 @@
 ; ovl2:8981  show_wrong_answer          "Sorry, that answer is wrong."
 ; ovl2:89A9  ask_manual_word            "On page N, what is word N in paragraph N"
 ; ovl3:30F0  squads_editor              thunk 9. Campaign editor step 2: place squads and flags (loads O1)
+; ovl3:33A9  sqed_flag_addrs            Squads editor: the screen address of each flag (A054), count the flags ([A8C1])
+; ovl3:340E  sqed_main_line             Squads editor: "Squad Flag Total  [Enter] when done" (mode 0)
+; ovl3:3486  sqed_total                 Squads editor: "Total men .... N friend, N foe." (T)
+; ovl3:3541  sqed_squad_line            Squads editor: over a squad, "Info Size [Formation] Get Remove" (mode 1)
+; ovl3:35AF  sqed_get                   Squads editor: Get, "Move to the new location" / "Put" (mode 20)
+; ovl3:35E8  sqed_flag_line             Squads editor: over a flag, "Foe/Friend Remove" (mode 10)
+; ovl3:3644  sqed_info_show             Squads editor: the Info rows (speed, type, condition and food bars), Increase/De
+; ovl3:3803  sqed_info_speed            Squads editor Info: "Speed - when moving: MARCH ..."
+; ovl3:3890  sqed_info_type             Squads editor Info: "Type: FRIEND/FOE"
+; ovl3:38EF  sqed_info_condition        Squads editor Info: condition bar
+; ovl3:3923  sqed_info_food             Squads editor Info: food bar
+; ovl3:3957  sqed_key                   Squads editor: one key: the mode commands, then the cursor (bounds 3-4Ch, 4-C2h)
+; ovl3:3E69  sqed_read_key              Squads editor: the key pressed or held (joystick via sqed_joystick)
+; ovl3:3EEC  sqed_joystick              Squads editor: the joystick as keys
+; ovl3:413F  sqed_count                 Squads editor: count squads ([A8C3]) and flags ([A8C1])
+; ovl3:419D  sqed_over_squad            Squads editor: is the cursor on a squad (column x+1, line pairs y-1..y+3)? buzz 
+; ovl3:4256  sqed_over_flag             Squads editor: is the cursor on a flag? buzz and flag line
+; ovl3:430F  sqed_info                  Squads editor Info: C condition, F food (1-49), S speed, T type, I/D increase/de
+; ovl3:4516  sqed_remove                Squads editor: Remove (no men: update_squads frees the slot)
+; ovl3:4552  sqed_new_squad             Squads editor: a new squad at the cursor (highest free slot): march, friend, con
+; ovl3:463A  sqed_size                  Squads editor Size: the box of men; K B A S add or take away, I/D, E end; switch
+; ovl3:4A78  sqed_size_beep             Squads editor Size: 239 Hz for 1200 units
+; ovl3:4A95  sqed_formation             Squads editor Formation: -/+ choose 1-9 (formation_preview), E or a cursor key e
+; ovl3:4BBC  sqed_size_box              Squads editor Size: clear the box at line 92h (42 lines)
 ; ovl4:30F0  map_maker                  thunk 8. Campaign editor step 1: map maker (loads O0)
+; ovl4:33FA  mapmk_panel                Map maker: the panel: lines, letters A-S, the page of tiles, the plan
+; ovl4:34DB  mapmk_bottom               Map maker: "Page [A]-[S]  [Enter] when done"
+; ovl4:3558  mapmk_page                 Map maker: the 18 tiles of this page (DS:0B68 + page x B88h)
+; ovl4:35BF  mapmk_key                  Map maker: one key: arrows move (left/right wrap rows), P next page, A-S (no P) 
+; ovl4:37F6  mapmk_read_key             Map maker: the key pressed (or the joystick), and the delay after it ([A5D0])
+; ovl4:3875  mapmk_joystick             Map maker: the joystick as keys
+; ovl4:39FF  mapmk_load_tiles           Map maker: load M (72 tiles) to DS:0B68
+; ovl4:3A2F  mapmk_view                 Map maker: four rows of the map from row [A8C1], the cursor tile inverted, the p
+; ovl4:3ACD  mapmk_plan_cursor          Map maker: the plan, and the cursor cell on it
+; ovl4:3AF7  mapmk_tile                 Map maker: draw a 32x20 tile at byte x, line y
+; ovl4:3B21  mapmk_invert               Map maker: XOR the cursor tile
+; ovl4:3B51  mapmk_plan_mark            Map maker: a 4x4 white square on the plan
+; ovl4:3B79  mapmk_plan                 Map maker: the plan, 10 x 20 cells of 4 pixels
 ; ovl5:30F0  formation_editor           thunk 12. "Teach squads new formations": loads O8 (text) and PL (background)
+; ovl5:33AE  formed_look_line           Formation editor: clear row 23, then formed_look_keys
+; ovl5:33CC  formed_look_keys           Formation editor mode 1 ([A8C1]): "Move Save" (formations 6-9), [+] [-], "[Enter
+; ovl5:344B  formed_pointer             Formation editor mode 2: "Put pointer over a man to move", the cursor
+; ovl5:347D  formed_pointer_keys        Formation editor mode 2: "End" and "Mark" over a man; [A8D3] = changed
+; ovl5:34BD  formed_move                Formation editor mode 3: "Move the man, press [M] to mark"
+; ovl5:34F6  formed_move_keys           Formation editor mode 3: "Mark" and the kinds the man is not (Archer Barbarian K
+; ovl5:357B  formed_step_men            Formation editor: each man takes the next step (delta, sprite, state) of his O8 
+; ovl5:38EE  formed_sort_y              Formation editor: one pass of sorting the 14 men by y (drawing order), A506 foll
+; ovl5:3AF3  formed_plan_mark           Formation editor: formation_preview and the pointer's place on it (ovl5_474A)
+; ovl5:3B5B  formed_key                 Formation editor: one key: mode 1 Enter (Save the last changes?), S, -/+, M; mod
+; ovl5:3F90  formed_read_key            Formation editor: the key pressed or held (or the joystick)
+; ovl5:3FDE  formed_joystick            Formation editor: the joystick as keys
+; ovl5:4218  formed_load                Formation editor: the 14 men of formation [A8D1] from F (DS:A717 types, A7A3 x, 
+; ovl5:4331  formed_border              Formation editor: the line over the text rows
+; ovl5:4345  formed_numbers             Formation editor: store the men, formation_preview, "Formation: n" and the numbe
+; ovl5:43D9  formed_box                 Formation editor: the box at the top left (Formation, Knights, Barbarians, Arche
+; ovl5:446E  formed_store               Formation editor: the men back into F at their places ([A8D9]), counting each ki
+; ovl5:454E  formed_write               Formation editor: sort, then write F (420 bytes from DS:A717) to the WAR disk
+; ovl5:4597  formed_reload              Formation editor: read F again (the changes not saved are forgotten)
+; ovl5:45B1  formed_sort_x              Every formation's 14 men in order of x (14 passes of swaps), before F is written
+; ovl5:46A0  formed_box_clear           Formation editor: clear the box at the top left (50 lines)
+; ovl5:46C5  formed_show_field          Formation editor: copy the field (bytes 36-79, line pairs 25-89) from the pictur
 ; ovl5:470F  decode_picture_rle16       Decode word-RLE picture from DS:0B68 to [bp+4]: two fields (even lines, then odd
+; ovl5:474A  formed_mark                Formation editor: a 4 x 4 magenta mark on the plan
 ; ovl6:30F0  campaign_play              thunk 2. The strategic map game (loads O5 messages). Main loop: a tick every [A5
 ; ovl6:3413  init_cell_costs            Cost of each map cell for the enemy (DS:8B8C) from water, mountains, forest and 
 ; ovl6:3589  check_victory              Count men on each side; win, loss, or the opponent offers to surrender
@@ -866,7 +937,7 @@ rt_02b9:
   rt:0383  00583  5d             pop    bp
   rt:0384  00584  c3             ret
   rt:0385  00585  ff76fc         push   word ptr [bp - 4]
-  rt:0388  00588  e82f2d         call   thunk_17                       ; -> overlay 1: ovl1_entry_3fc3
+  rt:0388  00588  e82f2d         call   thunk_17                       ; -> overlay 1: save_or_reload
   rt:038B  0058B  5f             pop    di
   rt:038C  0058C  eb62           jmp    0x3f0
   rt:038E  0058E  813e80a60300   cmp    word ptr [0xa680], 3
@@ -908,7 +979,7 @@ rt_02b9:
   rt:03E7  005E7  5d             pop    bp
   rt:03E8  005E8  c3             ret
   rt:03E9  005E9  ff76fc         push   word ptr [bp - 4]
-  rt:03EC  005EC  e8cb2c         call   thunk_17                       ; -> overlay 1: ovl1_entry_3fc3
+  rt:03EC  005EC  e8cb2c         call   thunk_17                       ; -> overlay 1: save_or_reload
   rt:03EF  005EF  5f             pop    di
   rt:03F0  005F0  e9f3fe         jmp    0x2e6
   rt:03F3  005F3  8b46fe         mov    ax, word ptr [bp - 2]
@@ -6950,7 +7021,7 @@ show_scroll:
   ovl1:39AA  03BAA  55             push   bp
   ovl1:39AB  03BAB  8bec           mov    bp, sp
   ovl1:39AD  03BAD  83ec02         sub    sp, 2
-  ovl1:39B0  03BB0  e8e744         call   ovl1_7e9a
+  ovl1:39B0  03BB0  e8e744         call   read_ascii_key
   ovl1:39B3  03BB3  0bc0           or     ax, ax
   ovl1:39B5  03BB5  75f9           jne    0x39b0
   ovl1:39B7  03BB7  33c0           xor    ax, ax
@@ -7044,7 +7115,7 @@ show_scroll:
   ovl1:3AA7  03CA7  5f             pop    di
   ovl1:3AA8  03CA8  b86400         mov    ax, 0x64
   ovl1:3AAB  03CAB  50             push   ax
-  ovl1:3AAC  03CAC  e81405         call   ovl1_entry_3fc3
+  ovl1:3AAC  03CAC  e81405         call   save_or_reload
   ovl1:3AAF  03CAF  5f             pop    di
   ovl1:3AB0  03CB0  eb1c           jmp    0x3ace
   ovl1:3AB2  03CB2  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
@@ -7055,7 +7126,7 @@ show_scroll:
   ovl1:3AC1  03CC1  5f             pop    di
   ovl1:3AC2  03CC2  b86500         mov    ax, 0x65
   ovl1:3AC5  03CC5  50             push   ax
-  ovl1:3AC6  03CC6  e8fa04         call   ovl1_entry_3fc3
+  ovl1:3AC6  03CC6  e8fa04         call   save_or_reload
   ovl1:3AC9  03CC9  5f             pop    di
   ovl1:3ACA  03CCA  eb02           jmp    0x3ace
   ovl1:3ACC  03CCC  ebaa           jmp    0x3a78
@@ -7177,7 +7248,7 @@ show_scroll:
   ovl1:3C0A  03E0A  7508           jne    0x3c14
   ovl1:3C0C  03E0C  b86400         mov    ax, 0x64
   ovl1:3C0F  03E0F  50             push   ax
-  ovl1:3C10  03E10  e8b003         call   ovl1_entry_3fc3
+  ovl1:3C10  03E10  e8b003         call   save_or_reload
   ovl1:3C13  03E13  5f             pop    di
   ovl1:3C14  03E14  e9bf00         jmp    0x3cd6
   ovl1:3C17  03E17  813e92a60300   cmp    word ptr [0xa692], 3
@@ -7199,7 +7270,7 @@ show_scroll:
   ovl1:3C40  03E40  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
   ovl1:3C44  03E44  e89afc         call   ovl1_38e1
   ovl1:3C47  03E47  ebe9           jmp    0x3c32
-  ovl1:3C49  03E49  e8bd41         call   ovl1_7e09
+  ovl1:3C49  03E49  e8bd41         call   write_titles
   ovl1:3C4C  03E4C  09c0           or     ax, ax
   ovl1:3C4E  03E4E  7509           jne    0x3c59
   ovl1:3C50  03E50  b80e27         mov    ax, 0x270e
@@ -7444,7 +7515,7 @@ campaign_intro:
   ovl1:3E71  04071  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
   ovl1:3E75  04075  ebed           jmp    0x3e64
   ovl1:3E77  04077  ff3694a6       push   word ptr [0xa694]            ; [A694] current campaign number
-  ovl1:3E7B  0407B  e8f33b         call   ovl1_7a71
+  ovl1:3E7B  0407B  e8f33b         call   write_campaign_file
   ovl1:3E7E  0407E  5f             pop    di
   ovl1:3E7F  0407F  09c0           or     ax, ax
   ovl1:3E81  04081  7507           jne    0x3e8a
@@ -7597,9 +7668,9 @@ clear_all_text_rows:
   ovl1:3FC1  041C1  5d             pop    bp
   ovl1:3FC2  041C2  c3             ret
 
-; ---- ovl1_entry_3fc3   (called from 4 places)
-;      thunk 17
-ovl1_entry_3fc3:
+; ---- save_or_reload   (called from 4 places)
+;      thunk 17. Editors: 100 writes the T file (ovl1_7A71), 101 reads it again (forget the changes)
+save_or_reload:
   ovl1:3FC3  041C3  55             push   bp
   ovl1:3FC4  041C4  8bec           mov    bp, sp
   ovl1:3FC6  041C6  e818f9         call   ovl1_38e1
@@ -7611,7 +7682,7 @@ ovl1_entry_3fc3:
   ovl1:3FD9  041D9  817e046400     cmp    word ptr [bp + 4], 0x64
   ovl1:3FDE  041DE  750a           jne    0x3fea
   ovl1:3FE0  041E0  ff3694a6       push   word ptr [0xa694]            ; [A694] current campaign number
-  ovl1:3FE4  041E4  e88a3a         call   ovl1_7a71
+  ovl1:3FE4  041E4  e88a3a         call   write_campaign_file
   ovl1:3FE7  041E7  5f             pop    di
   ovl1:3FE8  041E8  eb0f           jmp    0x3ff9
   ovl1:3FEA  041EA  817e046500     cmp    word ptr [bp + 4], 0x65
@@ -7727,7 +7798,7 @@ select_campaign:
   ovl1:40FD  042FD  e85935         call   scroll_rollup
   ovl1:4100  04300  e87d2d         call   scroll_clear
   ovl1:4103  04303  ff0ecda8       dec    word ptr [0xa8cd]
-  ovl1:4107  04307  e8ff3c         call   ovl1_7e09
+  ovl1:4107  04307  e8ff3c         call   write_titles
   ovl1:410A  0430A  09c0           or     ax, ax
   ovl1:410C  0430C  7507           jne    0x4115
   ovl1:410E  0430E  b80e27         mov    ax, 0x270e
@@ -9048,7 +9119,7 @@ choose_opponent:
   ovl1:4CF8  04EF8  7508           jne    0x4d02
   ovl1:4CFA  04EFA  b86400         mov    ax, 0x64
   ovl1:4CFD  04EFD  50             push   ax
-  ovl1:4CFE  04EFE  e8c2f2         call   ovl1_entry_3fc3
+  ovl1:4CFE  04EFE  e8c2f2         call   save_or_reload
   ovl1:4D01  04F01  5f             pop    di
   ovl1:4D02  04F02  33c0           xor    ax, ax
   ovl1:4D04  04F04  8be5           mov    sp, bp
@@ -9096,8 +9167,9 @@ help_change_select:
   ovl1:4D50  04F50  5d             pop    bp
   ovl1:4D51  04F51  c3             ret
 
-; ---- ovl1_4d52   (called from 1 place)
-ovl1_4d52:
+; ---- story_step_words   (called from 1 place)
+;      "The fifth step is to write a story. Press any key."
+story_step_words:
   ovl1:4D52  04F52  55             push   bp
   ovl1:4D53  04F53  8bec           mov    bp, sp
   ovl1:4D55  04F55  b81700         mov    ax, 0x17
@@ -9123,7 +9195,7 @@ ovl1_4d52:
   ovl1:4D84  04F84  50             push   ax
   ovl1:4D85  04F85  e8ddd7         call   print_string
   ovl1:4D88  04F88  5f             pop    di
-  ovl1:4D89  04F89  e80e31         call   ovl1_7e9a
+  ovl1:4D89  04F89  e80e31         call   read_ascii_key
   ovl1:4D8C  04F8C  09c0           or     ax, ax
   ovl1:4D8E  04F8E  74f9           je     0x4d89
   ovl1:4D90  04F90  e816b8         call   beep_low
@@ -9134,8 +9206,9 @@ ovl1_4d52:
   ovl1:4D9C  04F9C  5d             pop    bp
   ovl1:4D9D  04F9D  c3             ret
 
-; ---- ovl1_4d9e   (called from 1 place)
-ovl1_4d9e:
+; ---- esc_when_done   (called from 1 place)
+;      "[Esc] when done." under the scroll editor
+esc_when_done:
   ovl1:4D9E  04F9E  55             push   bp
   ovl1:4D9F  04F9F  8bec           mov    bp, sp
   ovl1:4DA1  04FA1  b81800         mov    ax, 0x18
@@ -9166,8 +9239,9 @@ ovl1_4d9e:
   ovl1:4DD7  04FD7  5d             pop    bp
   ovl1:4DD8  04FD8  c3             ret
 
-; ---- ovl1_4dd9   (called from 1 place)
-ovl1_4dd9:
+; ---- title_step   (called from 1 place)
+;      A new title: the quill goes down past the titles; "The last step is to write a title."
+title_step:
   ovl1:4DD9  04FD9  55             push   bp
   ovl1:4DDA  04FDA  8bec           mov    bp, sp
   ovl1:4DDC  04FDC  83ec04         sub    sp, 4
@@ -9269,7 +9343,7 @@ data_disk:
   ovl1:4EB2  050B2  55             push   bp
   ovl1:4EB3  050B3  8bec           mov    bp, sp
   ovl1:4EB5  050B5  83ec02         sub    sp, 2
-  ovl1:4EB8  050B8  e83701         call   ovl1_4ff2
+  ovl1:4EB8  050B8  e83701         call   default_rules
   ovl1:4EBB  050BB  33c0           xor    ax, ax
   ovl1:4EBD  050BD  89067ca6       mov    word ptr [0xa67c], ax
   ovl1:4EC1  050C1  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
@@ -9335,8 +9409,9 @@ data_disk:
   ovl1:4F53  05153  5d             pop    bp
   ovl1:4F54  05154  c3             ret
 
-; ---- ovl1_4f55   (called from 1 place)
-ovl1_4f55:
+; ---- blank_armies   (called from 1 place)
+;      A new campaign: no squads (9999), march, friend, formation 1, no men, no flags
+blank_armies:
   ovl1:4F55  05155  55             push   bp
   ovl1:4F56  05156  8bec           mov    bp, sp
   ovl1:4F58  05158  83ec02         sub    sp, 2
@@ -9404,8 +9479,9 @@ ovl1_4f55:
   ovl1:4FF0  051F0  5d             pop    bp
   ovl1:4FF1  051F1  c3             ret
 
-; ---- ovl1_4ff2   (called from 1 place)
-ovl1_4ff2:
+; ---- default_rules   (called from 1 place)
+;      A new campaign's rules: 1, 0, 2, 60, 2, 80, 20, 8, 6
+default_rules:
   ovl1:4FF2  051F2  55             push   bp
   ovl1:4FF3  051F3  8bec           mov    bp, sp
   ovl1:4FF5  051F5  b80100         mov    ax, 1
@@ -12257,8 +12333,8 @@ scroll_editor:
   ovl1:6A83  06C83  8946fe         mov    word ptr [bp - 2], ax
   ovl1:6A86  06C86  813e92a60000   cmp    word ptr [0xa692], 0
   ovl1:6A8C  06C8C  7503           jne    0x6a91
-  ovl1:6A8E  06C8E  e8c1e2         call   ovl1_4d52
-  ovl1:6A91  06C91  e80ae3         call   ovl1_4d9e
+  ovl1:6A8E  06C8E  e8c1e2         call   story_step_words
+  ovl1:6A91  06C91  e80ae3         call   esc_when_done
   ovl1:6A94  06C94  b8680b         mov    ax, 0xb68
   ovl1:6A97  06C97  89066888       mov    word ptr [0x8868], ax        ; [8868] off-screen picture buffer pointer
   ovl1:6A9B  06C9B  33c0           xor    ax, ax
@@ -12272,10 +12348,10 @@ scroll_editor:
   ovl1:6AB8  06CB8  8906c1a8       mov    word ptr [0xa8c1], ax        ; [A8C1] trace half-speed toggle
   ovl1:6ABC  06CBC  b88297         mov    ax, 0x9782
   ovl1:6ABF  06CBF  89067aa6       mov    word ptr [0xa67a], ax
-  ovl1:6AC3  06CC3  e8d413         call   ovl1_7e9a
+  ovl1:6AC3  06CC3  e8d413         call   read_ascii_key
   ovl1:6AC6  06CC6  813e92a60300   cmp    word ptr [0xa692], 3
   ovl1:6ACC  06CCC  7503           jne    0x6ad1
-  ovl1:6ACE  06CCE  e808e3         call   ovl1_4dd9
+  ovl1:6ACE  06CCE  e808e3         call   title_step
   ovl1:6AD1  06CD1  b80100         mov    ax, 1
   ovl1:6AD4  06CD4  0bc0           or     ax, ax
   ovl1:6AD6  06CD6  7503           jne    0x6adb
@@ -12307,19 +12383,19 @@ scroll_editor:
   ovl1:6B19  06D19  50             push   ax
   ovl1:6B1A  06D1A  e81a15         call   and_pointer
   ovl1:6B1D  06D1D  83c406         add    sp, 6
-  ovl1:6B20  06D20  e87713         call   ovl1_7e9a
+  ovl1:6B20  06D20  e87713         call   read_ascii_key
   ovl1:6B23  06D23  8946fa         mov    word ptr [bp - 6], ax
   ovl1:6B26  06D26  09c0           or     ax, ax
   ovl1:6B28  06D28  74f6           je     0x6b20
   ovl1:6B2A  06D2A  ff76fa         push   word ptr [bp - 6]
-  ovl1:6B2D  06D2D  e8df08         call   ovl1_740f
+  ovl1:6B2D  06D2D  e8df08         call   scroll_key_ok
   ovl1:6B30  06D30  5f             pop    di
   ovl1:6B31  06D31  09c0           or     ax, ax
   ovl1:6B33  06D33  74eb           je     0x6b20
   ovl1:6B35  06D35  817efa1b00     cmp    word ptr [bp - 6], 0x1b
   ovl1:6B3A  06D3A  7403           je     0x6b3f
   ovl1:6B3C  06D3C  e99100         jmp    0x6bd0
-  ovl1:6B3F  06D3F  e85813         call   ovl1_7e9a
+  ovl1:6B3F  06D3F  e85813         call   read_ascii_key
   ovl1:6B42  06D42  8946fa         mov    word ptr [bp - 6], ax
   ovl1:6B45  06D45  813e92a60300   cmp    word ptr [0xa692], 3
   ovl1:6B4B  06D4B  753b           jne    0x6b88
@@ -12327,7 +12403,7 @@ scroll_editor:
   ovl1:6B52  06D52  750b           jne    0x6b5f
   ovl1:6B54  06D54  813ec3a80400   cmp    word ptr [0xa8c3], 4
   ovl1:6B5A  06D5A  7e03           jle    0x6b5f
-  ovl1:6B5C  06D5C  e8fa04         call   ovl1_7059
+  ovl1:6B5C  06D5C  e8fa04         call   scroll_back
   ovl1:6B5F  06D5F  817efa4d00     cmp    word ptr [bp - 6], 0x4d
   ovl1:6B64  06D64  751f           jne    0x6b85
   ovl1:6B66  06D66  813ec3a83a00   cmp    word ptr [0xa8c3], 0x3a
@@ -12351,7 +12427,7 @@ scroll_editor:
   ovl1:6B9E  06D9E  eb2d           jmp    0x6bcd
   ovl1:6BA0  06DA0  817efa4b00     cmp    word ptr [bp - 6], 0x4b
   ovl1:6BA5  06DA5  7505           jne    0x6bac
-  ovl1:6BA7  06DA7  e8af04         call   ovl1_7059
+  ovl1:6BA7  06DA7  e8af04         call   scroll_back
   ovl1:6BAA  06DAA  eb21           jmp    0x6bcd
   ovl1:6BAC  06DAC  817efa4d00     cmp    word ptr [bp - 6], 0x4d
   ovl1:6BB1  06DB1  7505           jne    0x6bb8
@@ -12398,7 +12474,7 @@ scroll_editor:
   ovl1:6C38  06E38  813ec3a80400   cmp    word ptr [0xa8c3], 4
   ovl1:6C3E  06E3E  7f03           jg     0x6c43
   ovl1:6C40  06E40  e98efe         jmp    0x6ad1
-  ovl1:6C43  06E43  e81304         call   ovl1_7059
+  ovl1:6C43  06E43  e81304         call   scroll_back
   ovl1:6C46  06E46  8b46fe         mov    ax, word ptr [bp - 2]
   ovl1:6C49  06E49  0bc0           or     ax, ax
   ovl1:6C4B  06E4B  740f           je     0x6c5c
@@ -12471,7 +12547,7 @@ scroll_editor:
   ovl1:6D0F  06F0F  50             push   ax
   ovl1:6D10  06F10  e8cbb1         call   clear_text_row
   ovl1:6D13  06F13  5f             pop    di
-  ovl1:6D14  06F14  e88311         call   ovl1_7e9a
+  ovl1:6D14  06F14  e88311         call   read_ascii_key
   ovl1:6D17  06F17  e809b6         call   rt_2323
   ovl1:6D1A  06F1A  33c0           xor    ax, ax
   ovl1:6D1C  06F1C  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
@@ -12539,7 +12615,7 @@ scroll_print:
   ovl1:6D9F  06F9F  8a04           mov    al, byte ptr [si]
   ovl1:6DA1  06FA1  98             cwde
   ovl1:6DA2  06FA2  50             push   ax
-  ovl1:6DA3  06FA3  e82b06         call   ovl1_73d1
+  ovl1:6DA3  06FA3  e82b06         call   is_capital
   ovl1:6DA6  06FA6  5f             pop    di
   ovl1:6DA7  06FA7  0bc0           or     ax, ax
   ovl1:6DA9  06FA9  7403           je     0x6dae
@@ -12817,8 +12893,9 @@ scroll_advance:
   ovl1:7057  07257  5d             pop    bp
   ovl1:7058  07258  c3             ret
 
-; ---- ovl1_7059   (called from 4 places)
-ovl1_7059:
+; ---- scroll_back   (called from 4 places)
+;      Scroll editor: back a cell (over the second cell of a capital)
+scroll_back:
   ovl1:7059  07259  55             push   bp
   ovl1:705A  0725A  8bec           mov    bp, sp
   ovl1:705C  0725C  ff0e7aa6       dec    word ptr [0xa67a]
@@ -12843,7 +12920,7 @@ ovl1_7059:
   ovl1:709E  0729E  98             cwde
   ovl1:709F  0729F  83f801         cmp    ax, 1
   ovl1:70A2  072A2  7503           jne    0x70a7
-  ovl1:70A4  072A4  e8b2ff         call   ovl1_7059
+  ovl1:70A4  072A4  e8b2ff         call   scroll_back
   ovl1:70A7  072A7  b88297         mov    ax, 0x9782
   ovl1:70AA  072AA  50             push   ax
   ovl1:70AB  072AB  bb2000         mov    bx, 0x20
@@ -12875,7 +12952,7 @@ scroll_char:
   ovl1:70DF  072DF  8a04           mov    al, byte ptr [si]
   ovl1:70E1  072E1  98             cwde
   ovl1:70E2  072E2  50             push   ax
-  ovl1:70E3  072E3  e8eb02         call   ovl1_73d1
+  ovl1:70E3  072E3  e8eb02         call   is_capital
   ovl1:70E6  072E6  5f             pop    di
   ovl1:70E7  072E7  0bc0           or     ax, ax
   ovl1:70E9  072E9  743a           je     0x7125
@@ -12901,7 +12978,7 @@ scroll_char:
   ovl1:7122  07322  46             inc    si
   ovl1:7123  07323  8804           mov    byte ptr [si], al
   ovl1:7125  07325  ff7604         push   word ptr [bp + 4]
-  ovl1:7128  07328  e8a602         call   ovl1_73d1
+  ovl1:7128  07328  e8a602         call   is_capital
   ovl1:712B  0732B  5f             pop    di
   ovl1:712C  0732C  0bc0           or     ax, ax
   ovl1:712E  0732E  7478           je     0x71a8
@@ -13157,8 +13234,9 @@ scroll_char:
   ovl1:73CF  075CF  5d             pop    bp
   ovl1:73D0  075D0  c3             ret
 
-; ---- ovl1_73d1   (called from 3 places)
-ovl1_73d1:
+; ---- is_capital   (called from 3 places)
+;      A to Z?
+is_capital:
   ovl1:73D1  075D1  55             push   bp
   ovl1:73D2  075D2  8bec           mov    bp, sp
   ovl1:73D4  075D4  8b4604         mov    ax, word ptr [bp + 4]
@@ -13188,8 +13266,9 @@ ovl1_73d1:
   ovl1:740D  0760D  5d             pop    bp
   ovl1:740E  0760E  c3             ret
 
-; ---- ovl1_740f   (called from 1 place)
-ovl1_740f:
+; ---- scroll_key_ok   (called from 1 place)
+;      Scroll editor: false for \ > < ~ @ # $ % ^ & * = + ` (no letter on the scroll)
+scroll_key_ok:
   ovl1:740F  0760F  55             push   bp
   ovl1:7410  07610  8bec           mov    bp, sp
   ovl1:7412  07612  817e045c00     cmp    word ptr [bp + 4], 0x5c
@@ -13906,8 +13985,9 @@ squad_addresses:
   ovl1:7A6F  07C6F  5d             pop    bp
   ovl1:7A70  07C70  c3             ret
 
-; ---- ovl1_7a71   (called from 2 places)
-ovl1_7a71:
+; ---- write_campaign_file   (called from 2 places)
+;      Write the T file of campaign [bp+4] (name from the table at DS:08C1): story, map, armies, opponent, rules
+write_campaign_file:
   ovl1:7A71  07C71  55             push   bp
   ovl1:7A72  07C72  8bec           mov    bp, sp
   ovl1:7A74  07C74  ff36f5a6       push   word ptr [0xa6f5]            ; [A6F5] data disk in drive B flag
@@ -14109,7 +14189,7 @@ campaign_source:
   ovl1:7C4E  07E4E  890694a6       mov    word ptr [0xa694], ax        ; [A694] current campaign number
   ovl1:7C52  07E52  813e92a60300   cmp    word ptr [0xa692], 3
   ovl1:7C58  07E58  7403           je     0x7c5d
-  ovl1:7C5A  07E5A  e8f8d2         call   ovl1_4f55
+  ovl1:7C5A  07E5A  e8f8d2         call   blank_armies
   ovl1:7C5D  07E5D  b84803         mov    ax, 0x348
   ovl1:7C60  07E60  50             push   ax
   ovl1:7C61  07E61  b88297         mov    ax, 0x9782
@@ -14289,8 +14369,9 @@ campaign_source:
   ovl1:7E07  08007  5d             pop    bp
   ovl1:7E08  08008  c3             ret
 
-; ---- ovl1_7e09   (called from 2 places)
-ovl1_7e09:
+; ---- write_titles   (called from 2 places)
+;      Write TITLES to the data disk: the 12 file names (DS:08C1) and the 26 x 32 text
+write_titles:
   ovl1:7E09  08009  55             push   bp
   ovl1:7E0A  0800A  8bec           mov    bp, sp
   ovl1:7E0C  0800C  ff36f5a6       push   word ptr [0xa6f5]            ; [A6F5] data disk in drive B flag
@@ -14357,8 +14438,9 @@ ovl1_7e09:
   ovl1:7E98  08098  5d             pop    bp
   ovl1:7E99  08099  c3             ret
 
-; ---- ovl1_7e9a   (called from 9 places)
-ovl1_7e9a:
+; ---- read_ascii_key   (called from 9 places)
+;      BIOS key read: the ASCII code, or 1Bh then the scan code of an extended key
+read_ascii_key:
   ovl1:7E9A  0809A  06             push   es
   ovl1:7E9B  0809B  b84000         mov    ax, 0x40
   ovl1:7E9E  0809E  8ec0           mov    es, ax
@@ -15442,8 +15524,8 @@ ovl2_874e:
   ovl2:8774  08974  e8e598         call   goto_xy
   ovl2:8777  08977  5f             pop    di
   ovl2:8778  08978  5f             pop    di
-  ovl2:8779  08979  e81ef7         call   ovl1_7e9a
-  ovl2:877C  0897C  e81bf7         call   ovl1_7e9a
+  ovl2:8779  08979  e81ef7         call   read_ascii_key
+  ovl2:877C  0897C  e81bf7         call   read_ascii_key
   ovl2:877F  0897F  33c0           xor    ax, ax
   ovl2:8781  08981  8946fd         mov    word ptr [bp - 3], ax
   ovl2:8784  08984  8946fb         mov    word ptr [bp - 5], ax
@@ -15452,7 +15534,7 @@ ovl2_874e:
   ovl2:878D  0898D  0bc0           or     ax, ax
   ovl2:878F  0898F  7503           jne    0x8794
   ovl2:8791  08991  e91b01         jmp    0x88af
-  ovl2:8794  08994  e803f7         call   ovl1_7e9a
+  ovl2:8794  08994  e803f7         call   read_ascii_key
   ovl2:8797  08997  8846f6         mov    byte ptr [bp - 0xa], al
   ovl2:879A  0899A  98             cwde
   ovl2:879B  0899B  0bc0           or     ax, ax
@@ -15922,7 +16004,7 @@ squads_editor:
   ovl3:316F  08D7F  50             push   ax
   ovl3:3170  08D80  e8a2ed         call   memset
   ovl3:3173  08D83  83c406         add    sp, 6
-  ovl3:3176  08D86  e83002         call   ovl3_33a9
+  ovl3:3176  08D86  e83002         call   sqed_flag_addrs
   ovl3:3179  08D89  e8abd9         call   update_squads
   ovl3:317C  08D8C  e8e9d2         call   open_m_file
   ovl3:317F  08D8F  0bc0           or     ax, ax
@@ -15992,7 +16074,7 @@ squads_editor:
   ovl3:320E  08E1E  50             push   ax
   ovl3:320F  08E1F  e876ef         call   delay
   ovl3:3212  08E22  5f             pop    di
-  ovl3:3213  08E23  e8f801         call   ovl3_340e
+  ovl3:3213  08E23  e8f801         call   sqed_main_line
   ovl3:3216  08E26  33c0           xor    ax, ax
   ovl3:3218  08E28  8946fd         mov    word ptr [bp - 3], ax
   ovl3:321B  08E2B  8946fb         mov    word ptr [bp - 5], ax
@@ -16007,7 +16089,7 @@ squads_editor:
   ovl3:3233  08E43  ff36d0a5       push   word ptr [0xa5d0]
   ovl3:3237  08E47  e84eef         call   delay
   ovl3:323A  08E4A  5f             pop    di
-  ovl3:323B  08E4B  e81907         call   ovl3_3957
+  ovl3:323B  08E4B  e81907         call   sqed_key
   ovl3:323E  08E4E  0bc0           or     ax, ax
   ovl3:3240  08E50  7503           jne    0x3245
   ovl3:3242  08E52  e9ca00         jmp    0x330f
@@ -16073,7 +16155,7 @@ squads_editor:
   ovl3:32E0  08EF0  750c           jne    0x32ee
   ovl3:32E2  08EF2  33c0           xor    ax, ax
   ovl3:32E4  08EF4  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
-  ovl3:32E8  08EF8  e82301         call   ovl3_340e
+  ovl3:32E8  08EF8  e82301         call   sqed_main_line
   ovl3:32EB  08EFB  e933ff         jmp    0x3221
   ovl3:32EE  08EFE  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl3:32F4  08F04  75c0           jne    0x32b6
@@ -16151,8 +16233,9 @@ squads_editor:
   ovl3:33A7  08FB7  5d             pop    bp
   ovl3:33A8  08FB8  c3             ret
 
-; ---- ovl3_33a9   (called from 3 places)
-ovl3_33a9:
+; ---- sqed_flag_addrs   (called from 3 places)
+;      Squads editor: the screen address of each flag (A054), count the flags ([A8C1])
+sqed_flag_addrs:
   ovl3:33A9  08FB9  55             push   bp
   ovl3:33AA  08FBA  8bec           mov    bp, sp
   ovl3:33AC  08FBC  83ec04         sub    sp, 4
@@ -16195,11 +16278,12 @@ ovl3_33a9:
   ovl3:340C  0901C  5d             pop    bp
   ovl3:340D  0901D  c3             ret
 
-; ---- ovl3_340e   (called from 7 places)
-ovl3_340e:
+; ---- sqed_main_line   (called from 7 places)
+;      Squads editor: "Squad Flag Total  [Enter] when done" (mode 0)
+sqed_main_line:
   ovl3:340E  0901E  55             push   bp
   ovl3:340F  0901F  8bec           mov    bp, sp
-  ovl3:3411  09021  e82b0d         call   ovl3_413f
+  ovl3:3411  09021  e82b0d         call   sqed_count
   ovl3:3414  09024  b81800         mov    ax, 0x18
   ovl3:3417  09027  50             push   ax
   ovl3:3418  09028  e8c3ea         call   clear_text_row
@@ -16250,8 +16334,9 @@ ovl3_340e:
   ovl3:3484  09094  5d             pop    bp
   ovl3:3485  09095  c3             ret
 
-; ---- ovl3_3486   (called from 1 place)
-ovl3_3486:
+; ---- sqed_total   (called from 1 place)
+;      Squads editor: "Total men .... N friend, N foe." (T)
+sqed_total:
   ovl3:3486  09096  55             push   bp
   ovl3:3487  09097  8bec           mov    bp, sp
   ovl3:3489  09099  83ec06         sub    sp, 6
@@ -16332,8 +16417,9 @@ ovl3_3486:
   ovl3:353F  0914F  5d             pop    bp
   ovl3:3540  09150  c3             ret
 
-; ---- ovl3_3541   (called from 5 places)
-ovl3_3541:
+; ---- sqed_squad_line   (called from 5 places)
+;      Squads editor: over a squad, "Info Size [Formation] Get Remove" (mode 1)
+sqed_squad_line:
   ovl3:3541  09151  55             push   bp
   ovl3:3542  09152  8bec           mov    bp, sp
   ovl3:3544  09154  e8e0d5         call   update_squads
@@ -16381,8 +16467,9 @@ ovl3_3541:
   ovl3:35AD  091BD  5d             pop    bp
   ovl3:35AE  091BE  c3             ret
 
-; ---- ovl3_35af   (called from 1 place)
-ovl3_35af:
+; ---- sqed_get   (called from 1 place)
+;      Squads editor: Get, "Move to the new location" / "Put" (mode 20)
+sqed_get:
   ovl3:35AF  091BF  55             push   bp
   ovl3:35B0  091C0  8bec           mov    bp, sp
   ovl3:35B2  091C2  b81700         mov    ax, 0x17
@@ -16410,8 +16497,9 @@ ovl3_35af:
   ovl3:35E6  091F6  5d             pop    bp
   ovl3:35E7  091F7  c3             ret
 
-; ---- ovl3_35e8   (called from 3 places)
-ovl3_35e8:
+; ---- sqed_flag_line   (called from 3 places)
+;      Squads editor: over a flag, "Foe/Friend Remove" (mode 10)
+sqed_flag_line:
   ovl3:35E8  091F8  55             push   bp
   ovl3:35E9  091F9  8bec           mov    bp, sp
   ovl3:35EB  091FB  e892d9         call   text_area_reset
@@ -16453,8 +16541,9 @@ ovl3_35e8:
   ovl3:3642  09252  5d             pop    bp
   ovl3:3643  09253  c3             ret
 
-; ---- ovl3_3644   (called from 3 places)
-ovl3_3644:
+; ---- sqed_info_show   (called from 3 places)
+;      Squads editor: the Info rows (speed, type, condition and food bars), Increase/Decrease, End
+sqed_info_show:
   ovl3:3644  09254  55             push   bp
   ovl3:3645  09255  8bec           mov    bp, sp
   ovl3:3647  09257  83ec08         sub    sp, 8
@@ -16466,10 +16555,10 @@ ovl3_3644:
   ovl3:365B  0926B  50             push   ax
   ovl3:365C  0926C  e8fcce         call   text_rows_add
   ovl3:365F  0926F  5f             pop    di
-  ovl3:3660  09270  e8a001         call   ovl3_3803
-  ovl3:3663  09273  e82a02         call   ovl3_3890
-  ovl3:3666  09276  e88602         call   ovl3_38ef
-  ovl3:3669  09279  e8b702         call   ovl3_3923
+  ovl3:3660  09270  e8a001         call   sqed_info_speed
+  ovl3:3663  09273  e82a02         call   sqed_info_type
+  ovl3:3666  09276  e88602         call   sqed_info_condition
+  ovl3:3669  09279  e8b702         call   sqed_info_food
   ovl3:366C  0927C  b80400         mov    ax, 4
   ovl3:366F  0927F  89062fa9       mov    word ptr [0xa92f], ax        ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl3:3673  09283  b017           mov    al, 0x17
@@ -16664,8 +16753,9 @@ ovl3_3644:
   ovl3:3801  09411  5d             pop    bp
   ovl3:3802  09412  c3             ret
 
-; ---- ovl3_3803   (called from 2 places)
-ovl3_3803:
+; ---- sqed_info_speed   (called from 2 places)
+;      Squads editor Info: "Speed - when moving: MARCH ..."
+sqed_info_speed:
   ovl3:3803  09413  55             push   bp
   ovl3:3804  09414  8bec           mov    bp, sp
   ovl3:3806  09416  b81100         mov    ax, 0x11
@@ -16731,8 +16821,9 @@ ovl3_3803:
   ovl3:388E  0949E  5d             pop    bp
   ovl3:388F  0949F  c3             ret
 
-; ---- ovl3_3890   (called from 2 places)
-ovl3_3890:
+; ---- sqed_info_type   (called from 2 places)
+;      Squads editor Info: "Type: FRIEND/FOE"
+sqed_info_type:
   ovl3:3890  094A0  55             push   bp
   ovl3:3891  094A1  8bec           mov    bp, sp
   ovl3:3893  094A3  b81200         mov    ax, 0x12
@@ -16780,8 +16871,9 @@ ovl3_3890:
   ovl3:38ED  094FD  5d             pop    bp
   ovl3:38EE  094FE  c3             ret
 
-; ---- ovl3_38ef   (called from 2 places)
-ovl3_38ef:
+; ---- sqed_info_condition   (called from 2 places)
+;      Squads editor Info: condition bar
+sqed_info_condition:
   ovl3:38EF  094FF  55             push   bp
   ovl3:38F0  09500  8bec           mov    bp, sp
   ovl3:38F2  09502  b81400         mov    ax, 0x14
@@ -16810,8 +16902,9 @@ ovl3_38ef:
   ovl3:3921  09531  5d             pop    bp
   ovl3:3922  09532  c3             ret
 
-; ---- ovl3_3923   (called from 2 places)
-ovl3_3923:
+; ---- sqed_info_food   (called from 2 places)
+;      Squads editor Info: food bar
+sqed_info_food:
   ovl3:3923  09533  55             push   bp
   ovl3:3924  09534  8bec           mov    bp, sp
   ovl3:3926  09536  b81500         mov    ax, 0x15
@@ -16840,12 +16933,13 @@ ovl3_3923:
   ovl3:3955  09565  5d             pop    bp
   ovl3:3956  09566  c3             ret
 
-; ---- ovl3_3957   (called from 1 place)
-ovl3_3957:
+; ---- sqed_key   (called from 1 place)
+;      Squads editor: one key: the mode commands, then the cursor (bounds 3-4Ch, 4-C2h) and -/+
+sqed_key:
   ovl3:3957  09567  55             push   bp
   ovl3:3958  09568  8bec           mov    bp, sp
   ovl3:395A  0956A  83ec06         sub    sp, 6
-  ovl3:395D  0956D  e80905         call   ovl3_3e69
+  ovl3:395D  0956D  e80905         call   sqed_read_key
   ovl3:3960  09570  8946fe         mov    word ptr [bp - 2], ax
   ovl3:3963  09573  813e2fa90000   cmp    word ptr [0xa92f], 0         ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl3:3969  09579  7403           je     0x396e
@@ -16853,12 +16947,12 @@ ovl3_3957:
   ovl3:396E  0957E  817efe1400     cmp    word ptr [bp - 2], 0x14
   ovl3:3973  09583  7523           jne    0x3998
   ovl3:3975  09585  e831cc         call   beep_low
-  ovl3:3978  09588  e80bfb         call   ovl3_3486
+  ovl3:3978  09588  e80bfb         call   sqed_total
   ovl3:397B  0958B  b8581b         mov    ax, 0x1b58
   ovl3:397E  0958E  50             push   ax
   ovl3:397F  0958F  e806e8         call   delay
   ovl3:3982  09592  5f             pop    di
-  ovl3:3983  09593  e8e304         call   ovl3_3e69
+  ovl3:3983  09593  e8e304         call   sqed_read_key
   ovl3:3986  09596  09c0           or     ax, ax
   ovl3:3988  09598  74f9           je     0x3983
   ovl3:398A  0959A  e81ccc         call   beep_low
@@ -16866,7 +16960,7 @@ ovl3_3957:
   ovl3:3990  095A0  50             push   ax
   ovl3:3991  095A1  e84ae5         call   clear_text_row
   ovl3:3994  095A4  5f             pop    di
-  ovl3:3995  095A5  e876fa         call   ovl3_340e
+  ovl3:3995  095A5  e876fa         call   sqed_main_line
   ovl3:3998  095A8  817efe1c00     cmp    word ptr [bp - 2], 0x1c
   ovl3:399D  095AD  7507           jne    0x39a6
   ovl3:399F  095AF  b80100         mov    ax, 1
@@ -16891,7 +16985,7 @@ ovl3_3957:
   ovl3:39D4  095E4  813e06a5ffff   cmp    word ptr [0xa506], 0xffff    ; [A506] selected squad
   ovl3:39DA  095EA  7406           je     0x39e2
   ovl3:39DC  095EC  e8cacb         call   beep_low
-  ovl3:39DF  095EF  e8700b         call   ovl3_4552
+  ovl3:39DF  095EF  e8700b         call   sqed_new_squad
   ovl3:39E2  095F2  817efe2100     cmp    word ptr [bp - 2], 0x21
   ovl3:39E7  095F7  757b           jne    0x3a64
   ovl3:39E9  095F9  b80900         mov    ax, 9
@@ -16933,26 +17027,26 @@ ovl3_3957:
   ovl3:3A52  09662  8904           mov    word ptr [si], ax
   ovl3:3A54  09664  b80100         mov    ax, 1
   ovl3:3A57  09667  8906c9a8       mov    word ptr [0xa8c9], ax
-  ovl3:3A5B  0966B  e84bf9         call   ovl3_33a9
+  ovl3:3A5B  0966B  e84bf9         call   sqed_flag_addrs
   ovl3:3A5E  0966E  e8cbd4         call   draw_map_sprites
-  ovl3:3A61  09671  e884fb         call   ovl3_35e8
+  ovl3:3A61  09671  e884fb         call   sqed_flag_line
   ovl3:3A64  09674  e98c01         jmp    0x3bf3
   ovl3:3A67  09677  813e2fa90100   cmp    word ptr [0xa92f], 1         ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl3:3A6D  0967D  7403           je     0x3a72
   ovl3:3A6F  0967F  e98600         jmp    0x3af8
   ovl3:3A72  09682  817efe1300     cmp    word ptr [bp - 2], 0x13
   ovl3:3A77  09687  7506           jne    0x3a7f
-  ovl3:3A79  09689  e89a0a         call   ovl3_4516
-  ovl3:3A7C  0968C  e88ff9         call   ovl3_340e
+  ovl3:3A79  09689  e89a0a         call   sqed_remove
+  ovl3:3A7C  0968C  e88ff9         call   sqed_main_line
   ovl3:3A7F  0968F  817efe1700     cmp    word ptr [bp - 2], 0x17
   ovl3:3A84  09694  7506           jne    0x3a8c
   ovl3:3A86  09696  e820cb         call   beep_low
-  ovl3:3A89  09699  e88308         call   ovl3_430f
+  ovl3:3A89  09699  e88308         call   sqed_info
   ovl3:3A8C  0969C  817efe1f00     cmp    word ptr [bp - 2], 0x1f
   ovl3:3A91  096A1  7514           jne    0x3aa7
   ovl3:3A93  096A3  e859d4         call   erase_map_sprites
   ovl3:3A96  096A6  e810cb         call   beep_low
-  ovl3:3A99  096A9  e89e0b         call   ovl3_463a
+  ovl3:3A99  096A9  e89e0b         call   sqed_size
   ovl3:3A9C  096AC  e88dd4         call   draw_map_sprites
   ovl3:3A9F  096AF  ff36bea5       push   word ptr [0xa5be]
   ovl3:3AA3  096B3  e803dd         call   blit_buffer_to_cga
@@ -16976,11 +17070,11 @@ ovl3_3957:
   ovl3:3AD2  096E2  e8d4ca         call   beep_low
   ovl3:3AD5  096E5  b83200         mov    ax, 0x32
   ovl3:3AD8  096E8  89062fa9       mov    word ptr [0xa92f], ax        ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
-  ovl3:3ADC  096EC  e8b60f         call   ovl3_4a95
-  ovl3:3ADF  096EF  e85ffa         call   ovl3_3541
+  ovl3:3ADC  096EC  e8b60f         call   sqed_formation
+  ovl3:3ADF  096EF  e85ffa         call   sqed_squad_line
   ovl3:3AE2  096F2  817efe2200     cmp    word ptr [bp - 2], 0x22
   ovl3:3AE7  096F7  750c           jne    0x3af5
-  ovl3:3AE9  096F9  e8c3fa         call   ovl3_35af
+  ovl3:3AE9  096F9  e8c3fa         call   sqed_get
   ovl3:3AEC  096FC  33c0           xor    ax, ax
   ovl3:3AEE  096FE  8906d2a6       mov    word ptr [0xa6d2], ax
   ovl3:3AF2  09702  e8b4ca         call   beep_low
@@ -17026,7 +17120,7 @@ ovl3_3957:
   ovl3:3B64  09774  03f2           add    si, dx
   ovl3:3B66  09776  8904           mov    word ptr [si], ax
   ovl3:3B68  09778  e8c1d3         call   draw_map_sprites
-  ovl3:3B6B  0977B  e8d3f9         call   ovl3_3541
+  ovl3:3B6B  0977B  e8d3f9         call   sqed_squad_line
   ovl3:3B6E  0977E  e98200         jmp    0x3bf3
   ovl3:3B71  09781  813e2fa90a00   cmp    word ptr [0xa92f], 0xa       ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl3:3B77  09787  757a           jne    0x3bf3
@@ -17042,9 +17136,9 @@ ovl3_3957:
   ovl3:3B94  097A4  8904           mov    word ptr [si], ax
   ovl3:3B96  097A6  b8ffff         mov    ax, 0xffff
   ovl3:3B99  097A9  890604a5       mov    word ptr [0xa504], ax
-  ovl3:3B9D  097AD  e809f8         call   ovl3_33a9
+  ovl3:3B9D  097AD  e809f8         call   sqed_flag_addrs
   ovl3:3BA0  097B0  e889d3         call   draw_map_sprites
-  ovl3:3BA3  097B3  e868f8         call   ovl3_340e
+  ovl3:3BA3  097B3  e868f8         call   sqed_main_line
   ovl3:3BA6  097B6  b81027         mov    ax, 0x2710
   ovl3:3BA9  097B9  50             push   ax
   ovl3:3BAA  097BA  e8dbe5         call   delay
@@ -17074,7 +17168,7 @@ ovl3_3957:
   ovl3:3BE9  097F9  03f2           add    si, dx
   ovl3:3BEB  097FB  8904           mov    word ptr [si], ax
   ovl3:3BED  097FD  e83cd3         call   draw_map_sprites
-  ovl3:3BF0  09800  e8f5f9         call   ovl3_35e8
+  ovl3:3BF0  09800  e8f5f9         call   sqed_flag_line
   ovl3:3BF3  09803  e816dd         call   restore_cursor_background
   ovl3:3BF6  09806  33c0           xor    ax, ax
   ovl3:3BF8  09808  8946fa         mov    word ptr [bp - 6], ax
@@ -17250,15 +17344,16 @@ ovl3_3957:
   ovl3:3E53  09A63  740e           je     0x3e63
   ovl3:3E55  09A65  813e2fa91400   cmp    word ptr [0xa92f], 0x14      ; [A92F] play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
   ovl3:3E5B  09A6B  7406           je     0x3e63
-  ovl3:3E5D  09A6D  e83d03         call   ovl3_419d
-  ovl3:3E60  09A70  e8f303         call   ovl3_4256
+  ovl3:3E5D  09A6D  e83d03         call   sqed_over_squad
+  ovl3:3E60  09A70  e8f303         call   sqed_over_flag
   ovl3:3E63  09A73  33c0           xor    ax, ax
   ovl3:3E65  09A75  8be5           mov    sp, bp
   ovl3:3E67  09A77  5d             pop    bp
   ovl3:3E68  09A78  c3             ret
 
-; ---- ovl3_3e69   (called from 5 places)
-ovl3_3e69:
+; ---- sqed_read_key   (called from 5 places)
+;      Squads editor: the key pressed or held (joystick via sqed_joystick)
+sqed_read_key:
   ovl3:3E69  09A79  55             push   bp
   ovl3:3E6A  09A7A  8bec           mov    bp, sp
   ovl3:3E6C  09A7C  83ec02         sub    sp, 2
@@ -17275,7 +17370,7 @@ ovl3_3e69:
   ovl3:3E94  09AA4  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl3:3E98  09AA8  817efe0000     cmp    word ptr [bp - 2], 0
   ovl3:3E9D  09AAD  7546           jne    0x3ee5
-  ovl3:3E9F  09AAF  e84a00         call   ovl3_3eec
+  ovl3:3E9F  09AAF  e84a00         call   sqed_joystick
   ovl3:3EA2  09AB2  8946fe         mov    word ptr [bp - 2], ax
   ovl3:3EA5  09AB5  0bc0           or     ax, ax
   ovl3:3EA7  09AB7  743c           je     0x3ee5
@@ -17303,8 +17398,9 @@ ovl3_3e69:
   ovl3:3EEA  09AFA  5d             pop    bp
   ovl3:3EEB  09AFB  c3             ret
 
-; ---- ovl3_3eec   (called from 1 place)
-ovl3_3eec:
+; ---- sqed_joystick   (called from 1 place)
+;      Squads editor: the joystick as keys
+sqed_joystick:
   ovl3:3EEC  09AFC  55             push   bp
   ovl3:3EED  09AFD  8bec           mov    bp, sp
   ovl3:3EEF  09AFF  83ec02         sub    sp, 2
@@ -17535,8 +17631,9 @@ ovl3_3eec:
   ovl3:413D  09D4D  5d             pop    bp
   ovl3:413E  09D4E  c3             ret
 
-; ---- ovl3_413f   (called from 1 place)
-ovl3_413f:
+; ---- sqed_count   (called from 1 place)
+;      Squads editor: count squads ([A8C3]) and flags ([A8C1])
+sqed_count:
   ovl3:413F  09D4F  55             push   bp
   ovl3:4140  09D50  8bec           mov    bp, sp
   ovl3:4142  09D52  83ec02         sub    sp, 2
@@ -17574,8 +17671,9 @@ ovl3_413f:
   ovl3:419B  09DAB  5d             pop    bp
   ovl3:419C  09DAC  c3             ret
 
-; ---- ovl3_419d   (called from 1 place)
-ovl3_419d:
+; ---- sqed_over_squad   (called from 1 place)
+;      Squads editor: is the cursor on a squad (column x+1, line pairs y-1..y+3)? buzz and squad line
+sqed_over_squad:
   ovl3:419D  09DAD  55             push   bp
   ovl3:419E  09DAE  8bec           mov    bp, sp
   ovl3:41A0  09DB0  83ec06         sub    sp, 6
@@ -17629,7 +17727,7 @@ ovl3_419d:
   ovl3:4225  09E35  813ecba80000   cmp    word ptr [0xa8cb], 0
   ovl3:422B  09E3B  7506           jne    0x4233
   ovl3:422D  09E3D  e8b9c3         call   beep_buzz
-  ovl3:4230  09E40  e80ef3         call   ovl3_3541
+  ovl3:4230  09E40  e80ef3         call   sqed_squad_line
   ovl3:4233  09E43  ff46fa         inc    word ptr [bp - 6]
   ovl3:4236  09E46  e97bff         jmp    0x41b4
   ovl3:4239  09E49  817efc0000     cmp    word ptr [bp - 4], 0
@@ -17637,15 +17735,16 @@ ovl3_419d:
   ovl3:4240  09E50  8b06cba8       mov    ax, word ptr [0xa8cb]
   ovl3:4244  09E54  0bc0           or     ax, ax
   ovl3:4246  09E56  7403           je     0x424b
-  ovl3:4248  09E58  e8c3f1         call   ovl3_340e
+  ovl3:4248  09E58  e8c3f1         call   sqed_main_line
   ovl3:424B  09E5B  8b46fc         mov    ax, word ptr [bp - 4]
   ovl3:424E  09E5E  8906cba8       mov    word ptr [0xa8cb], ax
   ovl3:4252  09E62  8be5           mov    sp, bp
   ovl3:4254  09E64  5d             pop    bp
   ovl3:4255  09E65  c3             ret
 
-; ---- ovl3_4256   (called from 1 place)
-ovl3_4256:
+; ---- sqed_over_flag   (called from 1 place)
+;      Squads editor: is the cursor on a flag? buzz and flag line
+sqed_over_flag:
   ovl3:4256  09E66  55             push   bp
   ovl3:4257  09E67  8bec           mov    bp, sp
   ovl3:4259  09E69  83ec06         sub    sp, 6
@@ -17699,7 +17798,7 @@ ovl3_4256:
   ovl3:42DE  09EEE  813ec9a80000   cmp    word ptr [0xa8c9], 0
   ovl3:42E4  09EF4  7506           jne    0x42ec
   ovl3:42E6  09EF6  e800c3         call   beep_buzz
-  ovl3:42E9  09EF9  e8fcf2         call   ovl3_35e8
+  ovl3:42E9  09EF9  e8fcf2         call   sqed_flag_line
   ovl3:42EC  09EFC  ff46fa         inc    word ptr [bp - 6]
   ovl3:42EF  09EFF  e97bff         jmp    0x426d
   ovl3:42F2  09F02  817efc0000     cmp    word ptr [bp - 4], 0
@@ -17707,15 +17806,16 @@ ovl3_4256:
   ovl3:42F9  09F09  8b06c9a8       mov    ax, word ptr [0xa8c9]
   ovl3:42FD  09F0D  0bc0           or     ax, ax
   ovl3:42FF  09F0F  7403           je     0x4304
-  ovl3:4301  09F11  e80af1         call   ovl3_340e
+  ovl3:4301  09F11  e80af1         call   sqed_main_line
   ovl3:4304  09F14  8b46fc         mov    ax, word ptr [bp - 4]
   ovl3:4307  09F17  8906c9a8       mov    word ptr [0xa8c9], ax
   ovl3:430B  09F1B  8be5           mov    sp, bp
   ovl3:430D  09F1D  5d             pop    bp
   ovl3:430E  09F1E  c3             ret
 
-; ---- ovl3_430f   (called from 1 place)
-ovl3_430f:
+; ---- sqed_info   (called from 1 place)
+;      Squads editor Info: C condition, F food (1-49), S speed, T type, I/D increase/decrease, E end
+sqed_info:
   ovl3:430F  09F1F  55             push   bp
   ovl3:4310  09F20  8bec           mov    bp, sp
   ovl3:4312  09F22  83ec04         sub    sp, 4
@@ -17723,7 +17823,7 @@ ovl3_430f:
   ovl3:4318  09F28  8946fd         mov    word ptr [bp - 3], ax
   ovl3:431B  09F2B  33c0           xor    ax, ax
   ovl3:431D  09F2D  8906c7a8       mov    word ptr [0xa8c7], ax
-  ovl3:4321  09F31  e820f3         call   ovl3_3644
+  ovl3:4321  09F31  e820f3         call   sqed_info_show
   ovl3:4324  09F34  b88813         mov    ax, 0x1388
   ovl3:4327  09F37  50             push   ax
   ovl3:4328  09F38  e85dde         call   delay
@@ -17732,7 +17832,7 @@ ovl3_430f:
   ovl3:432F  09F3F  0bc0           or     ax, ax
   ovl3:4331  09F41  7503           jne    0x4336
   ovl3:4333  09F43  e9dc01         jmp    0x4512
-  ovl3:4336  09F46  e830fb         call   ovl3_3e69
+  ovl3:4336  09F46  e830fb         call   sqed_read_key
   ovl3:4339  09F49  8846fc         mov    byte ptr [bp - 4], al
   ovl3:433C  09F4C  98             cwde
   ovl3:433D  09F4D  09c0           or     ax, ax
@@ -17771,7 +17871,7 @@ ovl3_430f:
   ovl3:4391  09FA1  8804           mov    byte ptr [si], al
   ovl3:4393  09FA3  eb03           jmp    0x4398
   ovl3:4395  09FA5  e811c2         call   beep_low
-  ovl3:4398  09FA8  e854f5         call   ovl3_38ef
+  ovl3:4398  09FA8  e854f5         call   sqed_info_condition
   ovl3:439B  09FAB  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl3:439F  09FAF  0bc0           or     ax, ax
   ovl3:43A1  09FB1  7408           je     0x43ab
@@ -17789,7 +17889,7 @@ ovl3_430f:
   ovl3:43BC  09FCC  e8eac1         call   beep_low
   ovl3:43BF  09FCF  33c0           xor    ax, ax
   ovl3:43C1  09FD1  8906c7a8       mov    word ptr [0xa8c7], ax
-  ovl3:43C5  09FD5  e87cf2         call   ovl3_3644
+  ovl3:43C5  09FD5  e87cf2         call   sqed_info_show
   ovl3:43C8  09FD8  b88813         mov    ax, 0x1388
   ovl3:43CB  09FDB  50             push   ax
   ovl3:43CC  09FDC  e8b9dd         call   delay
@@ -17801,7 +17901,7 @@ ovl3_430f:
   ovl3:43D9  09FE9  e8cdc1         call   beep_low
   ovl3:43DC  09FEC  33c0           xor    ax, ax
   ovl3:43DE  09FEE  8946fd         mov    word ptr [bp - 3], ax
-  ovl3:43E1  09FF1  e85df1         call   ovl3_3541
+  ovl3:43E1  09FF1  e85df1         call   sqed_squad_line
   ovl3:43E4  09FF4  8a46fc         mov    al, byte ptr [bp - 4]
   ovl3:43E7  09FF7  98             cwde
   ovl3:43E8  09FF8  83f821         cmp    ax, 0x21
@@ -17836,7 +17936,7 @@ ovl3_430f:
   ovl3:4434  0A044  8804           mov    byte ptr [si], al
   ovl3:4436  0A046  eb03           jmp    0x443b
   ovl3:4438  0A048  e86ec1         call   beep_low
-  ovl3:443B  0A04B  e8e5f4         call   ovl3_3923
+  ovl3:443B  0A04B  e8e5f4         call   sqed_info_food
   ovl3:443E  0A04E  8b062f05       mov    ax, word ptr [0x52f]         ; [052F] key held (scan code, 0 none)
   ovl3:4442  0A052  0bc0           or     ax, ax
   ovl3:4444  0A054  7408           je     0x444e
@@ -17853,7 +17953,7 @@ ovl3_430f:
   ovl3:445F  0A06F  e847c1         call   beep_low
   ovl3:4462  0A072  b80100         mov    ax, 1
   ovl3:4465  0A075  8906c7a8       mov    word ptr [0xa8c7], ax
-  ovl3:4469  0A079  e8d8f1         call   ovl3_3644
+  ovl3:4469  0A079  e8d8f1         call   sqed_info_show
   ovl3:446C  0A07C  b88813         mov    ax, 0x1388
   ovl3:446F  0A07F  50             push   ax
   ovl3:4470  0A080  e815dd         call   delay
@@ -17877,7 +17977,7 @@ ovl3_430f:
   ovl3:449E  0A0AE  d1e2           shl    dx, 1
   ovl3:44A0  0A0B0  03f2           add    si, dx
   ovl3:44A2  0A0B2  8904           mov    word ptr [si], ax
-  ovl3:44A4  0A0B4  e85cf3         call   ovl3_3803
+  ovl3:44A4  0A0B4  e85cf3         call   sqed_info_speed
   ovl3:44A7  0A0B7  b88813         mov    ax, 0x1388
   ovl3:44AA  0A0BA  50             push   ax
   ovl3:44AB  0A0BB  e8dadc         call   delay
@@ -17912,7 +18012,7 @@ ovl3_430f:
   ovl3:44F4  0A104  ff36bea5       push   word ptr [0xa5be]
   ovl3:44F8  0A108  e8aed2         call   blit_buffer_to_cga
   ovl3:44FB  0A10B  5f             pop    di
-  ovl3:44FC  0A10C  e891f3         call   ovl3_3890
+  ovl3:44FC  0A10C  e891f3         call   sqed_info_type
   ovl3:44FF  0A10F  b88813         mov    ax, 0x1388
   ovl3:4502  0A112  50             push   ax
   ovl3:4503  0A113  e882dc         call   delay
@@ -17925,8 +18025,9 @@ ovl3_430f:
   ovl3:4514  0A124  5d             pop    bp
   ovl3:4515  0A125  c3             ret
 
-; ---- ovl3_4516   (called from 1 place)
-ovl3_4516:
+; ---- sqed_remove   (called from 1 place)
+;      Squads editor: Remove (no men: update_squads frees the slot)
+sqed_remove:
   ovl3:4516  0A126  55             push   bp
   ovl3:4517  0A127  8bec           mov    bp, sp
   ovl3:4519  0A129  e88dc0         call   beep_low
@@ -17953,8 +18054,9 @@ ovl3_4516:
   ovl3:4550  0A160  5d             pop    bp
   ovl3:4551  0A161  c3             ret
 
-; ---- ovl3_4552   (called from 1 place)
-ovl3_4552:
+; ---- sqed_new_squad   (called from 1 place)
+;      Squads editor: a new squad at the cursor (highest free slot): march, friend, condition and food 35, formation 1, then Size
+sqed_new_squad:
   ovl3:4552  0A162  55             push   bp
   ovl3:4553  0A163  8bec           mov    bp, sp
   ovl3:4555  0A165  83ec04         sub    sp, 4
@@ -18035,7 +18137,7 @@ ovl3_4552:
   ovl3:461F  0A22F  8904           mov    word ptr [si], ax
   ovl3:4621  0A231  b80100         mov    ax, 1
   ovl3:4624  0A234  8906cba8       mov    word ptr [0xa8cb], ax
-  ovl3:4628  0A238  e80f00         call   ovl3_463a
+  ovl3:4628  0A238  e80f00         call   sqed_size
   ovl3:462B  0A23B  ff36bea5       push   word ptr [0xa5be]
   ovl3:462F  0A23F  e877d1         call   blit_buffer_to_cga
   ovl3:4632  0A242  5f             pop    di
@@ -18044,8 +18146,9 @@ ovl3_4552:
   ovl3:4638  0A248  5d             pop    bp
   ovl3:4639  0A249  c3             ret
 
-; ---- ovl3_463a   (called from 2 places)
-ovl3_463a:
+; ---- sqed_size   (called from 2 places)
+;      Squads editor Size: the box of men; K B A S add or take away, I/D, E end; switches to Decrease at 14 men
+sqed_size:
   ovl3:463A  0A24A  55             push   bp
   ovl3:463B  0A24B  8bec           mov    bp, sp
   ovl3:463D  0A24D  83ec08         sub    sp, 8
@@ -18053,7 +18156,7 @@ ovl3_463a:
   ovl3:4643  0A253  8946fb         mov    word ptr [bp - 5], ax
   ovl3:4646  0A256  8946fd         mov    word ptr [bp - 3], ax
   ovl3:4649  0A259  e834c9         call   text_area_reset
-  ovl3:464C  0A25C  e86d05         call   ovl3_4bbc
+  ovl3:464C  0A25C  e86d05         call   sqed_size_box
   ovl3:464F  0A25F  b82a00         mov    ax, 0x2a
   ovl3:4652  0A262  50             push   ax
   ovl3:4653  0A263  b092           mov    al, 0x92
@@ -18314,7 +18417,7 @@ ovl3_463a:
   ovl3:486E  0A47E  813ed4a60000   cmp    word ptr [0xa6d4], 0
   ovl3:4874  0A484  7503           jne    0x4879
   ovl3:4876  0A486  e87dbf         call   rt_07f6
-  ovl3:4879  0A489  e8fc01         call   ovl3_4a78
+  ovl3:4879  0A489  e8fc01         call   sqed_size_beep
   ovl3:487C  0A48C  b8401f         mov    ax, 0x1f40
   ovl3:487F  0A48F  50             push   ax
   ovl3:4880  0A490  e805d9         call   delay
@@ -18322,7 +18425,7 @@ ovl3_463a:
   ovl3:4884  0A494  33c0           xor    ax, ax
   ovl3:4886  0A496  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl3:488A  0A49A  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
-  ovl3:488E  0A49E  e8d8f5         call   ovl3_3e69
+  ovl3:488E  0A49E  e8d8f5         call   sqed_read_key
   ovl3:4891  0A4A1  8846f8         mov    byte ptr [bp - 8], al
   ovl3:4894  0A4A4  98             cwde
   ovl3:4895  0A4A5  09c0           or     ax, ax
@@ -18514,13 +18617,14 @@ ovl3_463a:
   ovl3:4A6C  0A67C  50             push   ax
   ovl3:4A6D  0A67D  e8ebba         call   text_rows_add
   ovl3:4A70  0A680  5f             pop    di
-  ovl3:4A71  0A681  e8cdea         call   ovl3_3541
+  ovl3:4A71  0A681  e8cdea         call   sqed_squad_line
   ovl3:4A74  0A684  8be5           mov    sp, bp
   ovl3:4A76  0A686  5d             pop    bp
   ovl3:4A77  0A687  c3             ret
 
-; ---- ovl3_4a78   (called from 1 place)
-ovl3_4a78:
+; ---- sqed_size_beep   (called from 1 place)
+;      Squads editor Size: 239 Hz for 1200 units
+sqed_size_beep:
   ovl3:4A78  0A688  55             push   bp
   ovl3:4A79  0A689  8bec           mov    bp, sp
   ovl3:4A7B  0A68B  e871d6         call   speaker_on
@@ -18537,8 +18641,9 @@ ovl3_4a78:
   ovl3:4A93  0A6A3  5d             pop    bp
   ovl3:4A94  0A6A4  c3             ret
 
-; ---- ovl3_4a95   (called from 1 place)
-ovl3_4a95:
+; ---- sqed_formation   (called from 1 place)
+;      Squads editor Formation: -/+ choose 1-9 (formation_preview), E or a cursor key ends
+sqed_formation:
   ovl3:4A95  0A6A5  55             push   bp
   ovl3:4A96  0A6A6  8bec           mov    bp, sp
   ovl3:4A98  0A6A8  83ec04         sub    sp, 4
@@ -18590,7 +18695,7 @@ ovl3_4a95:
   ovl3:4AFC  0A70C  0bc0           or     ax, ax
   ovl3:4AFE  0A70E  7503           jne    0x4b03
   ovl3:4B00  0A710  e99e00         jmp    0x4ba1
-  ovl3:4B03  0A713  e863f3         call   ovl3_3e69
+  ovl3:4B03  0A713  e863f3         call   sqed_read_key
   ovl3:4B06  0A716  8946fc         mov    word ptr [bp - 4], ax
   ovl3:4B09  0A719  817efc1200     cmp    word ptr [bp - 4], 0x12
   ovl3:4B0E  0A71E  750b           jne    0x4b1b
@@ -18665,8 +18770,9 @@ ovl3_4a95:
   ovl3:4BBA  0A7CA  5d             pop    bp
   ovl3:4BBB  0A7CB  c3             ret
 
-; ---- ovl3_4bbc   (called from 1 place)
-ovl3_4bbc:
+; ---- sqed_size_box   (called from 1 place)
+;      Squads editor Size: clear the box at line 92h (42 lines)
+sqed_size_box:
   ovl3:4BBC  0A7CC  06             push   es
   ovl3:4BBD  0A7CD  fc             cld
   ovl3:4BBE  0A7CE  a15909         mov    ax, word ptr [0x959]         ; [0959] video segment (B800h)
@@ -18729,7 +18835,7 @@ map_maker:
   ovl4:3146  0A846  8be5           mov    sp, bp
   ovl4:3148  0A848  5d             pop    bp
   ovl4:3149  0A849  c3             ret
-  ovl4:314A  0A84A  e8b208         call   ovl4_39ff
+  ovl4:314A  0A84A  e8b208         call   mapmk_load_tiles
   ovl4:314D  0A84D  0bc0           or     ax, ax
   ovl4:314F  0A84F  7407           je     0x3158
   ovl4:3151  0A851  b80f27         mov    ax, 0x270f
@@ -18779,7 +18885,7 @@ map_maker:
   ovl4:31B3  0A8B3  50             push   ax
   ovl4:31B4  0A8B4  e84fd4         call   set_display_palette
   ovl4:31B7  0A8B7  83c418         add    sp, 0x18
-  ovl4:31BA  0A8BA  e83d02         call   ovl4_33fa
+  ovl4:31BA  0A8BA  e83d02         call   mapmk_panel
   ovl4:31BD  0A8BD  b80100         mov    ax, 1
   ovl4:31C0  0A8C0  8906c0a5       mov    word ptr [0xa5c0], ax        ; [A5C0] text rows under the map
   ovl4:31C4  0A8C4  33c0           xor    ax, ax
@@ -18858,7 +18964,7 @@ map_maker:
   ovl4:3261  0A961  b80100         mov    ax, 1
   ovl4:3264  0A964  0bc0           or     ax, ax
   ovl4:3266  0A966  742c           je     0x3294
-  ovl4:3268  0A968  e88b05         call   ovl4_37f6
+  ovl4:3268  0A968  e88b05         call   mapmk_read_key
   ovl4:326B  0A96B  8846f8         mov    byte ptr [bp - 8], al
   ovl4:326E  0A96E  98             cwde
   ovl4:326F  0A96F  09c0           or     ax, ax
@@ -18915,8 +19021,8 @@ map_maker:
   ovl4:32F0  0A9F0  8946fb         mov    word ptr [bp - 5], ax
   ovl4:32F3  0A9F3  ff46f9         inc    word ptr [bp - 7]
   ovl4:32F6  0A9F6  ebb7           jmp    0x32af
-  ovl4:32F8  0A9F8  e83407         call   ovl4_3a2f
-  ovl4:32FB  0A9FB  e8dd01         call   ovl4_34db
+  ovl4:32F8  0A9F8  e83407         call   mapmk_view
+  ovl4:32FB  0A9FB  e8dd01         call   mapmk_bottom
   ovl4:32FE  0A9FE  b81600         mov    ax, 0x16
   ovl4:3301  0AA01  50             push   ax
   ovl4:3302  0AA02  b001           mov    al, 1
@@ -18933,7 +19039,7 @@ map_maker:
   ovl4:3319  0AA19  0bc0           or     ax, ax
   ovl4:331B  0AA1B  7503           jne    0x3320
   ovl4:331D  0AA1D  e9d300         jmp    0x33f3
-  ovl4:3320  0AA20  e89c02         call   ovl4_35bf
+  ovl4:3320  0AA20  e89c02         call   mapmk_key
   ovl4:3323  0AA23  0bc0           or     ax, ax
   ovl4:3325  0AA25  7503           jne    0x332a
   ovl4:3327  0AA27  e9c600         jmp    0x33f0
@@ -18948,7 +19054,7 @@ map_maker:
   ovl4:3341  0AA41  50             push   ax
   ovl4:3342  0AA42  e820f2         call   print_string
   ovl4:3345  0AA45  5f             pop    di
-  ovl4:3346  0AA46  e8ad04         call   ovl4_37f6
+  ovl4:3346  0AA46  e8ad04         call   mapmk_read_key
   ovl4:3349  0AA49  8846f8         mov    byte ptr [bp - 8], al
   ovl4:334C  0AA4C  98             cwde
   ovl4:334D  0AA4D  09c0           or     ax, ax
@@ -19002,7 +19108,7 @@ map_maker:
   ovl4:33C1  0AAC1  750c           jne    0x33cf
   ovl4:33C3  0AAC3  33c0           xor    ax, ax
   ovl4:33C5  0AAC5  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
-  ovl4:33C9  0AAC9  e80f01         call   ovl4_34db
+  ovl4:33C9  0AAC9  e80f01         call   mapmk_bottom
   ovl4:33CC  0AACC  e947ff         jmp    0x3316
   ovl4:33CF  0AACF  813e2f051500   cmp    word ptr [0x52f], 0x15       ; [052F] key held (scan code, 0 none)
   ovl4:33D5  0AAD5  75c0           jne    0x3397
@@ -19022,8 +19128,9 @@ map_maker:
   ovl4:33F8  0AAF8  5d             pop    bp
   ovl4:33F9  0AAF9  c3             ret
 
-; ---- ovl4_33fa   (called from 1 place)
-ovl4_33fa:
+; ---- mapmk_panel   (called from 1 place)
+;      Map maker: the panel: lines, letters A-S, the page of tiles, the plan
+mapmk_panel:
   ovl4:33FA  0AAFA  55             push   bp
   ovl4:33FB  0AAFB  8bec           mov    bp, sp
   ovl4:33FD  0AAFD  83ec02         sub    sp, 2
@@ -19121,14 +19228,15 @@ ovl4_33fa:
   ovl4:34CB  0ABCB  5f             pop    di
   ovl4:34CC  0ABCC  ff46fe         inc    word ptr [bp - 2]
   ovl4:34CF  0ABCF  ebe5           jmp    0x34b6
-  ovl4:34D1  0ABD1  e88400         call   ovl4_3558
-  ovl4:34D4  0ABD4  e8a206         call   ovl4_3b79
+  ovl4:34D1  0ABD1  e88400         call   mapmk_page
+  ovl4:34D4  0ABD4  e8a206         call   mapmk_plan
   ovl4:34D7  0ABD7  8be5           mov    sp, bp
   ovl4:34D9  0ABD9  5d             pop    bp
   ovl4:34DA  0ABDA  c3             ret
 
-; ---- ovl4_34db   (called from 2 places)
-ovl4_34db:
+; ---- mapmk_bottom   (called from 2 places)
+;      Map maker: "Page [A]-[S]  [Enter] when done"
+mapmk_bottom:
   ovl4:34DB  0ABDB  55             push   bp
   ovl4:34DC  0ABDC  8bec           mov    bp, sp
   ovl4:34DE  0ABDE  b81800         mov    ax, 0x18
@@ -19190,8 +19298,9 @@ ovl4_34db:
   ovl4:3556  0AC56  5d             pop    bp
   ovl4:3557  0AC57  c3             ret
 
-; ---- ovl4_3558   (called from 2 places)
-ovl4_3558:
+; ---- mapmk_page   (called from 2 places)
+;      Map maker: the 18 tiles of this page (DS:0B68 + page x B88h)
+mapmk_page:
   ovl4:3558  0AC58  55             push   bp
   ovl4:3559  0AC59  8bec           mov    bp, sp
   ovl4:355B  0AC5B  83ec0c         sub    sp, 0xc
@@ -19208,7 +19317,7 @@ ovl4_3558:
   ovl4:357C  0AC7C  ff76fe         push   word ptr [bp - 2]
   ovl4:357F  0AC7F  ff76fc         push   word ptr [bp - 4]
   ovl4:3582  0AC82  ff76fa         push   word ptr [bp - 6]
-  ovl4:3585  0AC85  e86f05         call   ovl4_3af7
+  ovl4:3585  0AC85  e86f05         call   mapmk_tile
   ovl4:3588  0AC88  83c406         add    sp, 6
   ovl4:358B  0AC8B  b8a400         mov    ax, 0xa4
   ovl4:358E  0AC8E  8b56fa         mov    dx, word ptr [bp - 6]
@@ -19229,14 +19338,15 @@ ovl4_3558:
   ovl4:35BD  0ACBD  5d             pop    bp
   ovl4:35BE  0ACBE  c3             ret
 
-; ---- ovl4_35bf   (called from 1 place)
-ovl4_35bf:
+; ---- mapmk_key   (called from 1 place)
+;      Map maker: one key: arrows move (left/right wrap rows), P next page, A-S (no P) put a tile, Enter done
+mapmk_key:
   ovl4:35BF  0ACBF  55             push   bp
   ovl4:35C0  0ACC0  8bec           mov    bp, sp
   ovl4:35C2  0ACC2  83ec04         sub    sp, 4
   ovl4:35C5  0ACC5  33c0           xor    ax, ax
   ovl4:35C7  0ACC7  8946fe         mov    word ptr [bp - 2], ax
-  ovl4:35CA  0ACCA  e82902         call   ovl4_37f6
+  ovl4:35CA  0ACCA  e82902         call   mapmk_read_key
   ovl4:35CD  0ACCD  8946fc         mov    word ptr [bp - 4], ax
   ovl4:35D0  0ACD0  09c0           or     ax, ax
   ovl4:35D2  0ACD2  750a           jne    0x35de
@@ -19345,7 +19455,7 @@ ovl4_35bf:
   ovl4:3745  0AE45  890629a9       mov    word ptr [0xa929], ax
   ovl4:3749  0AE49  33c0           xor    ax, ax
   ovl4:374B  0AE4B  8906c9a8       mov    word ptr [0xa8c9], ax
-  ovl4:374F  0AE4F  e806fe         call   ovl4_3558
+  ovl4:374F  0AE4F  e806fe         call   mapmk_page
   ovl4:3752  0AE52  b81600         mov    ax, 0x16
   ovl4:3755  0AE55  50             push   ax
   ovl4:3756  0AE56  b006           mov    al, 6
@@ -19400,7 +19510,7 @@ ovl4_35bf:
   ovl4:37DE  0AEDE  8b46fe         mov    ax, word ptr [bp - 2]
   ovl4:37E1  0AEE1  0bc0           or     ax, ax
   ovl4:37E3  0AEE3  7403           je     0x37e8
-  ovl4:37E5  0AEE5  e84702         call   ovl4_3a2f
+  ovl4:37E5  0AEE5  e84702         call   mapmk_view
   ovl4:37E8  0AEE8  ff36d0a5       push   word ptr [0xa5d0]
   ovl4:37EC  0AEEC  e899e9         call   delay
   ovl4:37EF  0AEEF  5f             pop    di
@@ -19409,8 +19519,9 @@ ovl4_35bf:
   ovl4:37F4  0AEF4  5d             pop    bp
   ovl4:37F5  0AEF5  c3             ret
 
-; ---- ovl4_37f6   (called from 3 places)
-ovl4_37f6:
+; ---- mapmk_read_key   (called from 3 places)
+;      Map maker: the key pressed (or the joystick), and the delay after it ([A5D0])
+mapmk_read_key:
   ovl4:37F6  0AEF6  55             push   bp
   ovl4:37F7  0AEF7  8bec           mov    bp, sp
   ovl4:37F9  0AEF9  83ec02         sub    sp, 2
@@ -19423,7 +19534,7 @@ ovl4_37f6:
   ovl4:380F  0AF0F  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl4:3813  0AF13  817efe0000     cmp    word ptr [bp - 2], 0
   ovl4:3818  0AF18  7554           jne    0x386e
-  ovl4:381A  0AF1A  e85800         call   ovl4_3875
+  ovl4:381A  0AF1A  e85800         call   mapmk_joystick
   ovl4:381D  0AF1D  8946fe         mov    word ptr [bp - 2], ax
   ovl4:3820  0AF20  0bc0           or     ax, ax
   ovl4:3822  0AF22  744a           je     0x386e
@@ -19455,8 +19566,9 @@ ovl4_37f6:
   ovl4:3873  0AF73  5d             pop    bp
   ovl4:3874  0AF74  c3             ret
 
-; ---- ovl4_3875   (called from 1 place)
-ovl4_3875:
+; ---- mapmk_joystick   (called from 1 place)
+;      Map maker: the joystick as keys
+mapmk_joystick:
   ovl4:3875  0AF75  55             push   bp
   ovl4:3876  0AF76  8bec           mov    bp, sp
   ovl4:3878  0AF78  83ec02         sub    sp, 2
@@ -19613,8 +19725,9 @@ ovl4_3875:
   ovl4:39FD  0B0FD  5d             pop    bp
   ovl4:39FE  0B0FE  c3             ret
 
-; ---- ovl4_39ff   (called from 1 place)
-ovl4_39ff:
+; ---- mapmk_load_tiles   (called from 1 place)
+;      Map maker: load M (72 tiles) to DS:0B68
+mapmk_load_tiles:
   ovl4:39FF  0B0FF  55             push   bp
   ovl4:3A00  0B100  8bec           mov    bp, sp
   ovl4:3A02  0B102  33c0           xor    ax, ax
@@ -19639,8 +19752,9 @@ ovl4_39ff:
   ovl4:3A2D  0B12D  5d             pop    bp
   ovl4:3A2E  0B12E  c3             ret
 
-; ---- ovl4_3a2f   (called from 2 places)
-ovl4_3a2f:
+; ---- mapmk_view   (called from 2 places)
+;      Map maker: four rows of the map from row [A8C1], the cursor tile inverted, the plan
+mapmk_view:
   ovl4:3A2F  0B12F  55             push   bp
   ovl4:3A30  0B130  8bec           mov    bp, sp
   ovl4:3A32  0B132  83ec0c         sub    sp, 0xc
@@ -19678,7 +19792,7 @@ ovl4_3a2f:
   ovl4:3A8B  0B18B  d1e2           shl    dx, 1
   ovl4:3A8D  0B18D  03c2           add    ax, dx
   ovl4:3A8F  0B18F  50             push   ax
-  ovl4:3A90  0B190  e86400         call   ovl4_3af7
+  ovl4:3A90  0B190  e86400         call   mapmk_tile
   ovl4:3A93  0B193  83c406         add    sp, 6
   ovl4:3A96  0B196  817ef40900     cmp    word ptr [bp - 0xc], 9
   ovl4:3A9B  0B19B  7407           je     0x3aa4
@@ -19694,14 +19808,15 @@ ovl4_3a2f:
   ovl4:3AB9  0B1B9  8146fc0800     add    word ptr [bp - 4], 8
   ovl4:3ABE  0B1BE  ff46f4         inc    word ptr [bp - 0xc]
   ovl4:3AC1  0B1C1  eb91           jmp    0x3a54
-  ovl4:3AC3  0B1C3  e85b00         call   ovl4_3b21
-  ovl4:3AC6  0B1C6  e80400         call   ovl4_3acd
+  ovl4:3AC3  0B1C3  e85b00         call   mapmk_invert
+  ovl4:3AC6  0B1C6  e80400         call   mapmk_plan_cursor
   ovl4:3AC9  0B1C9  8be5           mov    sp, bp
   ovl4:3ACB  0B1CB  5d             pop    bp
   ovl4:3ACC  0B1CC  c3             ret
 
-; ---- ovl4_3acd   (called from 1 place)
-ovl4_3acd:
+; ---- mapmk_plan_cursor   (called from 1 place)
+;      Map maker: the plan, and the cursor cell on it
+mapmk_plan_cursor:
   ovl4:3ACD  0B1CD  55             push   bp
   ovl4:3ACE  0B1CE  8bec           mov    bp, sp
   ovl4:3AD0  0B1D0  83ec02         sub    sp, 2
@@ -19714,15 +19829,16 @@ ovl4_3acd:
   ovl4:3AE4  0B1E4  5a             pop    dx
   ovl4:3AE5  0B1E5  03d0           add    dx, ax
   ovl4:3AE7  0B1E7  8956fe         mov    word ptr [bp - 2], dx
-  ovl4:3AEA  0B1EA  e88c00         call   ovl4_3b79
+  ovl4:3AEA  0B1EA  e88c00         call   mapmk_plan
   ovl4:3AED  0B1ED  ff76fe         push   word ptr [bp - 2]
-  ovl4:3AF0  0B1F0  e85e00         call   ovl4_3b51
+  ovl4:3AF0  0B1F0  e85e00         call   mapmk_plan_mark
   ovl4:3AF3  0B1F3  8be5           mov    sp, bp
   ovl4:3AF5  0B1F5  5d             pop    bp
   ovl4:3AF6  0B1F6  c3             ret
 
-; ---- ovl4_3af7   (called from 2 places)
-ovl4_3af7:
+; ---- mapmk_tile   (called from 2 places)
+;      Map maker: draw a 32x20 tile at byte x, line y
+mapmk_tile:
   ovl4:3AF7  0B1F7  55             push   bp
   ovl4:3AF8  0B1F8  8bec           mov    bp, sp
   ovl4:3AFA  0B1FA  8b7604         mov    si, word ptr [bp + 4]
@@ -19748,8 +19864,9 @@ ovl4_3af7:
   ovl4:3B1F  0B21F  5d             pop    bp
   ovl4:3B20  0B220  c3             ret
 
-; ---- ovl4_3b21   (called from 1 place)
-ovl4_3b21:
+; ---- mapmk_invert   (called from 1 place)
+;      Map maker: XOR the cursor tile
+mapmk_invert:
   ovl4:3B21  0B221  06             push   es
   ovl4:3B22  0B222  a15909         mov    ax, word ptr [0x959]         ; [0959] video segment (B800h)
   ovl4:3B25  0B225  8ec0           mov    es, ax
@@ -19776,8 +19893,9 @@ ovl4_3b21:
   ovl4:3B4F  0B24F  07             pop    es
   ovl4:3B50  0B250  c3             ret
 
-; ---- ovl4_3b51   (called from 1 place)
-ovl4_3b51:
+; ---- mapmk_plan_mark   (called from 1 place)
+;      Map maker: a 4x4 white square on the plan
+mapmk_plan_mark:
   ovl4:3B51  0B251  55             push   bp
   ovl4:3B52  0B252  8bec           mov    bp, sp
   ovl4:3B54  0B254  8b4604         mov    ax, word ptr [bp + 4]
@@ -19801,8 +19919,9 @@ ovl4_3b51:
   ovl4:3B77  0B277  5d             pop    bp
   ovl4:3B78  0B278  c3             ret
 
-; ---- ovl4_3b79   (called from 2 places)
-ovl4_3b79:
+; ---- mapmk_plan   (called from 2 places)
+;      Map maker: the plan, 10 x 20 cells of 4 pixels
+mapmk_plan:
   ovl4:3B79  0B279  06             push   es
   ovl4:3B7A  0B27A  a15909         mov    ax, word ptr [0x959]         ; [0959] video segment (B800h)
   ovl4:3B7D  0B27D  8ec0           mov    es, ax
@@ -20057,19 +20176,19 @@ formation_editor:
   ovl5:3336  0B506  83c418         add    sp, 0x18
   ovl5:3339  0B509  33c0           xor    ax, ax
   ovl5:333B  0B50B  50             push   ax
-  ovl5:333C  0B50C  e8d90e         call   ovl5_4218
+  ovl5:333C  0B50C  e8d90e         call   formed_load
   ovl5:333F  0B50F  5f             pop    di
   ovl5:3340  0B510  ff366888       push   word ptr [0x8868]            ; [8868] off-screen picture buffer pointer
   ovl5:3344  0B514  e8c813         call   decode_picture_rle16
   ovl5:3347  0B517  5f             pop    di
-  ovl5:3348  0B518  e83002         call   ovl5_357b
+  ovl5:3348  0B518  e83002         call   formed_step_men
   ovl5:334B  0B51B  ff36bea5       push   word ptr [0xa5be]
   ovl5:334F  0B51F  e857e4         call   blit_buffer_to_cga
   ovl5:3352  0B522  5f             pop    di
-  ovl5:3353  0B523  e8db0f         call   ovl5_4331
-  ovl5:3356  0B526  e88010         call   ovl5_43d9
-  ovl5:3359  0B529  e8e90f         call   ovl5_4345
-  ovl5:335C  0B52C  e84f00         call   ovl5_33ae
+  ovl5:3353  0B523  e8db0f         call   formed_border
+  ovl5:3356  0B526  e88010         call   formed_box
+  ovl5:3359  0B529  e8e90f         call   formed_numbers
+  ovl5:335C  0B52C  e84f00         call   formed_look_line
   ovl5:335F  0B52F  b80100         mov    ax, 1
   ovl5:3362  0B532  0bc0           or     ax, ax
   ovl5:3364  0B534  7436           je     0x339c
@@ -20078,13 +20197,13 @@ formation_editor:
   ovl5:336E  0B53E  ff366888       push   word ptr [0x8868]            ; [8868] off-screen picture buffer pointer
   ovl5:3372  0B542  e89a13         call   decode_picture_rle16
   ovl5:3375  0B545  5f             pop    di
-  ovl5:3376  0B546  e80202         call   ovl5_357b
-  ovl5:3379  0B549  e8140c         call   ovl5_3f90
+  ovl5:3376  0B546  e80202         call   formed_step_men
+  ovl5:3379  0B549  e8140c         call   formed_read_key
   ovl5:337C  0B54C  8906d7a8       mov    word ptr [0xa8d7], ax
-  ovl5:3380  0B550  e8d807         call   ovl5_3b5b
+  ovl5:3380  0B550  e8d807         call   formed_key
   ovl5:3383  0B553  0bc0           or     ax, ax
   ovl5:3385  0B555  7515           jne    0x339c
-  ovl5:3387  0B557  e83b13         call   ovl5_46c5
+  ovl5:3387  0B557  e83b13         call   formed_show_field
   ovl5:338A  0B55A  813e41050000   cmp    word ptr [0x541], 0          ; [0541] Tandy/PCjr sound chip (INT 11h bit 8)
   ovl5:3390  0B560  7508           jne    0x339a
   ovl5:3392  0B562  b8bc02         mov    ax, 0x2bc
@@ -20095,14 +20214,15 @@ formation_editor:
   ovl5:339C  0B56C  33c0           xor    ax, ax
   ovl5:339E  0B56E  8946fb         mov    word ptr [bp - 5], ax
   ovl5:33A1  0B571  e81dd3         call   show_one_moment
-  ovl5:33A4  0B574  e8f011         call   ovl5_4597
+  ovl5:33A4  0B574  e8f011         call   formed_reload
   ovl5:33A7  0B577  8b46fb         mov    ax, word ptr [bp - 5]
   ovl5:33AA  0B57A  8be5           mov    sp, bp
   ovl5:33AC  0B57C  5d             pop    bp
   ovl5:33AD  0B57D  c3             ret
 
-; ---- ovl5_33ae   (called from 2 places)
-ovl5_33ae:
+; ---- formed_look_line   (called from 2 places)
+;      Formation editor: clear row 23, then formed_look_keys
+formed_look_line:
   ovl5:33AE  0B57E  55             push   bp
   ovl5:33AF  0B57F  8bec           mov    bp, sp
   ovl5:33B1  0B581  b81700         mov    ax, 0x17
@@ -20116,13 +20236,14 @@ ovl5_33ae:
   ovl5:33C0  0B590  50             push   ax
   ovl5:33C1  0B591  e8b9ec         call   print_spaces
   ovl5:33C4  0B594  5f             pop    di
-  ovl5:33C5  0B595  e80400         call   ovl5_33cc
+  ovl5:33C5  0B595  e80400         call   formed_look_keys
   ovl5:33C8  0B598  8be5           mov    sp, bp
   ovl5:33CA  0B59A  5d             pop    bp
   ovl5:33CB  0B59B  c3             ret
 
-; ---- ovl5_33cc   (called from 4 places)
-ovl5_33cc:
+; ---- formed_look_keys   (called from 4 places)
+;      Formation editor mode 1 ([A8C1]): "Move Save" (formations 6-9), [+] [-], "[Enter] if done"
+formed_look_keys:
   ovl5:33CC  0B59C  55             push   bp
   ovl5:33CD  0B59D  8bec           mov    bp, sp
   ovl5:33CF  0B59F  b80100         mov    ax, 1
@@ -20181,8 +20302,9 @@ ovl5_33cc:
   ovl5:3449  0B619  5d             pop    bp
   ovl5:344A  0B61A  c3             ret
 
-; ---- ovl5_344b   (called from 2 places)
-ovl5_344b:
+; ---- formed_pointer   (called from 2 places)
+;      Formation editor mode 2: "Put pointer over a man to move", the cursor
+formed_pointer:
   ovl5:344B  0B61B  55             push   bp
   ovl5:344C  0B61C  8bec           mov    bp, sp
   ovl5:344E  0B61E  e858d1         call   beep_low
@@ -20202,13 +20324,14 @@ ovl5_344b:
   ovl5:346C  0B63C  8906c1a8       mov    word ptr [0xa8c1], ax        ; [A8C1] trace half-speed toggle
   ovl5:3470  0B640  e8c3e3         call   save_cursor_background
   ovl5:3473  0B643  e833e4         call   draw_cursor
-  ovl5:3476  0B646  e80400         call   ovl5_347d
+  ovl5:3476  0B646  e80400         call   formed_pointer_keys
   ovl5:3479  0B649  8be5           mov    sp, bp
   ovl5:347B  0B64B  5d             pop    bp
   ovl5:347C  0B64C  c3             ret
 
-; ---- ovl5_347d   (called from 2 places)
-ovl5_347d:
+; ---- formed_pointer_keys   (called from 2 places)
+;      Formation editor mode 2: "End" and "Mark" over a man; [A8D3] = changed
+formed_pointer_keys:
   ovl5:347D  0B64D  55             push   bp
   ovl5:347E  0B64E  8bec           mov    bp, sp
   ovl5:3480  0B650  b80100         mov    ax, 1
@@ -20239,8 +20362,9 @@ ovl5_347d:
   ovl5:34BB  0B68B  5d             pop    bp
   ovl5:34BC  0B68C  c3             ret
 
-; ---- ovl5_34bd   (called from 1 place)
-ovl5_34bd:
+; ---- formed_move   (called from 1 place)
+;      Formation editor mode 3: "Move the man, press [M] to mark"
+formed_move:
   ovl5:34BD  0B68D  55             push   bp
   ovl5:34BE  0B68E  8bec           mov    bp, sp
   ovl5:34C0  0B690  b80300         mov    ax, 3
@@ -20265,13 +20389,14 @@ ovl5_34bd:
   ovl5:34E8  0B6B8  50             push   ax
   ovl5:34E9  0B6B9  e86eea         call   draw_bitmap
   ovl5:34EC  0B6BC  83c406         add    sp, 6
-  ovl5:34EF  0B6BF  e80400         call   ovl5_34f6
+  ovl5:34EF  0B6BF  e80400         call   formed_move_keys
   ovl5:34F2  0B6C2  8be5           mov    sp, bp
   ovl5:34F4  0B6C4  5d             pop    bp
   ovl5:34F5  0B6C5  c3             ret
 
-; ---- ovl5_34f6   (called from 4 places)
-ovl5_34f6:
+; ---- formed_move_keys   (called from 4 places)
+;      Formation editor mode 3: "Mark" and the kinds the man is not (Archer Barbarian Knight)
+formed_move_keys:
   ovl5:34F6  0B6C6  55             push   bp
   ovl5:34F7  0B6C7  8bec           mov    bp, sp
   ovl5:34F9  0B6C9  b80100         mov    ax, 1
@@ -20330,8 +20455,9 @@ ovl5_34f6:
   ovl5:3579  0B749  5d             pop    bp
   ovl5:357A  0B74A  c3             ret
 
-; ---- ovl5_357b   (called from 4 places)
-ovl5_357b:
+; ---- formed_step_men   (called from 4 places)
+;      Formation editor: each man takes the next step (delta, sprite, state) of his O8 script; the man being moved walks by the direction key (A0F4-A901 tables), kept between x 2Dh-49h and y 1Bh-4Bh; then draw_map_sprite
+formed_step_men:
   ovl5:357B  0B74B  55             push   bp
   ovl5:357C  0B74C  8bec           mov    bp, sp
   ovl5:357E  0B74E  83ec08         sub    sp, 8
@@ -20648,13 +20774,14 @@ ovl5_357b:
   ovl5:38DF  0BAAF  8904           mov    word ptr [si], ax
   ovl5:38E1  0BAB1  ff46f8         inc    word ptr [bp - 8]
   ovl5:38E4  0BAB4  e99ffc         jmp    0x3586
-  ovl5:38E7  0BAB7  e80400         call   ovl5_38ee
+  ovl5:38E7  0BAB7  e80400         call   formed_sort_y
   ovl5:38EA  0BABA  8be5           mov    sp, bp
   ovl5:38EC  0BABC  5d             pop    bp
   ovl5:38ED  0BABD  c3             ret
 
-; ---- ovl5_38ee   (called from 2 places)
-ovl5_38ee:
+; ---- formed_sort_y   (called from 2 places)
+;      Formation editor: one pass of sorting the 14 men by y (drawing order), A506 follows
+formed_sort_y:
   ovl5:38EE  0BABE  55             push   bp
   ovl5:38EF  0BABF  8bec           mov    bp, sp
   ovl5:38F1  0BAC1  83ec06         sub    sp, 6
@@ -20864,8 +20991,9 @@ ovl5_38ee:
   ovl5:3AF1  0BCC1  5d             pop    bp
   ovl5:3AF2  0BCC2  c3             ret
 
-; ---- ovl5_3af3   (called from 3 places)
-ovl5_3af3:
+; ---- formed_plan_mark   (called from 3 places)
+;      Formation editor: formation_preview and the pointer's place on it (ovl5_474A)
+formed_plan_mark:
   ovl5:3AF3  0BCC3  55             push   bp
   ovl5:3AF4  0BCC4  8bec           mov    bp, sp
   ovl5:3AF6  0BCC6  83ec04         sub    sp, 4
@@ -20900,14 +21028,15 @@ ovl5_3af3:
   ovl5:3B4D  0BD1D  d1e0           shl    ax, 1
   ovl5:3B4F  0BD1F  50             push   ax
   ovl5:3B50  0BD20  ff76fc         push   word ptr [bp - 4]
-  ovl5:3B53  0BD23  e8f40b         call   ovl5_474a
+  ovl5:3B53  0BD23  e8f40b         call   formed_mark
   ovl5:3B56  0BD26  5f             pop    di
   ovl5:3B57  0BD27  8be5           mov    sp, bp
   ovl5:3B59  0BD29  5d             pop    bp
   ovl5:3B5A  0BD2A  c3             ret
 
-; ---- ovl5_3b5b   (called from 1 place)
-ovl5_3b5b:
+; ---- formed_key   (called from 1 place)
+;      Formation editor: one key: mode 1 Enter (Save the last changes?), S, -/+, M; mode 2 E, M, the pointer (x 2Ah-4Eh, y 7Fh-B8h) and which man it is on (O8+5EBh offsets); mode 3 M, B, A, K
+formed_key:
   ovl5:3B5B  0BD2B  55             push   bp
   ovl5:3B5C  0BD2C  8bec           mov    bp, sp
   ovl5:3B5E  0BD2E  83ec06         sub    sp, 6
@@ -20938,8 +21067,8 @@ ovl5_3b5b:
   ovl5:3BAA  0BD7A  50             push   ax
   ovl5:3BAB  0BD7B  e8b7e9         call   print_string
   ovl5:3BAE  0BD7E  5f             pop    di
-  ovl5:3BAF  0BD7F  e8bc08         call   ovl5_446e
-  ovl5:3BB2  0BD82  e89909         call   ovl5_454e
+  ovl5:3BAF  0BD7F  e8bc08         call   formed_store
+  ovl5:3BB2  0BD82  e89909         call   formed_write
   ovl5:3BB5  0BD85  eb08           jmp    0x3bbf
   ovl5:3BB7  0BD87  813e2f053100   cmp    word ptr [0x52f], 0x31       ; [052F] key held (scan code, 0 none)
   ovl5:3BBD  0BD8D  75c0           jne    0x3b7f
@@ -20972,13 +21101,13 @@ ovl5_3b5b:
   ovl5:3BFC  0BDCC  50             push   ax
   ovl5:3BFD  0BDCD  e888e5         call   delay
   ovl5:3C00  0BDD0  5f             pop    di
-  ovl5:3C01  0BDD1  e86a08         call   ovl5_446e
-  ovl5:3C04  0BDD4  e84709         call   ovl5_454e
+  ovl5:3C01  0BDD1  e86a08         call   formed_store
+  ovl5:3C04  0BDD4  e84709         call   formed_write
   ovl5:3C07  0BDD7  b8d007         mov    ax, 0x7d0
   ovl5:3C0A  0BDDA  50             push   ax
   ovl5:3C0B  0BDDB  e87ae5         call   delay
   ovl5:3C0E  0BDDE  5f             pop    di
-  ovl5:3C0F  0BDDF  e8baf7         call   ovl5_33cc
+  ovl5:3C0F  0BDDF  e8baf7         call   formed_look_keys
   ovl5:3C12  0BDE2  33c0           xor    ax, ax
   ovl5:3C14  0BDE4  8906d3a8       mov    word ptr [0xa8d3], ax
   ovl5:3C18  0BDE8  ff36d7a8       push   word ptr [0xa8d7]
@@ -20995,18 +21124,18 @@ ovl5_3b5b:
   ovl5:3C37  0BE07  8906d1a8       mov    word ptr [0xa8d1], ax
   ovl5:3C3B  0BE0B  b80100         mov    ax, 1
   ovl5:3C3E  0BE0E  50             push   ax
-  ovl5:3C3F  0BE0F  e8d605         call   ovl5_4218
+  ovl5:3C3F  0BE0F  e8d605         call   formed_load
   ovl5:3C42  0BE12  5f             pop    di
   ovl5:3C43  0BE13  ff366888       push   word ptr [0x8868]            ; [8868] off-screen picture buffer pointer
   ovl5:3C47  0BE17  e8c50a         call   decode_picture_rle16
   ovl5:3C4A  0BE1A  5f             pop    di
-  ovl5:3C4B  0BE1B  e82df9         call   ovl5_357b
-  ovl5:3C4E  0BE1E  e8740a         call   ovl5_46c5
+  ovl5:3C4B  0BE1B  e82df9         call   formed_step_men
+  ovl5:3C4E  0BE1E  e8740a         call   formed_show_field
   ovl5:3C51  0BE21  813ed1a80100   cmp    word ptr [0xa8d1], 1
   ovl5:3C57  0BE27  7408           je     0x3c61
   ovl5:3C59  0BE29  813ed1a80600   cmp    word ptr [0xa8d1], 6
   ovl5:3C5F  0BE2F  7503           jne    0x3c64
-  ovl5:3C61  0BE31  e868f7         call   ovl5_33cc
+  ovl5:3C61  0BE31  e868f7         call   formed_look_keys
   ovl5:3C64  0BE34  b8d007         mov    ax, 0x7d0
   ovl5:3C67  0BE37  50             push   ax
   ovl5:3C68  0BE38  e81de5         call   delay
@@ -21025,18 +21154,18 @@ ovl5_3b5b:
   ovl5:3C8B  0BE5B  8906d1a8       mov    word ptr [0xa8d1], ax
   ovl5:3C8F  0BE5F  b80100         mov    ax, 1
   ovl5:3C92  0BE62  50             push   ax
-  ovl5:3C93  0BE63  e88205         call   ovl5_4218
+  ovl5:3C93  0BE63  e88205         call   formed_load
   ovl5:3C96  0BE66  5f             pop    di
   ovl5:3C97  0BE67  ff366888       push   word ptr [0x8868]            ; [8868] off-screen picture buffer pointer
   ovl5:3C9B  0BE6B  e8710a         call   decode_picture_rle16
   ovl5:3C9E  0BE6E  5f             pop    di
-  ovl5:3C9F  0BE6F  e8d9f8         call   ovl5_357b
-  ovl5:3CA2  0BE72  e8200a         call   ovl5_46c5
+  ovl5:3C9F  0BE6F  e8d9f8         call   formed_step_men
+  ovl5:3CA2  0BE72  e8200a         call   formed_show_field
   ovl5:3CA5  0BE75  813ed1a80900   cmp    word ptr [0xa8d1], 9
   ovl5:3CAB  0BE7B  7408           je     0x3cb5
   ovl5:3CAD  0BE7D  813ed1a80500   cmp    word ptr [0xa8d1], 5
   ovl5:3CB3  0BE83  7503           jne    0x3cb8
-  ovl5:3CB5  0BE85  e814f7         call   ovl5_33cc
+  ovl5:3CB5  0BE85  e814f7         call   formed_look_keys
   ovl5:3CB8  0BE88  b8d007         mov    ax, 0x7d0
   ovl5:3CBB  0BE8B  50             push   ax
   ovl5:3CBC  0BE8C  e8c9e4         call   delay
@@ -21047,8 +21176,8 @@ ovl5_3b5b:
   ovl5:3CCE  0BE9E  7e14           jle    0x3ce4
   ovl5:3CD0  0BEA0  33c0           xor    ax, ax
   ovl5:3CD2  0BEA2  8906d2a6       mov    word ptr [0xa6d2], ax
-  ovl5:3CD6  0BEA6  e872f7         call   ovl5_344b
-  ovl5:3CD9  0BEA9  e817fe         call   ovl5_3af3
+  ovl5:3CD6  0BEA6  e872f7         call   formed_pointer
+  ovl5:3CD9  0BEA9  e817fe         call   formed_plan_mark
   ovl5:3CDC  0BEAC  b8a00f         mov    ax, 0xfa0
   ovl5:3CDF  0BEAF  50             push   ax
   ovl5:3CE0  0BEB0  e8a5e4         call   delay
@@ -21060,7 +21189,7 @@ ovl5_3b5b:
   ovl5:3CF2  0BEC2  813ed7a81200   cmp    word ptr [0xa8d7], 0x12
   ovl5:3CF8  0BEC8  7506           jne    0x3d00
   ovl5:3CFA  0BECA  e8acc8         call   beep_low
-  ovl5:3CFD  0BECD  e8aef6         call   ovl5_33ae
+  ovl5:3CFD  0BECD  e8aef6         call   formed_look_line
   ovl5:3D00  0BED0  813ed7a83200   cmp    word ptr [0xa8d7], 0x32
   ovl5:3D06  0BED6  7526           jne    0x3d2e
   ovl5:3D08  0BED8  8b06c3a8       mov    ax, word ptr [0xa8c3]
@@ -21070,7 +21199,7 @@ ovl5_3b5b:
   ovl5:3D13  0BEE3  8b06c3a8       mov    ax, word ptr [0xa8c3]
   ovl5:3D17  0BEE7  48             dec    ax
   ovl5:3D18  0BEE8  890606a5       mov    word ptr [0xa506], ax        ; [A506] selected squad
-  ovl5:3D1C  0BEEC  e89ef7         call   ovl5_34bd
+  ovl5:3D1C  0BEEC  e89ef7         call   formed_move
   ovl5:3D1F  0BEEF  33c0           xor    ax, ax
   ovl5:3D21  0BEF1  50             push   ax
   ovl5:3D22  0BEF2  e81ad0         call   formation_preview
@@ -21128,7 +21257,7 @@ ovl5_3b5b:
   ovl5:3DCF  0BF9F  81064e9e5000   add    word ptr [0x9e4e], 0x50      ; [9E4E] cursor address
   ovl5:3DD5  0BFA5  e85eda         call   save_cursor_background
   ovl5:3DD8  0BFA8  e8ceda         call   draw_cursor
-  ovl5:3DDB  0BFAB  e815fd         call   ovl5_3af3
+  ovl5:3DDB  0BFAB  e815fd         call   formed_plan_mark
   ovl5:3DDE  0BFAE  33c0           xor    ax, ax
   ovl5:3DE0  0BFB0  8906c3a8       mov    word ptr [0xa8c3], ax
   ovl5:3DE4  0BFB4  8906cda8       mov    word ptr [0xa8cd], ax
@@ -21163,7 +21292,7 @@ ovl5_3b5b:
   ovl5:3E35  0C005  3b06c3a8       cmp    ax, word ptr [0xa8c3]
   ovl5:3E39  0C009  740e           je     0x3e49
   ovl5:3E3B  0C00B  e8abc7         call   beep_buzz
-  ovl5:3E3E  0C00E  e83cf6         call   ovl5_347d
+  ovl5:3E3E  0C00E  e83cf6         call   formed_pointer_keys
   ovl5:3E41  0C011  8b06c3a8       mov    ax, word ptr [0xa8c3]
   ovl5:3E45  0C015  8906c5a8       mov    word ptr [0xa8c5], ax
   ovl5:3E49  0C019  e93e01         jmp    0x3f8a
@@ -21172,12 +21301,12 @@ ovl5_3b5b:
   ovl5:3E54  0C024  e93301         jmp    0x3f8a
   ovl5:3E57  0C027  813ed7a83200   cmp    word ptr [0xa8d7], 0x32
   ovl5:3E5D  0C02D  751b           jne    0x3e7a
-  ovl5:3E5F  0C02F  e80c06         call   ovl5_446e
+  ovl5:3E5F  0C02F  e80c06         call   formed_store
   ovl5:3E62  0C032  33c0           xor    ax, ax
   ovl5:3E64  0C034  8906c5a8       mov    word ptr [0xa8c5], ax
   ovl5:3E68  0C038  8906c3a8       mov    word ptr [0xa8c3], ax
-  ovl5:3E6C  0C03C  e8dcf5         call   ovl5_344b
-  ovl5:3E6F  0C03F  e881fc         call   ovl5_3af3
+  ovl5:3E6C  0C03C  e8dcf5         call   formed_pointer
+  ovl5:3E6F  0C03F  e881fc         call   formed_plan_mark
   ovl5:3E72  0C042  b8a00f         mov    ax, 0xfa0
   ovl5:3E75  0C045  50             push   ax
   ovl5:3E76  0C046  e80fe3         call   delay
@@ -21214,8 +21343,8 @@ ovl5_3b5b:
   ovl5:3EC9  0C099  d1e2           shl    dx, 1
   ovl5:3ECB  0C09B  03f2           add    si, dx
   ovl5:3ECD  0C09D  8904           mov    word ptr [si], ax
-  ovl5:3ECF  0C09F  e87304         call   ovl5_4345
-  ovl5:3ED2  0C0A2  e821f6         call   ovl5_34f6
+  ovl5:3ECF  0C09F  e87304         call   formed_numbers
+  ovl5:3ED2  0C0A2  e821f6         call   formed_move_keys
   ovl5:3ED5  0C0A5  813ed7a81e00   cmp    word ptr [0xa8d7], 0x1e
   ovl5:3EDB  0C0AB  7553           jne    0x3f30
   ovl5:3EDD  0C0AD  e8c9c6         call   beep_low
@@ -21248,8 +21377,8 @@ ovl5_3b5b:
   ovl5:3F24  0C0F4  d1e2           shl    dx, 1
   ovl5:3F26  0C0F6  03f2           add    si, dx
   ovl5:3F28  0C0F8  8904           mov    word ptr [si], ax
-  ovl5:3F2A  0C0FA  e81804         call   ovl5_4345
-  ovl5:3F2D  0C0FD  e8c6f5         call   ovl5_34f6
+  ovl5:3F2A  0C0FA  e81804         call   formed_numbers
+  ovl5:3F2D  0C0FD  e8c6f5         call   formed_move_keys
   ovl5:3F30  0C100  813ed7a82500   cmp    word ptr [0xa8d7], 0x25
   ovl5:3F36  0C106  7552           jne    0x3f8a
   ovl5:3F38  0C108  e86ec6         call   beep_low
@@ -21282,15 +21411,16 @@ ovl5_3b5b:
   ovl5:3F7E  0C14E  d1e2           shl    dx, 1
   ovl5:3F80  0C150  03f2           add    si, dx
   ovl5:3F82  0C152  8904           mov    word ptr [si], ax
-  ovl5:3F84  0C154  e8be03         call   ovl5_4345
-  ovl5:3F87  0C157  e86cf5         call   ovl5_34f6
+  ovl5:3F84  0C154  e8be03         call   formed_numbers
+  ovl5:3F87  0C157  e86cf5         call   formed_move_keys
   ovl5:3F8A  0C15A  33c0           xor    ax, ax
   ovl5:3F8C  0C15C  8be5           mov    sp, bp
   ovl5:3F8E  0C15E  5d             pop    bp
   ovl5:3F8F  0C15F  c3             ret
 
-; ---- ovl5_3f90   (called from 1 place)
-ovl5_3f90:
+; ---- formed_read_key   (called from 1 place)
+;      Formation editor: the key pressed or held (or the joystick)
+formed_read_key:
   ovl5:3F90  0C160  55             push   bp
   ovl5:3F91  0C161  8bec           mov    bp, sp
   ovl5:3F93  0C163  83ec02         sub    sp, 2
@@ -21307,7 +21437,7 @@ ovl5_3f90:
   ovl5:3FBB  0C18B  89063105       mov    word ptr [0x531], ax         ; [0531] key pressed (scan code, latched)
   ovl5:3FBF  0C18F  817efe0000     cmp    word ptr [bp - 2], 0
   ovl5:3FC4  0C194  7511           jne    0x3fd7
-  ovl5:3FC6  0C196  e81500         call   ovl5_3fde
+  ovl5:3FC6  0C196  e81500         call   formed_joystick
   ovl5:3FC9  0C199  8946fe         mov    word ptr [bp - 2], ax
   ovl5:3FCC  0C19C  0bc0           or     ax, ax
   ovl5:3FCE  0C19E  7407           je     0x3fd7
@@ -21318,8 +21448,9 @@ ovl5_3f90:
   ovl5:3FDC  0C1AC  5d             pop    bp
   ovl5:3FDD  0C1AD  c3             ret
 
-; ---- ovl5_3fde   (called from 1 place)
-ovl5_3fde:
+; ---- formed_joystick   (called from 1 place)
+;      Formation editor: the joystick as keys
+formed_joystick:
   ovl5:3FDE  0C1AE  55             push   bp
   ovl5:3FDF  0C1AF  8bec           mov    bp, sp
   ovl5:3FE1  0C1B1  83ec02         sub    sp, 2
@@ -21541,8 +21672,9 @@ ovl5_3fde:
   ovl5:4216  0C3E6  5d             pop    bp
   ovl5:4217  0C3E7  c3             ret
 
-; ---- ovl5_4218   (called from 3 places)
-ovl5_4218:
+; ---- formed_load   (called from 3 places)
+;      Formation editor: the 14 men of formation [A8D1] from F (DS:A717 types, A7A3 x, A82F y), standing; 10 sorting passes
+formed_load:
   ovl5:4218  0C3E8  55             push   bp
   ovl5:4219  0C3E9  8bec           mov    bp, sp
   ovl5:421B  0C3EB  83ec02         sub    sp, 2
@@ -21644,19 +21776,20 @@ ovl5_4218:
   ovl5:4311  0C4E1  8946fe         mov    word ptr [bp - 2], ax
   ovl5:4314  0C4E4  817efe0a00     cmp    word ptr [bp - 2], 0xa
   ovl5:4319  0C4E9  7d08           jge    0x4323
-  ovl5:431B  0C4EB  e8d0f5         call   ovl5_38ee
+  ovl5:431B  0C4EB  e8d0f5         call   formed_sort_y
   ovl5:431E  0C4EE  ff46fe         inc    word ptr [bp - 2]
   ovl5:4321  0C4F1  ebf1           jmp    0x4314
   ovl5:4323  0C4F3  8b4604         mov    ax, word ptr [bp + 4]
   ovl5:4326  0C4F6  0bc0           or     ax, ax
   ovl5:4328  0C4F8  7403           je     0x432d
-  ovl5:432A  0C4FA  e81800         call   ovl5_4345
+  ovl5:432A  0C4FA  e81800         call   formed_numbers
   ovl5:432D  0C4FD  8be5           mov    sp, bp
   ovl5:432F  0C4FF  5d             pop    bp
   ovl5:4330  0C500  c3             ret
 
-; ---- ovl5_4331   (called from 1 place)
-ovl5_4331:
+; ---- formed_border   (called from 1 place)
+;      Formation editor: the line over the text rows
+formed_border:
   ovl5:4331  0C501  55             push   bp
   ovl5:4332  0C502  8bec           mov    bp, sp
   ovl5:4334  0C504  b8a400         mov    ax, 0xa4
@@ -21668,12 +21801,13 @@ ovl5_4331:
   ovl5:4343  0C513  5d             pop    bp
   ovl5:4344  0C514  c3             ret
 
-; ---- ovl5_4345   (called from 5 places)
-ovl5_4345:
+; ---- formed_numbers   (called from 5 places)
+;      Formation editor: store the men, formation_preview, "Formation: n" and the numbers of each kind
+formed_numbers:
   ovl5:4345  0C515  55             push   bp
   ovl5:4346  0C516  8bec           mov    bp, sp
   ovl5:4348  0C518  83ec02         sub    sp, 2
-  ovl5:434B  0C51B  e82001         call   ovl5_446e
+  ovl5:434B  0C51B  e82001         call   formed_store
   ovl5:434E  0C51E  33c0           xor    ax, ax
   ovl5:4350  0C520  50             push   ax
   ovl5:4351  0C521  e8ebc9         call   formation_preview
@@ -21740,11 +21874,12 @@ ovl5_4345:
   ovl5:43D7  0C5A7  5d             pop    bp
   ovl5:43D8  0C5A8  c3             ret
 
-; ---- ovl5_43d9   (called from 1 place)
-ovl5_43d9:
+; ---- formed_box   (called from 1 place)
+;      Formation editor: the box at the top left (Formation, Knights, Barbarians, Archers)
+formed_box:
   ovl5:43D9  0C5A9  55             push   bp
   ovl5:43DA  0C5AA  8bec           mov    bp, sp
-  ovl5:43DC  0C5AC  e8c102         call   ovl5_46a0
+  ovl5:43DC  0C5AC  e8c102         call   formed_box_clear
   ovl5:43DF  0C5AF  b83200         mov    ax, 0x32
   ovl5:43E2  0C5B2  50             push   ax
   ovl5:43E3  0C5B3  33c0           xor    ax, ax
@@ -21818,8 +21953,9 @@ ovl5_43d9:
   ovl5:446C  0C63C  5d             pop    bp
   ovl5:446D  0C63D  c3             ret
 
-; ---- ovl5_446e   (called from 4 places)
-ovl5_446e:
+; ---- formed_store   (called from 4 places)
+;      Formation editor: the men back into F at their places ([A8D9]), counting each kind
+formed_store:
   ovl5:446E  0C63E  55             push   bp
   ovl5:446F  0C63F  8bec           mov    bp, sp
   ovl5:4471  0C641  83ec02         sub    sp, 2
@@ -21905,11 +22041,12 @@ ovl5_446e:
   ovl5:454C  0C71C  5d             pop    bp
   ovl5:454D  0C71D  c3             ret
 
-; ---- ovl5_454e   (called from 2 places)
-ovl5_454e:
+; ---- formed_write   (called from 2 places)
+;      Formation editor: sort, then write F (420 bytes from DS:A717) to the WAR disk
+formed_write:
   ovl5:454E  0C71E  55             push   bp
   ovl5:454F  0C71F  8bec           mov    bp, sp
-  ovl5:4551  0C721  e85d00         call   ovl5_45b1
+  ovl5:4551  0C721  e85d00         call   formed_sort_x
   ovl5:4554  0C724  b80500         mov    ax, 5
   ovl5:4557  0C727  50             push   ax
   ovl5:4558  0C728  8b06cea6       mov    ax, word ptr [0xa6ce]        ; [A6CE] file read buffer pointer
@@ -21938,8 +22075,9 @@ ovl5_454e:
   ovl5:4595  0C765  5d             pop    bp
   ovl5:4596  0C766  c3             ret
 
-; ---- ovl5_4597   (called from 1 place)
-ovl5_4597:
+; ---- formed_reload   (called from 1 place)
+;      Formation editor: read F again (the changes not saved are forgotten)
+formed_reload:
   ovl5:4597  0C767  55             push   bp
   ovl5:4598  0C768  8bec           mov    bp, sp
   ovl5:459A  0C76A  b8a401         mov    ax, 0x1a4
@@ -21954,8 +22092,9 @@ ovl5_4597:
   ovl5:45AF  0C77F  5d             pop    bp
   ovl5:45B0  0C780  c3             ret
 
-; ---- ovl5_45b1   (called from 1 place)
-ovl5_45b1:
+; ---- formed_sort_x   (called from 1 place)
+;      Every formation's 14 men in order of x (14 passes of swaps), before F is written
+formed_sort_x:
   ovl5:45B1  0C781  55             push   bp
   ovl5:45B2  0C782  8bec           mov    bp, sp
   ovl5:45B4  0C784  83ec0c         sub    sp, 0xc
@@ -22052,8 +22191,9 @@ ovl5_45b1:
   ovl5:469E  0C86E  5d             pop    bp
   ovl5:469F  0C86F  c3             ret
 
-; ---- ovl5_46a0   (called from 1 place)
-ovl5_46a0:
+; ---- formed_box_clear   (called from 1 place)
+;      Formation editor: clear the box at the top left (50 lines)
+formed_box_clear:
   ovl5:46A0  0C870  06             push   es
   ovl5:46A1  0C871  fc             cld
   ovl5:46A2  0C872  a15909         mov    ax, word ptr [0x959]         ; [0959] video segment (B800h)
@@ -22074,8 +22214,9 @@ ovl5_46a0:
   ovl5:46C3  0C893  07             pop    es
   ovl5:46C4  0C894  c3             ret
 
-; ---- ovl5_46c5   (called from 3 places)
-ovl5_46c5:
+; ---- formed_show_field   (called from 3 places)
+;      Formation editor: copy the field (bytes 36-79, line pairs 25-89) from the picture buffer to the screen
+formed_show_field:
   ovl5:46C5  0C895  06             push   es
   ovl5:46C6  0C896  55             push   bp
   ovl5:46C7  0C897  bb6400         mov    bx, 0x64
@@ -22147,8 +22288,9 @@ decode_picture_rle16:
   ovl5:4748  0C918  5d             pop    bp
   ovl5:4749  0C919  c3             ret
 
-; ---- ovl5_474a   (called from 1 place)
-ovl5_474a:
+; ---- formed_mark   (called from 1 place)
+;      Formation editor: a 4 x 4 magenta mark on the plan
+formed_mark:
   ovl5:474A  0C91A  55             push   bp
   ovl5:474B  0C91B  8bec           mov    bp, sp
   ovl5:474D  0C91D  06             push   es
