@@ -268,6 +268,7 @@
 ; ovl1:5CA3  shoppe_help                Options Shoppe: the key help on rows 23 and 24
 ; ovl1:5D5D  save_options               Write CNF (create, mode 5)
 ; ovl1:6018  campaign_menu_choose       Campaign menu (PG): +/- move the frame between the six scenes, Enter chooses
+; ovl1:61FD  disk_error                 "Unable to use data disk." / "Press any key to continue." on rows 23-24, then wa
 ; ovl1:6238  story_view                 The story scroll: +/- scroll 4 lines, Enter done, Esc back
 ; ovl1:62FA  choose_title               The TITLES scroll: +/- move the pointer two rows, Enter chooses ([A694])
 ; ovl1:655A  titles_help                Rows 23 and 24 for the TITLES scroll
@@ -289,6 +290,7 @@
 ; ovl1:75C5  scroll_unroll              Unroll the scroll down the screen (with clicks)
 ; ovl1:7659  scroll_rollup              Roll the scroll back up
 ; ovl1:76DA  help_plus_minus            Row 24: [+] or [-]
+; ovl1:77D9  war_disk_prompt            "Put WAR disk in drive, press any key" on row 24, then waits for a key
 ; ovl1:7816  make_data_path             Copy file name to DS:0B3E, prefixed with "A:" or "B:" for the data disk
 ; ovl1:7870  load_campaign_file         Read a T file: story, map, armies, opponent, rules
 ; ovl1:79B7  squad_addresses            Map buffer addresses of the squads and flags
@@ -6911,7 +6913,7 @@ ensure_war_disk:
   ovl1:38B8  03AB8  50             push   ax
   ovl1:38B9  03AB9  e822e6         call   clear_text_row
   ovl1:38BC  03ABC  5f             pop    di
-  ovl1:38BD  03ABD  e8193f         call   ovl1_77d9
+  ovl1:38BD  03ABD  e8193f         call   war_disk_prompt
   ovl1:38C0  03AC0  33c0           xor    ax, ax
   ovl1:38C2  03AC2  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
   ovl1:38C6  03AC6  b8ffff         mov    ax, 0xffff
@@ -9373,7 +9375,7 @@ data_disk:
   ovl1:4EFA  050FA  e89ee9         call   ensure_war_disk
   ovl1:4EFD  050FD  817efe0600     cmp    word ptr [bp - 2], 6
   ovl1:4F02  05102  750a           jne    0x4f0e
-  ovl1:4F04  05104  e8f612         call   ovl1_61fd
+  ovl1:4F04  05104  e8f612         call   disk_error
   ovl1:4F07  05107  b80600         mov    ax, 6
   ovl1:4F0A  0510A  8be5           mov    sp, bp
   ovl1:4F0C  0510C  5d             pop    bp
@@ -11460,8 +11462,9 @@ campaign_menu_choose:
   ovl1:61FB  063FB  5d             pop    bp
   ovl1:61FC  063FC  c3             ret
 
-; ---- ovl1_61fd   (called from 1 place)
-ovl1_61fd:
+; ---- disk_error   (called from 1 place)
+;      "Unable to use data disk." / "Press any key to continue." on rows 23-24, then waits for a key
+disk_error:
   ovl1:61FD  063FD  55             push   bp
   ovl1:61FE  063FE  8bec           mov    bp, sp
   ovl1:6200  06400  b81700         mov    ax, 0x17
@@ -13680,7 +13683,7 @@ ovl1_77b8:
   ovl1:77BD  079BD  89062f05       mov    word ptr [0x52f], ax         ; [052F] key held (scan code, 0 none)
   ovl1:77C1  079C1  813ef5a60100   cmp    word ptr [0xa6f5], 1         ; [A6F5] data disk in drive B flag
   ovl1:77C7  079C7  7505           jne    0x77ce
-  ovl1:77C9  079C9  e80d00         call   ovl1_77d9
+  ovl1:77C9  079C9  e80d00         call   war_disk_prompt
   ovl1:77CC  079CC  eb07           jmp    0x77d5
   ovl1:77CE  079CE  b80100         mov    ax, 1
   ovl1:77D1  079D1  8906dca6       mov    word ptr [0xa6dc], ax        ; [A6DC] data drive mode
@@ -13688,8 +13691,9 @@ ovl1_77b8:
   ovl1:77D7  079D7  5d             pop    bp
   ovl1:77D8  079D8  c3             ret
 
-; ---- ovl1_77d9   (called from 2 places)
-ovl1_77d9:
+; ---- war_disk_prompt   (called from 2 places)
+;      "Put WAR disk in drive, press any key" on row 24, then waits for a key
+war_disk_prompt:
   ovl1:77D9  079D9  55             push   bp
   ovl1:77DA  079DA  8bec           mov    bp, sp
   ovl1:77DC  079DC  b81800         mov    ax, 0x18

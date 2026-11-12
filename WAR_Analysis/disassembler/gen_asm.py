@@ -235,6 +235,8 @@ N = {
     ('ovl1', 0x73D1): ('is_capital', 'A to Z?'),
     ('ovl1', 0x740F): ('scroll_key_ok', 'Scroll editor: false for \\ > < ~ @ # $ % ^ & * = + ` (no letter on the scroll)'),
     ('ovl1', 0x7A71): ('write_campaign_file', 'Write the T file of campaign [bp+4] (name from the table at DS:08C1): story, map, armies, opponent, rules'),
+    ('ovl1', 0x61FD): ('disk_error', '"Unable to use data disk." / "Press any key to continue." on rows 23-24, then waits for a key'),
+    ('ovl1', 0x77D9): ('war_disk_prompt', '"Put WAR disk in drive, press any key" on row 24, then waits for a key'),
     ('ovl1', 0x7E09): ('write_titles', 'Write TITLES to the data disk: the 12 file names (DS:08C1) and the 26 x 32 text'),
     ('ovl1', 0x7E9A): ('read_ascii_key', 'BIOS key read: the ASCII code, or 1Bh then the scan code of an extended key'),
     ('ovl5', 0x30F0): ('formation_editor', 'thunk 12. "Teach squads new formations": loads O8 (text) and PL (background)'),

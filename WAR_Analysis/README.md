@@ -524,3 +524,34 @@ rt_01A7 runs the campaign menu's first three items ([A67E]); after any of them m
 - Mode 2: the map cursor moves between x 2Ah-4Eh and y 7Fh-B8h (the field is 100 line pairs down the buffer), a magenta mark shows its place on the plan; on a man (the pointer at one of the eight offsets at O8+5EBh from his corner) a buzz and "Mark"; M picks him up, E ends.
 - Mode 3: the arrows walk the man, A, B and K change his kind (an archer stands 2 bytes further left), M puts him down (formed_store writes the men back to their places in F).
 - formed_write sorts every formation's men by x, then writes the 420 bytes of F to the WAR disk.
+
+## Saved games (S)
+save_game (ovl1:35C4) writes 217Eh bytes of the data segment, DS:8868 to A9E5, after turning the pointer at [8868] into an offset from 0B68h; load_saved_game (ovl1:37E5) reads them back to the same place, puts back the data drive settings ([A6DC], [A6F5]) and the joystick, works out the squads' screen addresses again (squad_addresses) and forgets every destination mark ([A51E] = 9999: the paths stay, the marks no longer show), then campaign_play carries on. The remake keeps the marks. What the file holds (offsets are DS addresses minus 8868h):
+
+| DS | |
+|---|---|
+| 886A | view top (line pairs) |
+| 8B8C | the enemy's cost of each map cell (200 words) |
+| 8F74 | the supply map (200 words, minus = yours) |
+| 9294 | the enemy's worth of each cell (200 words) |
+| 9782 | the path memory (1000 bytes: steps dy x 80 + dx, 99 = end) |
+| 9B6A | the enemy's route memory (200 bytes) |
+| 9D82 | the map (200 tiles) |
+| 9E4A, 9E4C | the cursor |
+| 9E60-9FFF | the squads and flags, in the T file's layout (side, speed, moving speed or 9999, x, y, formation, condition, food, flags, archers, knights, barbarians, spies) |
+| A004 | encounter clocks: -2 none, 1 up to the fight delay, then the side (-1 or 0) once fighting |
+| A02C | each squad's destination cell (-1) |
+| A0B8, A0CC | planned; ticks to the next step |
+| A0F4 | the squad being fought + 1 (0 none) |
+| A11C, A144, A16C, A194, A1BC, A1E4 | seen, path position, route position, has a path, on a route, chance of a kill |
+| A4DC | the opponent's 19 values |
+| A502-A51C | path write position, selected squad, free slot, the enemy's squad, home flag and cell, target cell, attack flag, sighting timer, tick counter, time setting |
+| A51E | each squad's mark address (cursor address + 50h), 9999 none |
+| A67C, A694 | the opponent; the campaign's number |
+| A6E3 | the fight delay (an option) |
+| A6F7-A703 | result code, men captured, men lost, flags captured and taken |
+| A705 | the rules (9 words) |
+| A8C1-A8D7 | trace toggle, the enemy's last distance, squad looked at, destination, and the worths of forts, villages, bridges and flags |
+| A8D9 | each squad's ticks per step |
+
+Not saved: the random number state (DS:0535) and AAE3-AAEF (the food tick, cursor on a squad, the last sighting region).
