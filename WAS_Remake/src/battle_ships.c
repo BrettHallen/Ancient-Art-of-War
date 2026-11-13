@@ -893,12 +893,13 @@ static int collisions(Battle *b, int s)
                 int k;
                 for (;;) {
                     k = b->demo ? 'z' : b_getkey(b);
-                    if (k == 'p' || k == 'P') { b_beep(b); break; }
-                    if (k == 'z' || k == 'Z') { b_beep(b); break; }
+                    if (k == 'p' || k == 'P') { b_beep(b); BLOGN("you Pass: no boarding"); break; }
+                    if (k == 'z' || k == 'Z') { b_beep(b); BLOGN("you Zoom: to the boarding"); break; }
                 }
                 int winner = -1;
                 if (k == 'z' || k == 'Z') {
                     winner = ovl7_boarding(b, o, s);
+                    BLOGN("the boarding is over: %s%s", winner == -1 ? "you left it" : "won by ", winner == -1 ? "" : blog_ship(b, winner));
                     b->menu = 0;
                     was = 0;
                     if (head_w(b, o, 0) || head_e(b, o, 0)) b->y[o] = oy >= by ? by + 5 : by - 5;
@@ -1201,7 +1202,8 @@ static int shot_hits(Battle *b, int s, int x, int y, int look)
             if (hit) {
                 if (b->sails[i] < 5 && (b_random(b) < aim * 30 || b->hull[i] > 4)) b->sails[i]++;
                 else b->hull[i]++;
-                if (b->hull[i] < 8 && b_random(b) < 1) { b->fired_sunk = i; b->hull[i] = 18; }
+                if (b->hull[i] < 8 && b_random(b) < 1) { b->fired_sunk = i; b->hull[i] = 18; BLOGN("a shot blows up %s", blog_ship(b, i)); }
+                else BLOGN("%s's shot hits %s", blog_str(b, b->name[s]), blog_ship(b, i));
                 if (b->sails[i] > 7 || b->hull[i] > 5) b->sails[i] = 7;
                 if (i == b->sel) ovl6_speed_icon(b);
             }
@@ -1245,6 +1247,9 @@ static void splash(Battle *b, int spr, int y, int x, int half)
 int ovl5_fire(Battle *b, int s)
 {
     int hd = b->turning[s] ? b->prev_heading[s] : b->heading[s];
+    if ((b->crew_side[s] ? b->gun_r[s] : b->gun_l[s]) >= 13)
+        BLOGV("%s fires a broadside to %s (elevation %d)", blog_ship(b, s), b->crew_side[s] ? "starboard" : "port",
+              b->crew_side[s] ? b->aim_r_set[s] : b->aim_l_set[s]);
     int side = b->crew_side[s];
     bool big = b->type[s] != 2;
     int range;

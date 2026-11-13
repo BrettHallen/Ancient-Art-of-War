@@ -32,7 +32,9 @@
  *        Tab CGA/16 colours/Hercules, F2 aspect, Alt/Cmd+Enter full screen,
  *        Esc leave the game.
  *
- * Usage: AncientArtOfWarAtSea [HERC] [game-folder]   (HERC: start on a Hercules card, as WAS HERC)
+ * Usage: AncientArtOfWarAtSea [HERC] [--log | --log=verbose] [game-folder]   (HERC: start on a Hercules card, as WAS HERC)
+ *          --log: a debug log of each campaign played (gamelog.h), in the
+ *          remake's folder under Logs/; --log=verbose (or --log verbose) for more
  *        AncientArtOfWarAtSea --screenshots OUTDIR [game-folder]   (write BMPs, no window)
  */
 #include <SDL3/SDL.h>
@@ -41,6 +43,7 @@
 #include "assets.h"
 #include "battle.h"
 #include "campaign.h"
+#include "gamelog.h"
 #include "gfx.h"
 #include "icon.h"
 #include "menu.h"
@@ -402,7 +405,10 @@ static void start_play(App *app)
     const Campaign *c = &app->campaigns[app->viewer.index - SCREEN_MAP_FIRST];
     if (!c->loaded) return;
     app->game = *c;
-    play_start(&app->play, &app->game, &app->ga, (unsigned)SDL_GetTicks());
+    unsigned seed = (unsigned)SDL_GetTicks();
+    app->play.demo = 0;
+    gamelog_begin(&app->play, &app->game, &app->ga, "New campaign (from the viewer)", seed & 0xFF, 0xBB8);
+    play_start(&app->play, &app->game, &app->ga, seed);
     app->playing = true;
     app->in_menu = false;
     app->from_menu = false;
@@ -417,6 +423,23 @@ static void to_menu(App *app)
     app->menu_ns = SDL_GetTicksNS();
 }
 
+/* A new campaign (MENU_START_GAME): its log opens first (gamelog.h) */
+static void begin_game(App *app, const Campaign *c, uint16_t r, uint16_t ptr)
+{
+    app->game = *c;
+    app->play.demo = 0;
+    gamelog_begin(&app->play, &app->game, &app->ga, "New campaign", r, ptr);
+    play_start_rnd(&app->play, &app->game, &app->ga, r, ptr);
+}
+
+/* The demo (MENU_DEMO): not logged; a log still open is closed */
+static void begin_demo(App *app, const Campaign *c, uint16_t r, uint16_t ptr)
+{
+    gamelog_end(&app->play, "Left for the demo");
+    app->game = *c;
+    play_start_demo(&app->play, &app->game, &app->ga, r, ptr);
+}
+
 /* What the menus asked for */
 static bool menu_step(App *app)
 {
@@ -427,15 +450,15 @@ static bool menu_step(App *app)
     menu_random(app->menu, &r, &ptr);
     switch (menu_action(app->menu)) {
     case MENU_START_GAME:
-        app->game = *menu_game(app->menu);
-        play_start_rnd(&app->play, &app->game, &app->ga, r, ptr);
+        begin_game(app, menu_game(app->menu), r, ptr);
         break;
     case MENU_DEMO:
-        app->game = *menu_game(app->menu);
-        play_start_demo(&app->play, &app->game, &app->ga, r, ptr);
+        begin_demo(app, menu_game(app->menu), r, ptr);
         break;
     case MENU_RESUME_GAME:
         if (!menu_resume(app->menu, &app->play, &app->game)) { menu_title(app->menu); return true; }
+        gamelog_begin(&app->play, &app->game, &app->ga, "Saved game resumed (SS on the data disk)", app->play.rnd, app->play.rnd_ptr);
+        gamelog_state(&app->play, "The saved game");
         break;
     case MENU_CONTINUE:
         play_resume(&app->play);
@@ -470,6 +493,8 @@ static void play_step(App *app)
     play_frame(&app->play, app->play.demo ? 0 : held);
     if (app->play.result != PLAY_RUNNING) {
         PlayResult res = app->play.result;
+        if (res == PLAY_SAVE) GLOG(&app->play, GLOG_NORMAL, "The game is saved; the log stays open in case play goes on");
+        else gamelog_end(&app->play, res == PLAY_QUIT ? "You quit the game" : gamelog_result(app->play.result_code));
         if (!app->menu) { app->playing = false; return; }   /* no menus: back to the viewer */
         if (app->play.demo) { end_demo(app); return; }
         to_menu(app);
@@ -571,8 +596,15 @@ int main(int argc, char **argv)
 {
     static App app;   /* large: keep off the stack */
     const char *dir_arg = NULL, *shots = NULL;
+    GameLogLevel log_level = GLOG_OFF;
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--screenshots") == 0 && i + 1 < argc) shots = argv[++i];
+        else if (SDL_strcmp(argv[i], "--log=verbose") == 0) log_level = GLOG_VERBOSE;
+        else if (SDL_strcmp(argv[i], "--log") == 0 || SDL_strcmp(argv[i], "--log=normal") == 0) {
+            log_level = GLOG_NORMAL;
+            if (i + 1 < argc && SDL_strcmp(argv[i + 1], "verbose") == 0) { log_level = GLOG_VERBOSE; i++; }
+            else if (i + 1 < argc && SDL_strcmp(argv[i + 1], "normal") == 0) i++;
+        }
         else if (SDL_strcasecmp(argv[i], "HERC") == 0 || SDL_strcasecmp(argv[i], "--herc") == 0) app.viewer.herc = true;
         else if (argv[i][0] != '-') dir_arg = argv[i];
     }
@@ -607,6 +639,14 @@ int main(int argc, char **argv)
     app.tex_herc = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, HERC_W, HERC_H);
     if (app.tex_herc) SDL_SetTextureScaleMode(app.tex_herc, SDL_SCALEMODE_NEAREST);
     app.ev_folder = SDL_RegisterEvents(1);
+    if (log_level != GLOG_OFF) {
+        char *pref = SDL_GetPrefPath(APP_ORG, APP_NAME);
+        char logs[1100];
+        SDL_snprintf(logs, sizeof logs, "%sLogs/", pref ? pref : "");
+        SDL_free(pref);
+        gamelog_setup(log_level, logs);
+        SDL_Log("Game logs (%s) go to %s", log_level == GLOG_VERBOSE ? "verbose" : "normal", logs);
+    }
 
     if (found) load_from(&app, dir, dir_arg != NULL);
     if (!app.have_assets) ask_for_folder(&app);
@@ -720,6 +760,7 @@ int main(int argc, char **argv)
     }
 
     if (app.battle) { fiber_stop(&app.battle->fiber); SDL_free(app.battle); }
+    gamelog_end(NULL, "The remake was closed.");
     menu_destroy(app.menu);
     if (app.have_assets) assets_free(&app.ga);
     SDL_DestroyTexture(app.up);

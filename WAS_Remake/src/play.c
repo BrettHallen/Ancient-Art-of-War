@@ -14,8 +14,17 @@
  * buf_byte() works them out from the CGA tiles, in both colour modes.
  */
 #include "play_int.h"
+#include "gamelog.h"
 
 #include <SDL3/SDL.h>
+
+/* the debug log (gamelog.h): only reads the game; its words (gamelog_squad,
+   gamelog_cell_of ...) never count work, so the game's timing is untouched */
+#define LOGN(...) GLOG(p, GLOG_NORMAL, __VA_ARGS__)
+#define LOGV(...) GLOG(p, GLOG_VERBOSE, __VA_ARGS__)
+#define SQN(i)    gamelog_squad(p, (i))
+#define CELLN(c)  gamelog_cell(p, (c))
+#define LOGGING   gamelog_on(p, GLOG_NORMAL)
 
 /* ------------------------------------------------------------------ helpers */
 
@@ -616,7 +625,12 @@ static void msg_merchant(Play *p, int i)    /* ovl4_b6e5: a merchant taken */
     int code;
     if (p->sq[i].side == -1) {
         print(p, SO5(p, 0x2C9));             /* NOTICE - MERCHANT LOST */
-        if (rnd(p) < OPP(p, 0x606D) << 3) { p->crown_threat = play_cell(p, i); p->merchant_lost = 1; }
+        if (rnd(p) < OPP(p, 0x606D) << 3) {
+            p->crown_threat = play_cell(p, i);
+            p->merchant_lost = 1;
+            LOGN("ENEMY learns from the lost merchant where to strike: %s becomes its standing target (chance 606D x 8 = %d/128)",
+                 CELLN(p->crown_threat), OPP(p, 0x606D) << 3);
+        }
         code = 99;
     } else {
         code = 98;
@@ -704,6 +718,7 @@ static void wind_change(Play *p, bool start)
         int old = p->wind;
         do p->wind = rnd(p) & 7; while (p->wind > 3);
         if (p->wind == old) return;
+        LOGN("EVENT the wind now blows from the %s", p->wind == 0 ? "North" : p->wind == 1 ? "East" : p->wind == 2 ? "South" : "West");
         p->msg_last = 0;
         if (p->demo) return;                 /* ovl4:C69A: no message in the demo */
         msg_row(p);
@@ -723,6 +738,7 @@ static void wind_change(Play *p, bool start)
 static void end_game(Play *p, int how)
 {
     if (p->mode == PM_END || p->ended) return;
+    LOGN("EVENT the game is over: you %s", how == 1 ? "lost" : "won");
     beep(p);                                 /* play_end_sound */
     p->rules[5] = 80;
     text_rows_add(p, 0);
@@ -773,6 +789,7 @@ static bool crown_check(Play *p, int i)
     if (crown_beside(p, cell, q->side) == -1) return false;
     if (count_at(p, cell, other, true)) return false;
     text_rows_add(p, 0);
+    LOGN("EVENT %s takes %s crown beside it", SQN(i), q->side == -1 ? "the enemy's" : "your");
     msg_crown(p, i, q->side);
     if (q->side == -1) { p->result_code = 3; end_game(p, 0); }
     else { p->result_code = 13; end_game(p, 1); }
@@ -795,12 +812,22 @@ static int end_check(Play *p, int a0, int a1)
         if ((i == a0 || i == a1) && q->has_path) q->speed = q->port_speed & 255;
     }
     /* the opponent's values (step 5 uses them) */
+    int16_t was_opp[OPP_WORDS];
+    SDL_memcpy(was_opp, p->opp, sizeof was_opp);
     if (yours < 3 || (theirs >> 2) > yours || theirs < 3) { OPP(p, 0x6057) = 110; OPP(p, 0x6073) = 1; }
     if (OPP(p, 0x6073) * p->crowns + 2 > theirs) {
         OPP(p, 0x6073) = (int16_t)(p->crowns ? (theirs - 2) / p->crowns : 0);
         if (OPP(p, 0x6073) <= 0) {
             OPP(p, 0x6065) = 90; OPP(p, 0x6067) = 120; OPP(p, 0x6071) = 0; OPP(p, 0x6073) = 1;
         }
+    }
+    if (LOGGING && SDL_memcmp(was_opp, p->opp, sizeof was_opp) != 0) {
+        char t[200] = "";
+        size_t n = 0;
+        for (int k = 0; k < OPP_WORDS && n < sizeof t - 24; k++)
+            if (was_opp[k] != p->opp[k]) n += (size_t)SDL_snprintf(t + n, sizeof t - n, " %04X %d->%d", 0x604D + 2 * k, was_opp[k], p->opp[k]);
+        LOGN("ENEMY changes its plans: your squadrons %d, its %d, crowns %d:%s (6057 forgetting/staying, 6073 crown guard, "
+             "6065 attack margin, 6071 caution)", yours, theirs, p->crowns, t);
     }
     if (a0 != a1 && surv >= 0 && crown_check(p, surv)) return 0;
     mark_flagships(p);
@@ -811,6 +838,8 @@ static int end_check(Play *p, int a0, int a1)
     if (f == 2) { end_game(p, 2); p->result_code = 0; return 0; }
     p->zoomed = false;
     if (yours / theirs >= OPP(p, 0x605B) && yours > 6 && p->mode != PM_END && p->mode != PM_OFFER) {
+        LOGN("ENEMY offers to surrender: your %d squadrons against its %d (ratio %d at least 605B %d, and you more than 6)",
+             yours, theirs, yours / theirs, OPP(p, 0x605B));
         OPP(p, 0x6057) = 110; OPP(p, 0x605B) = 500; OPP(p, 0x6073) = 1;
         beep_message(p);
         clear_row_over(p, 3);
@@ -851,7 +880,10 @@ static bool hit(Play *p, int a0, int way)
     if (sh->type == 3 && rnd(p) < 90) return false;
     if (sh->sails > 4 || rnd(p) < 66) sh->hull++;
     else if (sh->sails < 5) sh->sails++;
+    LOGN("EVENT fight on the map: %s of %s squadron %d is hit (sails %d, hull %d; chance %d/128 x 40/128 an iteration)",
+         gamelog_ship(p, s), p->sq[a0].ctrl == -1 ? "your" : "the enemy's", a0, sh->sails, sh->hull, chance);
     if (sh->hull <= 4) return false;
+    LOGN("EVENT %s is sunk in the fight on the map", gamelog_ship(p, s));
     if (sh->type == 3) msg_flag(p, a0, p->sq[a0].ctrl == -1);
     count_loss(p, s, a0, way);
     sh->sq = -1;
@@ -891,6 +923,7 @@ static int map_battles(Play *p)
                 }
             }
         } else if (q->ctrl == p->fight_delay) {
+            LOGN("EVENT %s fights it out on the map with squadron %d (the fight delay %d is up)", SQN(i), other, p->fight_delay);
             q->ctrl = q->side;
             msg_fighting(p, i);
         } else {
@@ -901,8 +934,12 @@ static int map_battles(Play *p)
         if (rnd(p) >= 40) continue;
         if (!hit(p, other, 0)) continue;
         PSquad *b = &p->sq[other];
+        LOGN("EVENT squadron %d wins the fight on the map: squadron %d has no ships left", i, other);
         b->side = b->ctrl;
-        if (b->ctrl == 0 && rnd(p) < OPP(p, 0x6057) && play_cell(p, other) == p->crown_threat) p->crown_threat = -1;
+        if (b->ctrl == 0 && rnd(p) < OPP(p, 0x6057) && play_cell(p, other) == p->crown_threat) {
+            p->crown_threat = -1;
+            LOGN("ENEMY forgets its standing target after the win there (chance 6057 %d/128)", OPP(p, 0x6057));
+        }
         q->side = q->ctrl;
         msg_battle(p, other, q->side != 0);
         b->partner = 0;
@@ -931,6 +968,7 @@ bool close_to(Play *p, int a, int b)
 /* ovl4_bacd: warship w takes merchant m and its cargo */
 static void take_merchant(Play *p, int m, int w)
 {
+    LOGN("EVENT %s takes %s and its cargo (supplies %d + 10, at most 20)", SQN(w), SQN(m), p->sq[w].supplies);
     msg_merchant(p, m);
     p->sq[w].supplies += 10;
     if (p->sq[w].supplies > 20) p->sq[w].supplies = 20;
@@ -945,6 +983,9 @@ static void meet_merchant(Play *p, int a, int b)
 {
     int w = a, m = b;
     if (p->sq[a].mark == 2) { w = b; m = a; }
+    if (p->sq[w].supplies < 20)
+        LOGN("EVENT %s meets %s: supplies %d -> 20%s", SQN(m), SQN(w), p->sq[w].supplies,
+             p->sq[w].supplies < 10 ? "; the merchant is used up" : "");
     if (p->sq[w].side == -1 && p->sq[w].supplies < 18) msg_resupplied(p, a);
     if (p->sq[w].supplies < 10) {
         p->sq[m].mark = 0;
@@ -959,7 +1000,7 @@ static void meet_merchant(Play *p, int a, int b)
  * met or taken, and sighting. */
 static void encounters(Play *p)
 {
-    bool flag[MAX_SHIPS] = { false };
+    bool flag[MAX_SHIPS] = { false }, logged[MAX_SHIPS] = { false };
     EV(EV_BASE, 2212);
     p->in_encounters = true;
     for (int a = 0; a < MAX_SHIPS; a++) {
@@ -983,6 +1024,8 @@ static void encounters(Play *p)
                 else if (!b_war && a_war) take_merchant(p, b, a);
                 else {
                     flag[b] = flag[a] = true;
+                    LOGN("EVENT encounter: %s meets %s; both stop; they fight it out on the map after %d ticks of countdown "
+                         "unless you Zoom", SQN(a), SQN(b), p->fight_delay);
                     A->partner = b + 1;
                     B->partner = a + 1;
                     msg_encounter(p, a);
@@ -999,7 +1042,11 @@ static void encounters(Play *p)
             bool sighted = (p->dist < v && v < 80) || (v >= 80 && p->dist < 20);
             if (sighted && a_war && b_war) {
                 flag[a] = flag[b] = true;
-                if (!B->seen) msg_sighted(p, b);
+                if (!B->seen) {
+                    if (!logged[b]) LOGN("EVENT %s sighted by your squadron %d (distance 2|dx|+|dy| = %d, visibility %d)", SQN(b), a, p->dist, v);
+                    logged[b] = true;
+                    msg_sighted(p, b);
+                }
             }
         }
     }
@@ -1058,6 +1105,7 @@ void port_call(Play *p, int cell, int side)
     if (!need && p->port_sup[port] > 10) return;
     int src = port_source_of(p, cell);
     if (src == cell || crown) {
+        LOGV("EVENT the port at %s is restocked at once (%s)", CELLN(port), crown ? "beside a crown" : "no merchant can reach it");
         if (p->port_sup[port] == 0) invert(p, rep);   /* as WAS.EXE: the repair port */
         p->port_sup[port] = 20;
         return;
@@ -1087,6 +1135,7 @@ void port_call(Play *p, int cell, int side)
     p->ai_target = cell;
     m->merchant_dest = cell;
     p->ai_sq = k;
+    LOGN("EVENT %s sets out from %s for the port at %s (it has %d left)", SQN(k), CELLN(src), CELLN(port), p->port_sup[port]);
     if (enemy_route(p)) m->routed = 1;
 }
 
@@ -1096,6 +1145,7 @@ static void restock(Play *p)
     for (int k = 0; k < MAX_PORTS && p->port_cell[k] != -1; k++) {
         int cell = p->port_cell[k], port = port_of_cell(p, cell);
         if (port != -1 && p->port_sup[port] <= 2) {
+            LOGV("EVENT tick 10: the port at %s has %d left and calls for a merchant", CELLN(port), p->port_sup[port]);
             redraw_work(p);
             port_call(p, cell, enemy_port_side(p, cell));
         }
@@ -1200,6 +1250,7 @@ static void eat(Play *p, int i)
             if (s->sails < 4 && rnd(p) < 64) s->sails++;
             if (s->hull < 4 && rnd(p) < 64) s->hull++;
         }
+        LOGN("EVENT %s is short of supplies (%d): its ships fall into disrepair", SQN(i), q->supplies);
     }
     if (q->speed != 0) return;
     int cell = play_cell(p, i), other = q->side == -1 ? 0 : -1;
@@ -1211,9 +1262,10 @@ static void eat(Play *p, int i)
         if (port == -1) port = crown_beside(p, cell, 0);
         if (port != -1 && p->port_sup[port] > 0) {
             if (p->rules[1] < 20) {          /* 20 and more: ports never run out */
-                if (--p->port_sup[port] <= 0) { invert(p, port); beep(p); }   /* ovl4_c57c */
+                if (--p->port_sup[port] <= 0) { invert(p, port); beep(p); LOGN("EVENT the port at %s is empty", CELLN(port)); }   /* ovl4_c57c */
                 port_call(p, cell, q->side);
             }
+            LOGV("EVENT %s takes on supplies at %s (%d + 5; the port has %d left)", SQN(i), CELLN(port), q->supplies, p->port_sup[port]);
             q->supplies += 5;
         }
     }
@@ -1230,11 +1282,13 @@ static void eat(Play *p, int i)
             PShip *sh = &p->ship[s];
             if (sh->sails == 0 && sh->hull == 0) continue;
             if (p->rules[1] < 20) {
-                if (--p->port_sup[port] <= 0) { invert(p, port); beep(p); }
+                if (--p->port_sup[port] <= 0) { invert(p, port); beep(p); LOGN("EVENT the port at %s is empty", CELLN(port)); }
                 port_call(p, cell, q->side);
             }
             if (sh->sails) sh->sails--;
             if (sh->hull) sh->hull--;
+            LOGV("EVENT %s is repaired at %s: sails %d, hull %d (chance 64AD %d/128)", gamelog_ship(p, s), CELLN(port), sh->sails, sh->hull,
+                 p->rules[0]);
         }
     }
 }
@@ -1248,13 +1302,21 @@ static void promote(Play *p, int lost)
     for (int k = 0; k < 3; k++) {
         int s = p->list[k];
         if (s == -1 || s == lost) continue;
-        if (p->ship[s].type == 1) { p->ship[s].type = 3; break; }
+        if (p->ship[s].type == 1) {
+            p->ship[s].type = 3;
+            LOGN("EVENT %s becomes the squadron's flagship", gamelog_ship(p, s));
+            break;
+        }
     }
 }
+
+static const char *t_name_water(int t) { return (t >= 10 && t <= 12) || (t >= 16 && t <= 18) ? "rough water" : "shallow water"; }
 
 /* ovl4_9d7e: ship s (list[k]) of squadron i is lost in rough or shallow water */
 static int lost_at_sea(Play *p, int k, int s, int cell, int i)
 {
+    LOGN("EVENT %s of %s is lost in %s (rule %s)", gamelog_ship(p, s), SQN(i), t_name_water(p->map[cell]),
+         p->ship[s].type == 2 ? "64B3, rough water" : "64B9, shallow water");
     count_loss(p, s, i, 0);
     msg_sunk(p, s, p->map[cell], i);
     promote(p, s);
@@ -1364,6 +1426,8 @@ static int move_squadrons(Play *p)
         int st = path_at(p, q->path_pos);
         if (q->path_pos >= 0 && q->path_pos < PATH_SIZE) p->path[q->path_pos] = 0;
         if (st == PATH_END) {
+            if (friend_war) LOGN("EVENT %s has sailed to the end of its path and anchors", SQN(i));
+            else LOGV("EVENT %s has sailed to the end of its path and anchors", SQN(i));
             q->dest = NO_DEST;
             q->port_speed = 0;
             q->speed = 0;
@@ -1398,6 +1462,7 @@ enum { TS_START = 1, TS_ENEMY = 2, TS_MOVE = 6, TS_EAT = 7, TS_REST = 8 };
 static bool tick_part(Play *p, int s)
 {
     if (s == TS_START) {
+        gamelog_tick(p);
         p->tick_count = 0;
         p->ticks++;
         if (++p->sq_turn >= MAX_SHIPS) p->sq_turn = 0;
@@ -1431,6 +1496,7 @@ static bool tick_part(Play *p, int s)
         if (--p->msg_timer < 0) p->msg_last = 0;
         p->ticks = 0;
         enemy_strength_map(p);
+        gamelog_grid(p, "The strength map worked out again (tick 31; DS:4645: the enemy's +, yours -, -7 your flagship):", p->strength);
     }
     return false;
 }
@@ -1604,6 +1670,7 @@ static void end_trace(Play *p)
     PSquad *q = &p->sq[p->sel];
     beep(p);
     if (q->path_pos == p->path_w) {          /* nothing traced */
+        LOGN("YOU Mark with nothing traced: %s stays", SQN(p->sel));
         cancel_path(p);
         p->mode = PM_NORMAL;
         cmd_normal(p);
@@ -1623,6 +1690,12 @@ static void end_trace(Play *p)
     q->countdown = 2;
     int h = heading_of(path_at(p, q->path_pos + 1));
     q->heading = h < 0 || h > 15 ? 0 : h;
+    if (LOGGING) {
+        int n = 0;
+        for (int k = q->path_pos, g = 0; g < PATH_SIZE && p->path[k] != PATH_END && p->path[k] != 0; k = next_slot(k), g++) n++;
+        LOGN("YOU Mark: %s sails at full sail to %d,%d (%s): %d steps", SQN(p->sel), p->cx, p->cy,
+             CELLN(((p->cy + 1) / 10) * 10 + (p->cx >> 3)), n);
+    }
     cmd_normal(p);
 }
 
@@ -1631,6 +1704,7 @@ static void start_trace(Play *p)
 {
     PSquad *q = &p->sq[p->sel];
     if (q->side != -1 || q->partner) return;
+    LOGN("YOU Move: trace a path for %s%s", SQN(p->sel), q->has_path ? " (its old path is cancelled)" : "");
     beep(p);
     if (q->has_path) cancel_path(p);
     int start = find_free_run(p);
@@ -1730,6 +1804,8 @@ static void dj_start(Play *p, bool join)
     p->dj_pos = join ? 3 : 0;
     p->back_mode = p->mode;
     p->mode = PM_DETACH;
+    if (join) LOGN("YOU Join: %s with %s (supplies shared: %d)", SQN(p->sel), SQN(p->free_slot), a->supplies);
+    else LOGN("YOU Detach: %s, into the empty slot %d (supplies shared: %d)", SQN(p->sel), p->free_slot, a->supplies);
 }
 
 /* the marked ship must be one that can move: ovl4:A655 */
@@ -1799,6 +1875,8 @@ static void dj_key(Play *p, int key)
             clear_paths(p, p->sel);
             p->sq[p->sel].used = false;
         } else p->over_squad = false;
+        LOGN("YOU End: now %s; %s", p->sq[p->sel].used ? SQN(p->sel) : "the first squadron is gone",
+             p->sq[p->free_slot].used ? SQN(p->free_slot) : "the second squadron is gone");
         clear_panel(p);
         p->mode = p->back_mode;
         mark_flagships(p);
@@ -1863,6 +1941,7 @@ static void info_key(Play *p, int key)
     PSquad *q = &p->sq[p->sel];
     if (key == PK_S && commandable(p, p->sel) && q->has_path && !q->partner) {
         if (++q->speed > 2) q->speed = 0;
+        LOGN("YOU Speed: %s now %s", SQN(p->sel), q->speed == 0 ? "anchored" : q->speed == 1 ? "at half sail" : "at full sail");
         show_speed(p);
         q->port_speed = q->speed;
         beep(p);
@@ -1947,16 +2026,19 @@ static void battle_ask(Play *p, int kind)
     }
     p->battle_shore = shore;
     p->battle_req = kind;
+    if (kind == 1) LOGN("YOU Zoom: %s against %s, to the sea battle (shore %d)", SQN(p->sel), SQN(p->sq[p->sel].partner - 1), shore);
+    else LOGN("YOU Practice: %s, to the sea battle (shore %d)", SQN(p->sel), shore);
 }
 
 static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
 {
     if (p->mode == PM_PROMPT) {
         if (p->ended) {
-            if (key == PK_ENTER) p->result = p->outcome;
+            if (key == PK_ENTER) { p->result = p->outcome; LOGN("YOU Enter: the game ends"); }
             else cursor_input(p, key);
         } else if (p->prompt_surrender) {       /* campaign_play ovl4:7AB1 */
             if (key == PK_Y) {
+                LOGN("YOU surrender (Y)");
                 p->prompt_surrender = false;
                 text_reset(p);
                 clear_row(p, 24);
@@ -1965,15 +2047,18 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
                 p->outcome = PLAY_LOST;
                 p->result_code = 11;
             } else if (key == PK_N) {
+                LOGN("YOU don't surrender after all (N)");
                 p->prompt_surrender = false;
                 p->mode = PM_NORMAL;
                 cmd_normal(p);
             }
         } else if (p->prompt_quit) {            /* the remake's Esc */
             if (key == PK_Y) {
+                LOGN("YOU quit to the title page (Y)");
                 p->prompt_quit = false;
                 p->result = PLAY_QUIT;
             } else if (key == PK_N || key == PK_ESC) {
+                LOGN("YOU carry on (%s)", gamelog_key(key));
                 p->prompt_quit = false;
                 p->mode = PM_NORMAL;
                 cmd_normal(p);
@@ -1992,6 +2077,7 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
         return;
     }
     if (key == PK_ESC && (p->mode == PM_NORMAL || p->mode == PM_SQUAD)) {   /* the remake: leave the game */
+        LOGN("YOU Esc: quit to the title page?");
         text_reset(p);
         clear_row(p, 24);
         print(p, "Quit to the title page? (Y or N)");
@@ -2001,6 +2087,7 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
     }
     if (p->mode == PM_NORMAL) {
         if (key == PK_ALT_S) {                  /* Save: campaign_input ovl4:7BB8 returns 100 */
+            LOGN("YOU save the game (Alt+S)");
             beep(p);
             clear_row(p, 24);
             tpos(p, 24, 10);
@@ -2009,6 +2096,7 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
             return;
         }
         if (key == PK_S) {                      /* Surrender: campaign_play ovl4:7A83 asks */
+            LOGN("YOU Surrender?");
             beep(p);
             clear_row(p, 23);
             clear_row(p, 24);
@@ -2020,9 +2108,12 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
         if (key == PK_T) {                      /* Time: slow, medium, fast, faster */
             p->time_div >>= 2;
             if (p->time_div < 1) p->time_div = 64;
+            LOGN("YOU Time: %s (a tick each %d iterations)", p->time_div == 64 ? "slow" : p->time_div == 16 ? "medium" :
+                 p->time_div == 4 ? "fast" : "faster", p->time_div);
             beep(p);
             show_time(p);
         } else if (key == PK_F) {               /* Fleet */
+            LOGV("YOU Fleet");
             show_fleet(p);
             return;
         } else if (key == PK_C && p->msg_rows) {   /* Clear the messages */
@@ -2030,6 +2121,7 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
             text_reset(p);
             show_clear(p);
         } else if (key == PK_P) {               /* Pause */
+            LOGV("YOU Pause");
             beep(p);
             clear_row(p, 24);
             print(p, DS(p, 0x1673));            /* Press any key to continue. */
@@ -2038,7 +2130,7 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
         }
     } else if (p->mode == PM_SQUAD) {
         const PSquad *q = &p->sq[p->sel];
-        if (key == PK_I) { show_info(p); return; }
+        if (key == PK_I) { LOGV("YOU Info: %s", SQN(p->sel)); show_info(p); return; }
         if (key == PK_D && p->free_slot > -1 && q->side == -1 && !q->partner) {   /* Detach */
             list_ships(p, p->sel);
             if (p->list[1] != -1) { dj_start(p, false); return; }
@@ -2056,6 +2148,7 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
         if (key == PK_M && q->side == -1 && !q->partner) { start_trace(p); return; }
     } else if (p->mode == PM_TRACE) {
         if (key == PK_C) {                      /* Cancel */
+            LOGN("YOU Cancel: %s stays where it is", SQN(p->sel));
             beep(p);
             cancel_path(p);
             p->mode = PM_NORMAL;
@@ -2077,11 +2170,13 @@ static void start_rest(Play *p);
 static void offer_key(Play *p, int key)
 {
     if (key == PK_Y) {
+        LOGN("YOU accept the enemy's surrender (Y)");
         beep(p);
         print(p, DS(p, 0x1DA));              /* Yes */
         p->result_code = 1;
         if (p->offer_ends) { p->outcome = PLAY_WON; p->result = PLAY_WON; return; }
     } else if (key == PK_N) {
+        LOGN("YOU refuse the enemy's surrender (N)");
         beep(p);
         print(p, DS(p, 0x1DE));              /* No */
     } else return;
@@ -2144,6 +2239,8 @@ static void promote_flagship(Play *p, int side)
             if (rnd(p) < 115) continue;
             if (!frigates && sh->type == 2) continue;
             sh->type = 3;
+            LOGN("EVENT %s has no flagship and no crown: %s becomes a flagship", side == -1 ? "your side" : "the enemy",
+                 gamelog_ship(p, s));
             return;
         }
         if (rnd(p) < 40) frigates = true;
@@ -2254,6 +2351,7 @@ static void start(Play *p, const Campaign *c, const GameAssets *ga, uint16_t see
         else for (int off = 160; off < 320; off += 80)
             if (land_byte(buf_byte(p, sq_addr(p, i) + off))) gone = true;
         if (!gone) continue;
+        LOGN("EVENT %s was put on land: it is lost", SQN(i));
         q->used = false;
         list_ships(p, i);
         for (int k = 0; k < 3 && p->list[k] != -1; k++) p->ship[p->list[k]].sq = -1;
@@ -2265,6 +2363,7 @@ static void start(Play *p, const Campaign *c, const GameAssets *ga, uint16_t see
     end_check(p, p->battle_b, p->battle_a);
     if (p->mode == PM_OFFER) p->offer_at_start = true;   /* the rest comes after the answer */
     else start_rest(p);
+    gamelog_state(p, "The game at the start");
     load_pause(p, before, 2);                /* play_end_sound twice (ovl4:76EC, 7800) */
 }
 
@@ -2308,6 +2407,7 @@ void play_after_battle(Play *p, bool practice, bool left)
     coast_init(p);
     enemy_strength_map(p);
     enemy_port_values(p);
+    gamelog_grid(p, "The strength map worked out again (campaign play starts again):", p->strength);
     if (!left) end_check(p, p->battle_b, p->battle_a);
     if (p->mode != PM_END && p->battle_a >= 0 && p->sq[p->battle_a].used && p->sq[p->battle_a].side == 0 && !left) {
         p->ai_sq = p->battle_a;              /* ovl4_ed83: the enemy's squadron takes on ships beside it */
@@ -2418,6 +2518,7 @@ static void tick_go(Play *p, int held, uint32_t *before);
 void play_frame(Play *p, int held)
 {
     if (p->result != PLAY_RUNNING) return;
+    gamelog_iteration(p);
     if (p->stall > 0) { p->stall--; return; }   /* the key waits, as in the keyboard buffer */
     p->hidden = false;
     uint32_t before[EV_COUNT];

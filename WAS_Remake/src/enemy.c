@@ -21,8 +21,15 @@
  * bold and how careful the enemy is.
  */
 #include "play_int.h"
+#include "gamelog.h"
 
 #include <stdlib.h>
+
+/* the debug log (gamelog.h): only reads the game, never counts work */
+#define LOGN(...) GLOG(p, GLOG_NORMAL, __VA_ARGS__)
+#define LOGV(...) GLOG(p, GLOG_VERBOSE, __VA_ARGS__)
+#define SQN(i)    gamelog_squad(p, (i))
+#define CELLN(c)  gamelog_cell(p, (c))
 
 /* the work arrays, as word offsets into Play.area (DS:3F3D) */
 enum { A_CAME = 0, A_COST = 200, A_COAST = 400, A_DANGER = 600, A_QUEUE = 800, A_STRENGTH = 900, A_PVALUE = 1100 };
@@ -332,6 +339,8 @@ int enemy_route(Play *p)
     WaterCost w = water_costs(p);
     int rough_cost = w.rough_cost;
     if (w.rough && w.shallow) rough_cost /= 2;
+    LOGV("ENEMY looks for a route for squadron %d from %s to %s%s%s", SQ, CELLN(start), CELLN(p->ai_target),
+         w.rough ? " (keeping out of rough water)" : "", w.shallow ? " (keeping out of shallow water)" : "");
     for (int c = 0; c < NUM_CELLS; c++) { COST(c) = 0; CAME(c) = 0; DANGER(c) = 0; }
     EV(EV_C200, 2 * NUM_CELLS);
     EV(EV_C200, NUM_CELLS);
@@ -383,7 +392,10 @@ int enemy_route(Play *p)
             if (d < 1) d += 8;
         }
     }
-    if (!found) return 0;
+    if (!found) {
+        LOGN("ENEMY finds no route for squadron %d from %s to %s", SQ, CELLN(start), CELLN(p->ai_target));
+        return 0;
+    }
     /* back from the target to the start */
     p->qn = 0;
     int cell = p->ai_target;
@@ -413,11 +425,17 @@ int enemy_route(Play *p)
     }
     route_set(p, pos, PATH_END);
     Q->has_route = 1;
+    int8_t all[32];
+    int all_n = 0;
+    if (gamelog_on(p, GLOG_NORMAL))
+        for (int k = Q->route_pos; k < pos && all_n < 32; k++) all[all_n++] = (int8_t)route_at(p, k);
     if (n > 1) {
         int m = Q->route_pos + (n >> 1);
         route_set(p, m++, PATH_END);
         while (m <= pos) route_set(p, m++, 0);
     }
+    LOGN("ENEMY route for squadron %d from %s to %s: %d cells (cost %d), sails the first %d: %s", SQ, CELLN(start),
+         CELLN(p->ai_target), p->qn, p->cost[p->ai_target], n > 1 ? n >> 1 : n, gamelog_dirs(all, n > 1 ? n >> 1 : n));
     return 1;
 }
 
@@ -564,14 +582,18 @@ void enemy_join(Play *p)
     int other = join_partner(p, SQ) - 1;
     if (other < 0) return;
     list_ships(p, other);
+    int moved = 0;
     for (int k = 1, j = 0; k < 3; k++) {
         if (mine[k] != -1) continue;
         if (p->list[j] == -1) break;
         p->ship[p->list[j]].sq = SQ;
         j++;
+        moved++;
     }
     list_ships(p, other);
     if (p->list[0] == -1) remove_squadron(p, other);
+    if (moved) LOGN("ENEMY squadron %d takes %d ship%s from squadron %d close by: now %s%s", SQ, moved, moved > 1 ? "s" : "", other,
+                    SQN(SQ), p->sq[other].used ? "" : "; the other squadron is gone");
 }
 
 /* ------------------------------------------------------------------ orders */
@@ -612,37 +634,67 @@ static void choose_target(Play *p)
             if ((n > 3 && n < 7 && col == 0) || ((n > 7 || n < 3) && col == 9)) continue;
             n = dir_off(p, n) + mycell;
             if (n < 0 || n > 199) continue;
-            if (tile_sea(p->map[n])) { set_target(p, n); return; }
+            if (tile_sea(p->map[n])) {
+                LOGN("ENEMY %s is in a cell that is all land: out to the sea at %s", SQN(SQ), CELLN(n));
+                set_target(p, n);
+                return;
+            }
         }
+        LOGN("ENEMY %s is in a cell that is all land: tries %s", SQN(SQ), CELLN(n));
         set_target(p, n);
         return;
     }
     bool hungry = Q->supplies < OPP(p, 0x605D);
     if (hungry && p->ports_supply != 0) {
         int t = port_search(p, 75);
-        if (t != -1) { set_target(p, t); return; }
+        if (t != -1) {
+            LOGN("ENEMY sends %s for supplies to %s (supplies %d under 605D %d)", SQN(SQ), CELLN(t), Q->supplies, OPP(p, 0x605D));
+            set_target(p, t);
+            return;
+        }
+        LOGV("ENEMY %s is hungry but finds no port to serve it", SQN(SQ));
     }
     if (worst_damage(p, SQ) > OPP(p, 0x605F) && !hungry && p->ports_repair != 0) {
         int t = port_search(p, 74);
-        if (t != -1) { set_target(p, t); return; }
+        if (t != -1) {
+            LOGN("ENEMY sends %s for repairs to %s (worst damage %d over 605F %d)", SQN(SQ), CELLN(t), gamelog_worst(p, SQ),
+                 OPP(p, 0x605F));
+            set_target(p, t);
+            return;
+        }
+        LOGV("ENEMY %s is damaged but finds no port to repair it", SQN(SQ));
     }
     if (bound_for(p, p->crown_threat) >= OPP(p, 0x604D) && rnd(p) < 60) {
+        if (p->crown_threat != -1) LOGN("ENEMY drops its standing target %s: enough squadrons are bound for it (604D %d; chance 60/128)",
+             CELLN(p->crown_threat), OPP(p, 0x604D));
         p->ai_dropped = p->crown_threat;
         p->crown_threat = -1;
     }
     if (p->crown_threat == -1) {
         int best = -860;
+        bool special = false;                /* the log: your crown or flagship chosen outright */
         for (int c = 0; c < NUM_CELLS; c++) {
             EV(EV_C200, 1);
             if (tile_land(p->map[c]) || c == p->ai_dropped) continue;
             if (STRENGTH(c) == 0 && PVALUE(c) == 0 && rnd(p) < 100) continue;
-            if (PVALUE(c) == 160 && bound_for(p, c) < OPP(p, 0x6073)) { set_target(p, c); return; }
+            if (PVALUE(c) == 160 && bound_for(p, c) < OPP(p, 0x6073)) {
+                LOGN("ENEMY sends %s to guard its crown at %s (fewer than 6073 %d squadrons bound for it)", SQN(SQ), CELLN(c),
+                     OPP(p, 0x6073));
+                set_target(p, c);
+                return;
+            }
             if (PVALUE(c) >= 250 && rnd(p) < OPP(p, 0x6075) && p->ports_supply == 0 && p->ports_repair == 0) {
                 p->crown_threat = c;
+                special = true;
+                LOGN("ENEMY new standing target: your crown, beside %s (chance 6075 %d/128, neither side has ports)", CELLN(c),
+                     OPP(p, 0x6075));
                 break;
             }
             if (STRENGTH(c) == -7 && rnd(p) < OPP(p, 0x6075) && p->ports_supply == 0 && p->ports_repair == 0) {
                 p->crown_threat = c;
+                special = true;
+                LOGN("ENEMY new standing target: your flagship at %s (chance 6075 %d/128, neither side has ports)", CELLN(c),
+                     OPP(p, 0x6075));
                 break;
             }
             if (STRENGTH(c) > 0 && rnd(p) < 94) continue;
@@ -651,17 +703,28 @@ static void choose_target(Play *p)
             if (OPP(p, 0x6071) > v && rnd(p) < 90) continue;
             if (rnd(p) < 30 || PVALUE(c) > 200) v += PVALUE(c) / 2;
             if (rnd(p) < OPP(p, 0x6061)) v -= rnd(p);
+            LOGV("ENEMY   %s: strength %d, port value %d: scores %d%s", CELLN(c), STRENGTH(c), PVALUE(c), v, v > best ? " (best so far)" : "");
             if (v > best) { best = v; p->crown_threat = c; }
         }
-        if (p->crown_threat == mycell) return;
+        if (p->crown_threat != -1 && !special)
+            LOGN("ENEMY new standing target for %s: %s, the best score %d (your strength there and its own against 6071 %d, "
+                 "half the port value at times, randomness 6061 %d)", SQN(SQ), CELLN(p->crown_threat), best, OPP(p, 0x6071), OPP(p, 0x6061));
+        if (p->crown_threat == mycell) { LOGV("ENEMY %s stays: the best target is its own cell", SQN(SQ)); return; }
         if (p->crown_threat == -1) p->ai_dropped = -1;
-        if (p->crown_threat == -1 && rnd(p) < 60 && p->ports_supply != 0) p->crown_threat = port_search(p, 75);
-        if (p->crown_threat == -1 && rnd(p) < 60 && p->ports_repair != 0) p->crown_threat = port_search(p, 74);
-        if (p->crown_threat == -1) return;
+        if (p->crown_threat == -1 && rnd(p) < 60 && p->ports_supply != 0) {
+            p->crown_threat = port_search(p, 75);
+            if (p->crown_threat != -1) LOGN("ENEMY finds nothing worth going for: a supply port at %s instead", CELLN(p->crown_threat));
+        }
+        if (p->crown_threat == -1 && rnd(p) < 60 && p->ports_repair != 0) {
+            p->crown_threat = port_search(p, 74);
+            if (p->crown_threat != -1) LOGN("ENEMY finds nothing worth going for: a repair port at %s instead", CELLN(p->crown_threat));
+        }
+        if (p->crown_threat == -1) { LOGV("ENEMY finds nothing worth going for: %s stays", SQN(SQ)); return; }
         p->ai_reverse = 1;
         p->merchant_lost = 1;
         if (rnd(p) < 64) p->ai_reverse = 0;
     } else if (rnd(p) < 25) p->merchant_lost = 0;
+    LOGN("ENEMY sends %s to its standing target %s", SQN(SQ), CELLN(p->crown_threat));
     set_target(p, p->crown_threat);
 }
 
@@ -672,31 +735,38 @@ static void new_orders(Play *p)
 {
     int cell = play_cell(p, SQ);
     bool crown = crown_beside(p, cell, -1) != -1 || crown_beside(p, cell, 0) != -1;
-    if (rnd(p) > OPP(p, 0x6057) >> 3 && p->merchant_lost == 0 && PVALUE(cell) != 0) return;
+    if (rnd(p) > OPP(p, 0x6057) >> 3 && p->merchant_lost == 0 && PVALUE(cell) != 0) {
+        LOGV("ENEMY %s simply stays by the port or crown (random over 6057/8 = %d)", SQN(SQ), OPP(p, 0x6057) >> 3);
+        return;
+    }
     if (PVALUE(cell) != 0 && OPP(p, 0x6057) != 115) {
         bool flag = has_flagship(p, SQ) && (rnd(p) > OPP(p, 0x6057) >> 3 || rnd(p) > 5);
         int dmg = worst_damage(p, SQ);
         int port = supply_port(p, cell, true);
         if (port != -1 || crown) {
             if (Q->supplies < 18) {
-                if (port_ok(p, port) || crown) return;
-            } else if (flag && OPP(p, 0x605F) >= dmg) return;
+                if (port_ok(p, port) || crown) { LOGV("ENEMY %s stays to take on supplies (%d)", SQN(SQ), Q->supplies); return; }
+            } else if (flag && OPP(p, 0x605F) >= dmg) { LOGV("ENEMY %s stays: a flagship squadron in port", SQN(SQ)); return; }
         }
         port = repair_port(p, cell, true);
         if (port != -1 || crown) {
             if (dmg != 0) {
-                if (Q->supplies > 8 && (port_ok(p, port) || crown)) return;
-            } else if (flag && Q->supplies >= OPP(p, 0x605D)) return;
+                if (Q->supplies > 8 && (port_ok(p, port) || crown)) { LOGV("ENEMY %s stays for repairs (damage %d)", SQN(SQ), dmg); return; }
+            } else if (flag && Q->supplies >= OPP(p, 0x605D)) { LOGV("ENEMY %s stays: a flagship squadron in port", SQN(SQ)); return; }
         }
         for (int k = 0; k < MAX_SHIPS; k++) {
             const PSquad *t = &p->sq[k];
             EV(EV_S40, 1);
             if (t->side == 0 || !t->used || t->mark == 2) continue;
-            if (close_to(p, SQ, k)) return;
+            if (close_to(p, SQ, k)) { LOGV("ENEMY %s stays in port: your squadron %d is close", SQN(SQ), k); return; }
         }
     }
-    if (crown_beside(p, cell, -1) != -1 && count_at(p, cell, 0, false) <= OPP(p, 0x6073)) return;
+    if (crown_beside(p, cell, -1) != -1 && count_at(p, cell, 0, false) <= OPP(p, 0x6073)) {
+        LOGV("ENEMY %s guards its crown (no more than 6073 %d of its squadrons there)", SQN(SQ), OPP(p, 0x6073));
+        return;
+    }
     if (cell != p->crown_threat) choose_target(p);
+    else LOGV("ENEMY %s stays: it is at its standing target", SQN(SQ));
 }
 
 /* ovl4_cfef: an anchored squadron on a route: to the middle of its cell,
@@ -708,6 +778,7 @@ static void follow_route(Play *p)
     p->ai_range = 5;
     int my = cell_mid_y(p, cell), mx = cell_mid_x(p, cell);
     if (!tile_land(map_at(p, cell)) && (Q->x != mx || Q->y != my)) {
+        LOGV("ENEMY %s sails to the middle of its cell", SQN(SQ));
         sail_to(p, mx, my, p->ai_range);
         return;
     }
@@ -722,6 +793,9 @@ static void follow_route(Play *p)
             if (mark_of(p, t) != 0) p->ai_range <<= 1;
             if (p->ai_range > 8) p->ai_range = 8;
             int tx = t < MAX_SHIPS ? p->sq[t].x : 0, ty = t < MAX_SHIPS ? p->sq[t].y : 0;
+            LOGN("ENEMY %s attacks %s, %d steps away (strength %d + 6065 %d against %d; attacks within 6063 x 8 = %d)", SQN(SQ),
+                 t < MAX_SHIPS ? SQN(t) : "nothing", p->ai_range, gamelog_strength(p, SQ), OPP(p, 0x6065),
+                 gamelog_strength(p, t < MAX_SHIPS ? t : 0), OPP(p, 0x6063) << 3);
             clear_paths(p, SQ);
             route_set(p, Q->route_pos, PATH_END);
             int v = sail_to(p, tx, ty, p->ai_range) ? 2 : 0;
@@ -733,26 +807,33 @@ static void follow_route(Play *p)
     }
     p->ai_range = 5;
     int d = route_at(p, Q->route_pos);
+    const char *why = "stops at";           /* the log */
     for (;;) {
         route_set(p, Q->route_pos, 0);
         if (d != PATH_END && d != 0) {
             /* the next leg of the route */
             int n = dir_off(p, d) + cell;
             p->ai_range = 30;
-            if (!sail_to(p, cell_mid_x(p, n), cell_mid_y(p, n), p->ai_range)) route_set(p, Q->route_pos, d);
-            else Q->route_pos++;
+            if (!sail_to(p, cell_mid_x(p, n), cell_mid_y(p, n), p->ai_range)) {
+                route_set(p, Q->route_pos, d);
+                LOGV("ENEMY %s waits: the path ring is full", SQN(SQ));
+            } else {
+                Q->route_pos++;
+                LOGV("ENEMY %s sails on along its route to %s", SQN(SQ), CELLN(n));
+            }
             return;
         }
         int dest = Q->merchant_dest;
-        if (cell == dest) break;
-        if (!(STRENGTH(dest) < 0 || Q->mark == 2) && Q->routed == 2) break;
-        if (Q->supplies < OPP(p, 0x605D) && p->ports_supply != 0) break;
-        if (worst_damage(p, SQ) > OPP(p, 0x605F) && p->ports_repair != 0) break;
+        if (cell == dest) { why = "has arrived at"; break; }
+        if (!(STRENGTH(dest) < 0 || Q->mark == 2) && Q->routed == 2) { why = "finds your squadrons gone from"; break; }
+        if (Q->supplies < OPP(p, 0x605D) && p->ports_supply != 0) { why = "is hungry (605D): gives up going for"; break; }
+        if (worst_damage(p, SQ) > OPP(p, 0x605F) && p->ports_repair != 0) { why = "is damaged (605F): gives up going for"; break; }
         p->ai_target = dest;
-        if (!enemy_route(p)) break;
+        if (!enemy_route(p)) { why = "can't get to"; break; }
         d = route_at(p, Q->route_pos);
-        if (d == PATH_END || d == 0) break;
+        if (d == PATH_END || d == 0) { why = "can't get further toward"; break; }
     }
+    LOGN("ENEMY %s %s %s", SQN(SQ), why, CELLN(Q->merchant_dest));
     /* arrived (or giving up) */
     redraw_work(p);
     Q->port_speed = 0;
@@ -775,6 +856,8 @@ static void follow_route(Play *p)
             if (p->port_sup[r] == 0) invert(p, r);
             p->port_sup[r] = p->rules[1];
         }
+        LOGN("ENEMY merchant %d unloads: supply port %s, repair port %s are full again", SQ, s == -1 ? "none" : CELLN(s),
+             r == -1 ? "none" : CELLN(r));
         Q->mark = 0;
         remove_squadron(p, SQ);
         return;
@@ -787,6 +870,7 @@ static void follow_route(Play *p)
     if (r < 43) Q->y++;
     else if (r < 86) Q->y--;
     if (cell == p->crown_threat) {
+        LOGN("ENEMY has reached its standing target %s: it will choose a new one", CELLN(cell));
         p->ai_dropped = p->crown_threat;
         p->crown_threat = -1;
         p->merchant_lost = 0;
@@ -812,6 +896,7 @@ void enemy_turn(Play *p)
     if (speed_word(p, p->ai_done) != 0 || q->partner != 0) return;
     if (q->side == -1 && q->mark != 2) return;
     p->ai_sq = p->ai_done;
+    LOGV("ENEMY looks at %s (%s)", SQN(SQ), Q->has_route ? "on a route" : "no orders");
     /* ovl4_c862 */
     if (Q->has_route) {
         if (p->mode != PM_TRACE) follow_route(p);

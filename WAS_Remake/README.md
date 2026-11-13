@@ -91,6 +91,26 @@ build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea HERC
 ```
 WAS.EXE drew the same picture for Hercules as for CGA, with each 4-colour pixel shown as two black or lit pixels, 640x200 in the middle of the card's 720x348 screen; the remake shows that whole screen (4:3, or square pixels with F2), lit pixels in DOSBox's grey. It matches DOSBox's Hercules pixel for pixel.
 
+**Game log (debugging):** `--log` writes a log of each campaign played, to see what the enemy commander was "thinking" (as in the WAR remake):
+```sh
+build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea --log            # decisions and events
+build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea --log=verbose    # and much more (or: --log verbose)
+```
+Each campaign started (or saved game carried on) opens a new text file in `Logs/` in the remake's folder (`~/Library/Application Support/AncientArtOfWarAtSea/Remake/Logs/` on macOS), named with the date, time and campaign, such as `2026-11-13 23-08-50 1805 Trafalgar.log`. It starts with the campaign and its settings: the title and S file, the opponent and its 25 values (what each one does), the rules as the Rulebook words them, the Options Shoppe's fight delay, wind, reload time and cannon aim, random()'s state, and a map of the cells; then the game at the start: the ports and crowns, every squadron with its ships, and the enemy's plans. Then one line per decision or event, after the time on the map and the game tick (squadrons are named by slot with their ships, x,y and cell):
+```
+[  0:00 tick     0] ENEMY new standing target for the enemy's squadron 1 (BLACK PLAGUE line, ...) at 62,192 cell 197 sea: cell 13 (row 1 col 3, sea), the best score 41 (...)
+[  0:00 tick     0] ENEMY route for squadron 1 from cell 197 (row 19 col 7, sea) to cell 13 (row 1 col 3, sea): 25 cells (cost 0), sails the first 10: W NW W NW NW NW NW N NE NE
+[  0:20 tick    16] ENEMY the enemy's squadron 8 (...) attacks your squadron 0 (...), 8 steps away (strength 36 + 6065 90 against 24; attacks within 6063 x 8 = 24)
+[  4:46 tick   338] BATTLE   93.5 s  "WICKED DESIRE grapples DRUID."
+[  4:46 tick   338] BATTLE  107.6 s  boarding: one of your men falls; you have 15 men standing, they 24
+```
+- **ENEMY**: the commander's choices and the reasons, with the values behind them: going for supplies or repairs, guarding its crown, its standing target (your crown, your flagship, or the cell with the best score) and dropping it, its routes (cells, cost and the directions of the first part), the squadrons it attacks, arriving, joining ships, merchants unloading, what it learns from a lost merchant, the changes to its values as the game goes, offering to surrender.
+- **YOU**: your orders and answers: Move (where to, how many steps), Mark, Cancel, Speed, Detach, Join, End, Time, Zoom, Practice, Surrender, Esc, Alt+S, the offer.
+- **EVENT**: sightings, encounters, fights on the map with each hit and ship sunk, merchants met and taken and setting out, empty ports, ships lost in rough or shallow water and flagships made, squadrons short of supplies, the wind, crowns taken, the end of the game.
+- **BATTLE**, with the battle's own clock: the two squadrons, the shore and each ship, your orders (sails, course, orders, guns, aim, fire, time, leave), every message on the battle screen (grapples, boards, strikes her colours, sinks, retreats), each hit, and the boarding: Zoom or Pass, the crews, your commands, each man who falls, who won; then the losses.
+
+`--log=verbose` adds each squadron the enemy looks at and why it stays (taking on supplies, repairs, guarding its crown, your squadron close), every cell it weighed for a target with its score, its route searches, the strength and port-value maps whenever they are worked out again, supplies and repairs taken in port, every broadside fired, and a table of all squadrons every 16 ticks. A game ends the log with the reason (you won: you took the enemy's crown ... you quit) and the state at the end; after Alt+S the log stays open in case you carry on. The demo isn't logged. Logging only reads the game: it never calls the random number routine or the routines that count the XT's time, so a logged game plays exactly as one not logged (`test/test_gamelog.c` checks this byte for byte).
+
 ### Viewer keys
 | Key | Action |
 |-----|--------|

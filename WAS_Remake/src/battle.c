@@ -15,8 +15,54 @@
  * battle's copy of the data segment, b->m.
  */
 #include "battle_int.h"
+#include "gamelog.h"
 
 #include <SDL3/SDL.h>
+
+/* ------------------------------------------------------------------ the debug log */
+
+bool blog_on(const Battle *b, int level) { return gamelog_on(b->p, (GameLogLevel)level); }
+
+void blog(const Battle *b, const char *fmt, ...)
+{
+    if (!gamelog_on(b->p, GLOG_NORMAL)) return;
+    char t[400];
+    va_list ap;
+    va_start(ap, fmt);
+    SDL_vsnprintf(t, sizeof t, fmt, ap);
+    va_end(ap);
+    gamelog_printf(b->p, "BATTLE %6.1f s  %s", b->clock_us / 1e6, t);
+}
+
+static const char *blog_order(int o)
+{
+    static const char *const O[7] = { "?", "course", "mimic", "follow the ship in front", "general chase", "avoid battle", "board" };
+    return o >= 1 && o <= 6 ? O[o] : o == 888 ? "gone" : "?";
+}
+
+const char *blog_str(const Battle *b, int ds)
+{
+    static char r[8][64];
+    static int n;
+    n = (n + 1) % 8;
+    int k = 0;
+    for (int a = ds; a > 0 && a < 0x10000 && b->m[a] && k < 63; a++) r[n][k++] = (char)b->m[a];
+    r[n][k] = 0;
+    return r[n];
+}
+
+#define NAME(i) blog_str(b, b->name[i])
+
+const char *blog_ship(const Battle *b, int i)
+{
+    static char r[8][96];
+    static int n;
+    n = (n + 1) % 8;
+    if (i < 0 || i >= BS) { SDL_snprintf(r[n], 96, "ship %d", i); return r[n]; }
+    SDL_snprintf(r[n], 96, "%s %s (%s, sails %d hull %d)", b->owner[i] == -1 ? "your" : "the enemy's", blog_str(b, b->name[i]),
+                 b->type[i] == 1 ? "line" : b->type[i] == 2 ? "frigate" : "flag", b->sails[i], b->hull[i]);
+    return r[n];
+}
 
 double battle_iter_us = BATTLE_ITER_US;   /* the rest of an iteration's work (calibrated: see battle.c) */
 
@@ -83,6 +129,7 @@ static void flush_keys(Battle *b) { while (b_getkey(b)) ; }
  * full stop, and a two-note call (sound 1 down, 0 up, -1 one long note) */
 void ovl6_message(Battle *b, int a, int c, int d, int sound)
 {
+    if (blog_on(b, GLOG_NORMAL)) blog(b, "\"%s%s%s.\"", blog_str(b, a), blog_str(b, c), d ? blog_str(b, d) : "");
     b->msg_timer = 100;
     g_clear_row(b, 23);
     g_print(b, a);
@@ -768,6 +815,7 @@ static bool battle_setup(Battle *b)
         list_sorted(b, b->sq_a, list);
         bool abreast = false;
         if (b_random(b) > p->opp[(0x6055 - 0x604D) / 2]) {
+            BLOGN("the enemy's ships come abreast (random over 6055 %d)", p->opp[(0x6055 - 0x604D) / 2]);
             dx += sx; dy += sy;
             abreast = true;
             int t = sx; sx = sy; sy = t;
@@ -794,6 +842,20 @@ static bool battle_setup(Battle *b)
                 b->speed[i]--;
             }
     } else for (int i = 3; i < 6; i++) b->owner[i] = 0;
+    if (blog_on(b, GLOG_NORMAL)) {
+        static const char *const SHORE[13] = { "the open sea", "land to the east", "land to the west", "land to the north",
+            "land to the south", "a shore NE", "a shore SE", "a shore SW", "a shore NW", "a port to the east",
+            "a port to the west", "a port to the north", "a port to the south" };
+        char who[64];
+        if (b->practice) SDL_snprintf(who, sizeof who, "Practice: your squadron %d", b->sq_b);
+        else SDL_snprintf(who, sizeof who, "Zoom: your squadron %d against squadron %d", b->sq_b, b->sq_a);
+        blog(b, "%s; %s; time %d (slower), reload %d, aim %s", who, b->shore >= 0 && b->shore < 13 ? SHORE[b->shore] : "?", b->time, opt_guns(b),
+             opt_aim(b) ? "automatic" : "manual");
+        for (int i = 0; i < BS; i++)
+            if (b->x[i] != NOSHIP)
+                blog(b, "  %s at %d,%d heading %d, sails set %d, order %s", blog_ship(b, i), b->x[i], b->y[i], b->heading[i],
+                     b->sail_set[i], blog_order(b->order[i]));
+    }
     g_goto(b, 0, 4);
     g_spaces(b, 40);
     return true;
@@ -955,6 +1017,9 @@ static void battle_end(Battle *b)   /* ovl6_d5aa */
     }
     if (!lost_theirs && !captured && !lost_yours)
         g_print(b, b->left ? 0x3C5 : 0x3AB);   /* Leaving the battle. / No losses on either side. */
+    if (b->left) BLOGN("the battle is over: you left it; the ships taken change squadrons");
+    else BLOGN("the battle is over: you captured %d and lost %d ship%s; they lost %d (%s)", captured, lost_yours,
+               lost_yours == 1 ? "" : "s", captured + lost_theirs, theirs_hold ? "they hold the field" : "you hold the field");
     play_list_ships(p, b->sq_a);
     if (p->list[0] == -1) { play_clear_paths(p, b->sq_a); p->sq[b->sq_a].used = false; }
     play_list_ships(p, b->sq_b);
@@ -1069,6 +1134,7 @@ again:
         return 0;
     }
     case 'P': {   /* Pause */
+        BLOGV("you Pause");
         b_getkey(b);
         b_beep(b);
         int was = b->menu;
@@ -1085,11 +1151,13 @@ again:
     }
     case 'T':     /* Time */
         if (--b->time < 0) b->time = 4;
+        BLOGN("you set the Time to %s", b->time == 0 ? "faster" : b->time == 1 ? "fast" : b->time == 2 ? "medium" : b->time == 3 ? "slow" : "slower");
         b_beep(b);
         if (b->menu == 0) ovl6_time_text(b);
         break;    /* on to ovl5:822B (nothing more for T) */
     case 'V': {   /* View: the overview or close */
         b->view = b->view == 2 ? 3 : 2;
+        BLOGV("you View: %s", b->view == 2 ? "the overview" : "close");
         for (int i = 0; i < BPART; i++) b->pstate[i] = 0;
         for (int i = 0; i < BS; i++) if (b->x[i] != NOSHIP) b->turning[i] = 0;
         ovl6_sprites(b);
@@ -1100,6 +1168,7 @@ again:
         return 0;
     }
     case 'O': {   /* Orders */
+        int was_order = b->order[s];
         menu_start(b);
         b->menu = 'O';
         ovl6_fire_label(b);
@@ -1132,6 +1201,7 @@ again:
         ovl6_menu_mark(b);
         b->menu = 0;
         ovl6_commands(b);
+        if (b->order[s] != was_order) BLOGN("you order the %s: %s", NAME(s), blog_order(b->order[s]));
         if (k == 10 || k == 13) { b_beep(b); return 0; }
         goto again;
     }
@@ -1149,6 +1219,7 @@ again:
     case 'C':     /* Course */
         if (b->order[s] != 1) {
             b->order[s] = 1;
+            BLOGN("you order the %s: course", NAME(s));
             ovl6_compass(b);
             ovl6_order_text(b);
         }
@@ -1161,6 +1232,7 @@ again:
     case 'G': {   /* Gun: the crew to the other side */
         int *st;
         b->crew_side[s] ^= 1;
+        BLOGN("you send the %s's gun crew to the %s guns", NAME(s), b->crew_side[s] ? "starboard" : "port");
         b->script = 0x110F;
         if (b->crew_side[s]) {
             for (int i = 1; i < 21; i++) { g_panel_copy(b, i); b_delay(b, 1000); }
@@ -1205,6 +1277,8 @@ again:
             b_beep(b);
         }
     } else if ((b->crew_x == 96 || b->crew_x == 121) && k == 'F') {
+        BLOGN("you Fire the %s's %s guns (elevation %d)", NAME(s), b->crew_side[s] ? "starboard" : "port",
+              b->crew_side[s] ? b->aim_r_set[s] : b->aim_l_set[s]);
         if (b->menu == 'A') { b->menu = 0; ovl6_commands(b); }
         if (opt_aim(b) != 0) {
             int ok = rt_aim(b, s, b->crew_side[s]);
@@ -1232,6 +1306,7 @@ again:
         if (d == 0) return 0;
         if (b->menu == 'C') {
             b->turn[s] += d;
+            BLOGN("you turn the %s %s (%+d to go)", NAME(s), d > 0 ? "right" : "left", b->turn[s]);
             ovl6_compass(b);
             b->turn_wait[s] = b->type[s] == 2 ? 2 : 3;
         } else if (b->menu == 'A') {
@@ -1239,6 +1314,7 @@ again:
             *v += d;
             if (*v < 0) { *v = 0; ovl6_error_beep(b); }
             if (*v > 3) { *v = 3; ovl6_error_beep(b); }
+            BLOGN("you Aim the %s's guns: elevation %d", NAME(s), *v);
             ovl6_crew_panel(b);
             if (b->crew_side[s]) {
                 g_panel_sprite(b, b->aim_r_spr[*v], mw(b, 0x1107 + 2 * *v) + b->crew_x, 0, 1);
@@ -1252,12 +1328,14 @@ again:
         sails_done:
             if (b->sail_set[s] < 0) { b->sail_set[s] = 0; ovl6_error_beep(b); }
             if (b->sail_set[s] > 6) { b->sail_set[s] = 6; ovl6_error_beep(b); }
+            BLOGN("you set the %s's sails to %d", NAME(s), b->sail_set[s]);
             ovl6_speed_icon(b);
             ovl6_mimic(b, s);
         }
         return 0;
     }
     if (k == 'L') {   /* Leave */
+        BLOGN("you Leave the battle");
         b->left = true;
         b_beep(b);
         g_clear_row(b, 24);
@@ -1274,7 +1352,7 @@ again:
             if (t < 6 && b->x[t] != NOSHIP && b->owner[t] == -1 && b->hull[t] < 6) break;
         }
         b_beep(b);
-        if (was != b->sel) ovl6_show_ship(b);
+        if (was != b->sel) { ovl6_show_ship(b); BLOGV("you look at %s", blog_ship(b, b->sel)); }
         recentre(b, k);
         return 0;
     }
@@ -1456,5 +1534,12 @@ void battle_draw(const Battle *b, Screen *s, GfxMode mode)
 void battle_finish(Battle *b)
 {
     fiber_stop(&b->fiber);
+    Play *p = b->p;
+    if (gamelog_on(p, GLOG_NORMAL) && p->battle_a >= 0 && p->battle_b >= 0) {
+        if (b->practice) gamelog_printf(p, "EVENT back on the map after the practice: %s", gamelog_squad(p, p->battle_b));
+        else gamelog_printf(p, "EVENT back on the map after the battle: %s; %s",
+                            p->sq[p->battle_b].used ? gamelog_squad(p, p->battle_b) : "your squadron is gone",
+                            p->sq[p->battle_a].used ? gamelog_squad(p, p->battle_a) : "the enemy's squadron is gone");
+    }
     play_after_battle(b->p, b->practice, b->left);
 }

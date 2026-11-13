@@ -20,10 +20,12 @@ Build one with `./build.sh NAME` (or `bash build.sh NAME`): it compiles `NAME.c`
 | `test_menu GAME OUT` | the menus, step 6, walked through as in the original in DOSBox: *presented by*, the title page, go to war (titles, story, rules with a rule changed, the opponents, the quote), make changes (the campaign menu, the Options Shoppe with the wind changed and saved, the opening), the battle report won and lost against each opponent, saving (the warning the second time), *( data disk )* and *Saved game*, and the demo. Writes each screen in CGA and 16 colours as BMPs (title, titles, story, rules, opponents, opening, the save pages and the report matched the DOSBox screenshots pixel for pixel) and checks the timings measured there |
 | `test_saved GAME OUT [SS]` | saved games: an `SS` written by the original (in DOSBox) is read and played on (its map matched the original's pixel for pixel); the remake's own SS written, read back and written again, byte for byte, for every campaign; 3000 damaged files load without harm. `OUT/SS_remake` is one of the remake's for the original to load (it does) |
 | `test_app GAME OUT` | the whole app (`main.c`) with SDL's offscreen driver and scripted key events: *presented by*, the title page, F12 to the viewer, Enter to play, the marker, Fleet, Time, Tab, Esc and Y to the title page, quit from it. Run with `SDL_VIDEODRIVER=offscreen` (and `ASAN_OPTIONS=detect_leaks=0`: the GL driver keeps a little memory) |
+| `test_gamelog GAME LOG-FOLDER` | the game log changes nothing: every campaign played twice side by side with the same keys (paths, Info and Speed, Detach and Join, Time, Fleet, Pause, the questions, Zoom and Practice, the battle's and boarding's keys), one logged (normal, then verbose) and one not, compared byte for byte after each iteration and each slice of a battle (131 battles, 20 with a boarding); then the logs' headers and lines, and that the demo and logging off write nothing |
+| `test_app_log GAME LOG-FOLDER` | `--log` as the app does it: a campaign opens a new dated log, Esc and Y close it with the reason, a second campaign gets its own file, the demo closes it and writes none (it includes `main.c`) |
 
 Run them all:
 ```sh
-./build.sh test_viewer && ./build.sh fuzz_assets && ./build.sh test_play && ./build.sh test_rules && ./build.sh fuzz_play && ./build.sh test_battle && ./build.sh fuzz_battle && ./build.sh test_enemy && ./build.sh test_menu && ./build.sh test_saved && ./build.sh test_app
+./build.sh test_viewer && ./build.sh fuzz_assets && ./build.sh test_play && ./build.sh test_rules && ./build.sh fuzz_play && ./build.sh test_battle && ./build.sh fuzz_battle && ./build.sh test_enemy && ./build.sh test_menu && ./build.sh test_saved && ./build.sh test_app && ./build.sh test_gamelog && ./build.sh test_app_log
 mkdir -p /tmp/was_shots
 SDL_VIDEODRIVER=dummy ./test_viewer ../../WAS_Original_Files_3.5 /tmp/was_shots
 python3 compare_extract.py /tmp/was_shots
@@ -38,4 +40,6 @@ mkdir -p /tmp/was_e && ./test_enemy ../../WAS_Original_Files_3.5 /tmp/was_e
 mkdir -p /tmp/was_m && SDL_VIDEODRIVER=dummy ./test_menu ../../WAS_Original_Files_3.5 /tmp/was_m
 ./test_saved ../../WAS_Original_Files_3.5 /tmp/was_m [an SS saved by the original]
 SDL_VIDEODRIVER=offscreen ASAN_OPTIONS=detect_leaks=0 ./test_app ../../WAS_Original_Files_3.5 /tmp/was_play
+mkdir -p /tmp/was_log && ASAN_OPTIONS=detect_leaks=0 ./test_gamelog ../../WAS_Original_Files_3.5 /tmp/was_log
+mkdir -p /tmp/was_alog && SDL_VIDEODRIVER=dummy ASAN_OPTIONS=detect_leaks=0 ./test_app_log ../../WAS_Original_Files_3.5 /tmp/was_alog
 ```

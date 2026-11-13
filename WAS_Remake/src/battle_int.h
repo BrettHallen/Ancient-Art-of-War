@@ -37,6 +37,13 @@ void b_click(Battle *b);                  /* speaker_click */
 int  b_scnf_byte(const Battle *b, int ds);
 int  b_scnf_word(const Battle *b, int ds);
 int  ovl5_input(Battle *b);               /* ovl5_7ac6 */
+/* the debug log (gamelog.h): a BATTLE line with the battle's clock; only reads the battle */
+void blog(const Battle *b, const char *fmt, ...) SDL_PRINTF_VARARG_FUNC(2);
+bool blog_on(const Battle *b, int level);          /* 1 normal, 2 verbose */
+const char *blog_ship(const Battle *b, int i);     /* "your LEXINGTON (flag, sails 1 hull 2)" */
+const char *blog_str(const Battle *b, int ds);     /* the string at DS:ds in the battle's data segment */
+#define BLOGN(...) do { if (blog_on(b, 1)) blog(b, __VA_ARGS__); } while (0)
+#define BLOGV(...) do { if (blog_on(b, 2)) blog(b, __VA_ARGS__); } while (0)
 void ovl6_message(Battle *b, int a, int c, int d, int sound);   /* ovl6_f898 (a, c, d: DS offsets or 0) */
 void ovl6_panel(Battle *b);               /* ovl6_ddc7 */
 void ovl6_commands(Battle *b);            /* ovl6_e15d */

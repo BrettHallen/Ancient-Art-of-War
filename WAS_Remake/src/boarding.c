@@ -305,20 +305,24 @@ static int d579(Battle *b)
         if ((opponent == 2 && b_random(b) < 20) || (opponent == 4 && b_random(b) == 2)) {
             k = 'A';
             auto_attack = 1;
+            BLOGN("boarding: the enemy attacks first (%s)", opponent == 2 ? "Blackbeard: chance 20/128 a frame" : "John Paul Jones: chance 1/128 a frame");
             fd94(b, 0x1CC3, 0x1CCD);                    /* the enemy attacks */
         }
         if (k == 'A') {
+            if (!auto_attack) BLOGN("boarding: you Attack");
             sw(b, V_COUNT, 3);
             d444(b);
             if (!auto_attack) fd94(b, 0x1CA5, 0x1CB5);  /* the charge */
         }
-        if (k == 'L') return -1;
+        if (k == 'L') { BLOGN("boarding: you Leave"); return -1; }
     } else {
         static const int names[5] = { 0, 0x442, 0x447, 0x453, 0x45C };   /* FLAG QUARTERDECK POOPDECK RAILING */
         static const int width[5] = { 0, 4, 11, 8, 7 };
         int area = k == 'F' ? 1 : k == 'Q' ? 2 : k == 'P' ? 3 : k == 'R' ? 4 : 0;
         if (area) {
             if ((FROM != area && TO == 0) || (TO != 0 && CNT(area) != 0)) {
+                static const char *const AREA_NAME[5] = { "", "the flag", "the quarterdeck", "the poopdeck", "the railing" };
+                BLOGN("boarding: you %s %s (%d of your men there)", TO != 0 ? "send men FROM" : "choose TO", AREA_NAME[area], CNT(area));
                 if (TO != 0) { setmb(b, V_FROM, area); d9a2(b); }
                 else { setmb(b, V_TO, area); d9cc(b); }
                 g_print(b, names[area]);
@@ -327,13 +331,14 @@ static int d579(Battle *b)
             }
         } else if (k == 'C') {
             if (TO == 0 && FROM != 1 && FROM != 2) {
+                BLOGN("boarding: you Cross to the enemy's flag");
                 setmb(b, V_TO, 5);
                 d9cc(b);
                 g_print(b, 0x464);                       /* ENEMY FLAG */
                 b_beep(b);
             }
         } else if (k == 'A') {
-            if (TO != 0 && TO != 9) { sw(b, V_CMD, 2); b_beep(b); }
+            if (TO != 0 && TO != 9) { sw(b, V_CMD, 2); b_beep(b); BLOGN("boarding: you send Again"); }
         } else if (k == 27 || k == 8) {
             g_clear_row(b, 23);
             setmb(b, V_TO, 9);
@@ -1113,6 +1118,19 @@ static int load_b(Battle *b, int a0, int a1)
     return 0;
 }
 
+/* the debug log: the men standing on a side (-1 yours, 0 the enemy's), and their officers */
+static int men_standing(const Battle *b, int side, int *officers)
+{
+    int n = 0;
+    *officers = 0;
+    for (int i = 0; i < 40; i++) {
+        if (SIDE(i) != side || STATE(i) == 9 || MX(i) == 0) continue;
+        n++;
+        if (KIND(i) == 1) (*officers)++;
+    }
+    return n;
+}
+
 /* ovl7_c9b0: board. o is the ship grappled, s the one that grappled her.
  * Returns the ship that won the fight, or -1 if you Leave. Afterwards the
  * two ships lie side by side, the loser turned to the winner's heading. */
@@ -1121,9 +1139,24 @@ static int c9b0(Battle *b, int a0, int a1)
     int r;
     sw(b, V_FRAME, 0);
     if (load_b(b, a0, a1) == 9999) { r = -1; goto out; }
+    int log_yours = 0, log_theirs = 0, off_y = 0, off_t = 0;
+    if (blog_on(b, 1)) {
+        log_yours = men_standing(b, -1, &off_y);
+        log_theirs = men_standing(b, 0, &off_t);
+        BLOGN("the boarding begins: %s and %s; your crew %d men (%d officers), theirs %d (%d officers)", blog_ship(b, a0),
+              blog_ship(b, a1), log_yours, off_y, log_theirs, off_t);
+    }
     for (;;) {
         fe6b(b, FLD);
         def1(b);
+        if (blog_on(b, 1)) {
+            int y = men_standing(b, -1, &off_y), t = men_standing(b, 0, &off_t);
+            if (y != log_yours || t != log_theirs)
+                BLOGN("boarding: %s falls; you have %d men standing, they %d", y < log_yours && t < log_theirs ? "a man on each side" :
+                      y < log_yours ? "one of your men" : "one of their men", y, t);
+            log_yours = y;
+            log_theirs = t;
+        }
         fec9(b, 0x550, 68, 0x132);
         sw(b, V_FRAME, mw(b, V_FRAME) - 1);
         if (mw(b, V_FRAME) < 0) {
