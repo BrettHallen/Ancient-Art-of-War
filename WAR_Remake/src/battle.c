@@ -13,6 +13,7 @@
  */
 #include "battle.h"
 #include "sound.h"
+#include "gamelog.h"
 
 #include <SDL3/SDL.h>
 
@@ -23,6 +24,24 @@
 #define END_FRIEND 101          /* scripts of your soldiers end with 101 */
 #define END_ENEMY  102
 #define DEAD    9
+
+/* the debug log (gamelog.h): only reads the battle, never calls random() */
+static void blog(const Battle *b, const char *fmt, ...) SDL_PRINTF_VARARG_FUNC(2);
+static void blog(const Battle *b, const char *fmt, ...)
+{
+    if (!gamelog_on(b->p, GLOG_NORMAL)) return;
+    char t[320];
+    va_list ap;
+    va_start(ap, fmt);
+    SDL_vsnprintf(t, sizeof t, fmt, ap);
+    va_end(ap);
+    gamelog_printf(b->p, "BATTLE frame %4d (%3d.%d s) %s", b->frame, b->frame / BATTLE_HZ, b->frame % BATTLE_HZ * 10 / BATTLE_HZ, t);
+}
+#define BLOG(...) blog(b, __VA_ARGS__)
+static const char *const MAN[3] = { "knight", "barbarian", "archer" };
+static const char *const GROUND[14] = {
+    "both in forts", "you on a hill", "the enemy on a hill", "you hold a fort", "the enemy holds a fort",
+    "a bridge", "a river", "a forest", "a village", "a forest", "mountains", "hills", "plains", "plains" };
 
 enum { KNIGHT, BARBARIAN, ARCHER };
 
@@ -269,6 +288,8 @@ static void kill(Battle *b, int j)
     int sq;
     if (b->side[j] == FRIEND) { sq = b->me; b->lost_me++; p->lost_mine++; }
     else                      { sq = b->en; b->lost_en++; p->lost_theirs++; }
+    BLOG("%s %s falls (you have lost %d, they %d)", b->side[j] == FRIEND ? "your" : "their", MAN[b->type[j] % 3],
+         b->lost_me, b->lost_en);
     PSquad *q = SQ(b, sq);
     int *count = b->type[j] == ARCHER ? &q->archers : b->type[j] == KNIGHT ? &q->knights : &q->barbarians;
     (*count)--;
@@ -308,6 +329,7 @@ static void retreat(Battle *b)
 {
     Play *p = b->p;
     PSquad *me = SQ(b, b->me), *en = SQ(b, b->en);
+    BLOG("%s", b->retreat == 1 ? "your men retreat" : b->retreat == 2 ? "the enemy retreats" : "your men break and run");
     if (b->bg == 3) for (int t = 0; t < 3; t++) wr(b, S(S_AB1B, t), 0);
     if (b->bg == 4) for (int t = 0; t < 3; t++) wr(b, S(S_AB15, t), 2);
     tclear(b, 23);
@@ -336,6 +358,7 @@ static void retreat(Battle *b)
         play_clear_path(p, b->me);
         en->condition = SDL_min(en->condition * 2 + 5, 98);
         b->skill_en = 85;
+        BLOG("your squad %d falls back to %d,%d; the enemy's condition rises to %d", b->me, me->x, me->y, en->condition);
     } else {
         if (en->x > 64 || en->x < 16) dx = 0;
         if (en->y > 164 || en->y < 21) dy = 0;
@@ -343,6 +366,7 @@ static void retreat(Battle *b)
         en->y -= dy;
         play_clear_path(p, b->en);
         b->skill_me = 85;
+        BLOG("the enemy's squad %d falls back to %d,%d", b->en, en->x, en->y);
     }
 }
 
@@ -546,6 +570,7 @@ static void sort_pass(Battle *b)
 
 static void begin_attack(Battle *b, bool you)   /* the attack starts: ovl7:52BE, 6554 */
 {
+    BLOG("%s", you ? "YOU attack (A)" : "the enemy attacks");
     snd_beep();                                /* ovl7:52F7, 6564 */
     show_groups(b);
     b->start = 7;
@@ -796,6 +821,11 @@ bool battle_start(Battle *b, Play *p, int sel)
     tprint(b, O6S(b, 0x1C49));
     b->asking = true;
     b->ndraw = 0;
+    BLOG("on the battle screen: your squad %d [%dK %dB %dA] in formation %d against the enemy's squad %d [%dK %dB %dA] in formation %d",
+         b->me, SQ(b, b->me)->knights, SQ(b, b->me)->barbarians, SQ(b, b->me)->archers, SQ(b, b->me)->formation,
+         b->en, SQ(b, b->en)->knights, SQ(b, b->en)->barbarians, SQ(b, b->en)->archers, SQ(b, b->en)->formation);
+    BLOG("ground: %s (background %d, P%X); skill yours %d, theirs %d (45 + 2 x battle edge; blows land with skill + 40 of 128)",
+         GROUND[b->bg], b->bg, picture_of(b->bg), b->skill_me, b->skill_en);
     battle_soldiers(b);
     b->ok = true;
     return true;
@@ -834,6 +864,9 @@ static void battle_input(Battle *b)   /* ovl7:652F */
         if (k == PK_B) { order = 3; word = 0x1C7B; }
         if (k == PK_S) { order = 0; word = 0x1C84; }
         if (order >= 0) {
+            static const char *const ORDER[4] = { "Stop", "Attack", "Forward", "Backoff" };
+            BLOG("YOU order %s: %s", b->group == 5 ? "the squad" : b->group == 0 ? "the knights" :
+                 b->group == 1 ? "the barbarians" : "the archers", ORDER[order]);
             for (int t = 0; t < 3; t++) {
                 if (b->group != 5 && b->group != t) continue;
                 b->order[t] = order;
@@ -849,6 +882,7 @@ static void battle_input(Battle *b)   /* ovl7:652F */
 void battle_frame(Battle *b)   /* the battle loop (battle 406F) */
 {
     if (b->done) return;
+    b->frame++;
     if (b->hold > 0) { b->hold--; return; }   /* a bugle call is sounding (a key waits) */
     b->ndraw = 0;
     battle_soldiers(b);
@@ -859,13 +893,19 @@ void battle_frame(Battle *b)   /* the battle loop (battle 406F) */
     if (b->endtimer == 0) {
         battle_input(b);
         if (b->key == PK_R && !b->retreat) {   /* Retreat */
+            BLOG("YOU Retreat (R)");
             snd_beep();                         /* ovl7:40ED */
             b->retreat = 1;
             retreat(b);
         }
         if (R(b) < 3 && b->start == 0 && !b->retreat) {   /* a fort's attackers give up */
-            if (en->archers < RND && b->bg == 3 && (en->archers == 0 || R(b) < 20)) { b->retreat = 2; retreat(b); }
-            else if (me->archers < RND && b->bg == 4 && (en->archers == 0 || R(b) < 20)) { b->retreat = 1; retreat(b); }
+            if (en->archers < RND && b->bg == 3 && (en->archers == 0 || R(b) < 20)) {
+                BLOG("the enemy gives up attacking your fort");
+                b->retreat = 2; retreat(b);
+            } else if (me->archers < RND && b->bg == 4 && (en->archers == 0 || R(b) < 20)) {
+                BLOG("your men give up attacking the fort");
+                b->retreat = 1; retreat(b);
+            }
         }
     } else {
         if (--b->endtimer <= 0) b->done = true;
@@ -890,6 +930,8 @@ void battle_frame(Battle *b)   /* the battle loop (battle 406F) */
 void battle_finish(Battle *b)   /* battle 42E8 */
 {
     PSquad *me = SQ(b, b->me), *en = SQ(b, b->en);
+    BLOG("over: you lost %d men, they lost %d%s; both squads' condition is halved", b->lost_me, b->lost_en,
+         b->retreat == 1 ? " (you retreated)" : b->retreat == 2 ? " (they retreated)" : "");
     en->condition = SDL_max(en->condition >> 1, 1);
     me->condition = SDL_max(me->condition >> 1, 1);
     play_after_battle(b->p, b->me, b->en);

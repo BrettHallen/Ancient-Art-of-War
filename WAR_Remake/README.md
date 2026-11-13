@@ -40,7 +40,7 @@ The map, the rules and the enemy work as they do in the original program (overla
 
 - **the formation editor** (overlay 5): *Teach squads new formations* shows the 14 men of each formation on the field, with how many of each kind and the formation's plan. - and + choose it; formations 1–5 can be looked at, 6–9 changed: **M** brings a pointer, **M** over a man picks him up, the arrows walk him across the field (the original's walking soldiers), **A**, **B** and **K** make him an archer, barbarian or knight, and **M** puts him down. **S** saves the formations; squads use them at once
 
-The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`. The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`.
+The asset viewer from step 1 is still there: press **F12** on the title page, or start with `--viewer`.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):
@@ -75,6 +75,27 @@ The app also looks in a `game` folder next to itself and in the current folder. 
 build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar HERC
 ```
 WAR.EXE drew the same picture for Hercules as for CGA, with each 4-colour pixel shown as two black or lit pixels, 640x200 in the middle of the card's 720x348 screen; the remake shows that whole screen (4:3, or square pixels with F2), lit pixels in DOSBox's grey. It matches DOSBox's Hercules screens pixel for pixel.
+
+**Game log (debugging):** `--log` writes a log of each campaign played, to see what the enemy commander was "thinking":
+```sh
+build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar --log            # decisions and events
+build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar --log=verbose    # and much more
+```
+Each campaign started (or saved game carried on) opens a new text file in `Logs/` in the remake's folder (`~/Library/Application Support/AncientArtOfWar/Remake/Logs/` on macOS), named with the date, time and campaign, such as `2026-11-13 20-15-31 Sherwood Forest.log`. It starts with the campaign and its settings: the title, the opponent and its 19 values (what each one does), the rules as the Rulebook words them, the map, how long encounters take to become fights (Options Shoppe), the random seed, and every squad and flag. Then one line per decision or event, after the time on the map and the game tick (squads are named by slot, with their knights, barbarians, archers and spies, x,y and cell):
+```
+[  0:00 tick     0] ENEMY new target: cell 160 (row 16 col 0, open), the best score 230 (its worth, ...)
+[  0:00 tick     0] ENEMY sends enemy squad 12 [1K 13B 0A 0S] at 32,139 cell 144 open to its target cell 160 (...)
+[  0:00 tick     0] ENEMY route for squad 12 from cell 144 (...) to cell 160 (...): 4 cells, cost 4; marches the first part: SW SW
+[  0:05 tick     1] YOU order your squad 5 [7K 0B 7A 0S] at 13,149 cell 151 open to march to 1,149 in cell 150 (...): 12 steps
+[  0:18 tick     9] EVENT encounter: both stop; they fight on the map after 400 iterations unless you Zoom
+[  0:18 tick     9] BATTLE frame   46 (  5.7 s) their barbarian falls (you have lost 0, they 1)
+```
+- **ENEMY**: the commander's choices and the reasons, with the values behind them: its target (and the score that won), the flag it goes for and the one it guards, where each squad is sent (to eat, to guard its flag, to the target), its routes, the squads it attacks and the flags it goes for on the way, joining and splitting squads, giving up a target, going all out, offering to surrender.
+- **YOU**: your orders: Move (where to, how fast, how many steps), Cancel, Speed, Detach, Join, Formation, Time, Zoom, Surrender, Esc, Alt+S, and your answers to its questions.
+- **EVENT**: sightings, encounters, captures, fights on the map and each man lost, battles won and lost, flags taken, men lost in deep water or high mountains, forts training men, squads too tired to march, the end of the game.
+- **BATTLE**: the battle screen: the two squads and formations, the ground and the skills, your orders, each man who falls, retreats and the losses.
+
+`--log=verbose` adds each squad the enemy looks at and why it holds its ground (a fort, a valuable cell, its flag, resting), every candidate it weighed with its score, its cell tables (what each cell is worth, what it costs to cross, the supply map) whenever they change, and a table of all squads every 16 ticks. A game ends the log with the reason (you won: the enemy has no flags ... you quit) and the state at the end. The demo isn't logged. Logging only reads the game and never calls the random number routine, so a logged game plays exactly as one not logged (`test/test_gamelog.c` checks this byte for byte).
 
 ### Saved games and the data disks
 The original kept saved games and new campaigns on *data disks*, swapped in the drive. The remake keeps them in its folder, `~/Library/Application Support/AncientArtOfWar/Remake/` on macOS:
@@ -181,6 +202,7 @@ This writes every screen in both colour sets as BMP files (320x200), and as on a
 | `src/sqedit.c` | Putting squads and flags on the map, following overlay 3 of WAR.EXE. As in the original, it uses the game's own map drawing (play.c) |
 | `src/savegame.c` | Carrying on a game saved by the original: its `S` is WAR.EXE's data from DS:8868 to A9E5, copied field by field into the game |
 | `src/formed.c` | Teaching squads new formations, following overlay 5 of WAR.EXE: the soldiers walk by O8's scripts |
+| `src/gamelog.c` | The game log (`--log`, `--log=verbose`): the header for each campaign and the lines play.c and battle.c write |
 | `src/main.c` | Window, scaling (sharp 4:3 or whole-number square pixels), keys, choosing the game folder, the menus (20 Hz), the 20 Hz game loop and the 8 Hz battle loop |
 
 The file formats are described in [WAR_Analysis/README.md](../WAR_Analysis/README.md).

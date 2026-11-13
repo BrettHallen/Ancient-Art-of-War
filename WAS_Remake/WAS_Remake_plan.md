@@ -69,7 +69,13 @@ Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/R
    - tests: test_battle.c, fuzz_battle.c
    - not ported: the joystick (as in WAR); WAS.EXE's extra wait on fast PCs ([0D19] > 1500), as the remake runs at an XT's speed
    - left for step 5: the enemy's moves on the map; step 6: the demo's battles (the code is there, b->demo); step 8: the battle's sounds (counted, not played)
-5. The enemy commander.
+5. The enemy commander - done (13 Nov)
+   - enemy.c: enemy_orders (ovl4:C79A, four times a tick), new_orders (C88A: stay in port, guard the crown), choose_target (CAEA: supplies, repairs, your crown, your flagship, the weak spots on the strength map), follow_route (CFEF: to the cell's middle, attack a squadron near enough (pick_victim D5C2, way_barred D799), the next leg (sail_to D99E, path_steps B03E), arrival: a merchant unloads, a warship joins others (ED83) and calls on the port), find_route (DB21) and port_search (E103) with WAS.EXE's work arrays DS:3F3D-4964 in its order (Play.area, so an overflowing queue runs on as it does there), the strength map (E805), the port values (EA51), port_side (BD3C); the merchants that restock ports get their routes the same way (ovl4:BEE3)
+   - dsmap.c: campaign play's state in WAS.EXE's data-segment layout and back (for the tests now; the saved game SS in step 6)
+   - checked against WAS.EXE's own code under the unicorn emulator (test/diff_ovl4: the remake's state written out, the routine run in both, the data segments compared): the enemy's orders, the strength map, the port values, encounters, sailing, eating, map battles and restocking matched in every sample (about 180 each over the 11 campaigns). delay() now calls random() as WAS.EXE's does (units / 2 times), which the comparison needed
+   - timing: the enemy's work makes a tick slow on an XT (a route search up to 400,000 instructions, 1.3 s). The routines count events (play_int.h EV: random(), list_ships, the searches' cells and queue, the map loops ...), weighed in 8086 instructions by a fit to WAS.EXE's own counts under the emulator (calib.py, fit.py: within about 10% on average), plus erase_squadrons and redraw_squadrons (3,350 + 500 a squadron shown); what an iteration does beyond the idle one is stalled at 300 instructions a millisecond, as delay() is. In DOSBox at 300 cycles The Bane of Oldain left alone ends with your crown taken after 127 s at the fastest time and 157 s at fast; the remake 113-130 s and 132-150 s over three seeds. Keys pressed meanwhile wait in a 15-key buffer, as in the BIOS's
+   - tests: test_enemy.c (every campaign left to the enemy at the fastest time), test/diff_ovl4 (Python, unicorn), the other tests let the stalled iterations go by before a key
+   - left for step 6: the saved game; step 8: the sounds
 6. Menus, options, saved games, battle report, the opening and the demo.
 7. The editors (map maker, ships, rules, story, title).
 8. Sound.

@@ -20,6 +20,7 @@ add_executable(AncientArtOfWar MACOSX_BUNDLE
     src/sqedit.c
     src/formed.c
     src/savegame.c
+    src/gamelog.c
 )
 target_link_libraries(AncientArtOfWar PRIVATE SDL3::SDL3)
 

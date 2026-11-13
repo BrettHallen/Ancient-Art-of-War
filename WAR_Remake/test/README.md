@@ -21,6 +21,8 @@ Build one with `./build.sh NAME` (or `bash build.sh NAME`): it compiles `NAME.c`
 | `test_diskerr` | "Unable to use data disk." when a file can't be written |
 | `test_tab_rows` | the help rows on the scroll pages after switching CGA/VGA and back (`test_tab_rows GAME DATA OUT`) |
 | `test_herc` | Hercules (`WAR HERC`): the conversion to 720x348, Tab's three modes, every CGA screen using colours 0-3 only; writes the title page, scrolls, menus, map and a battle as Hercules screens to compare with DOSBox (`test_herc GAME DATA OUT [S-FILE]`; it includes `main.c`) |
+| `test_gamelog` | the game log changes nothing: every campaign played twice side by side with the same keys (orders, Time, Zoom, the battle screen), one logged (normal, then verbose) and one not, compared byte for byte after each iteration and battle frame; then the logs' headers and lines, and that the demo and logging off write nothing (`test_gamelog GAME LOG-FOLDER`) |
+| `test_app_log` | `--log` as the app does it: a campaign opens a new dated log, Esc, Y closes it with the reason, a second campaign gets its own file, the demo none (`test_app_log GAME LOG-FOLDER`; it includes `main.c`) |
 | `test_sound`, `tempo` | sounds, written as WAV files |
 | `fort_arrows`, `fort_trace`, `fort_import` | archers in a fort, compared with the original (`WAR_Analysis/tools/dosbox/dosfort.sh`) |
 | `fontdump` | the game's 8x8 font for `WAR_Analysis/tools/dosbox/screentext.py` |

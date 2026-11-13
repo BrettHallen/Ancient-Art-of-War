@@ -55,6 +55,7 @@ typedef struct {
     int trow, tcol;
     BattleDraw draw[MAX_MEN + MAX_ARROWS];
     int ndraw;
+    int frame;                /* the remake: frames since the battle started (for the log) */
 } Battle;
 
 /* Set up the battle for squad sel (from Zoom). False if the files are missing. */

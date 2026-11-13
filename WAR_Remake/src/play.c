@@ -13,6 +13,7 @@
  */
 #include "play.h"
 #include "sound.h"
+#include "gamelog.h"
 
 #include <SDL3/SDL.h>
 
@@ -24,6 +25,12 @@ static const int8_t STEP_DY[11] = { -1, -1, -1, 0, 0, 0, 0, 0, 1, 1, 1 };
 #define CY_MAX        0xC3
 #define VIEW_MARGIN   0x56     /* cursor may be this far below the view top */
 #define RULE_SEEN_ALL 80       /* "enemy seen" rule at or above this: always seen */
+
+/* the debug log (gamelog.h): only reads the game, never calls random() */
+#define LOGN(...) GLOG(p, GLOG_NORMAL, __VA_ARGS__)
+#define LOGV(...) GLOG(p, GLOG_VERBOSE, __VA_ARGS__)
+#define SQN(i)    gamelog_squad(p, (i))
+#define CELLN(c)  gamelog_cell(p, (c))
 
 /* map tiles (numbers as stored in the T files) */
 static bool tile_fort(int t)    { return t == 3; }
@@ -433,6 +440,7 @@ static void squads_update(Play *p)
 /* ovl6:380F: the game is over; every squad is shown and Enter ends it. */
 static void game_over(Play *p, bool won)
 {
+    LOGN("EVENT the game is over: you %s", won ? "won" : "lost");
     snd_end_of_turn();                      /* ovl6:3812 */
     p->reveal = true;
     p->mode = PM_PROMPT;
@@ -458,11 +466,16 @@ static bool check_victory(Play *p, int a, int b)
         if (q->friendly) { mine++; my_men += q->men; }
         else             { theirs++; their_men += q->men; }
     }
-    if (theirs / 2 < OPP(p, 0xA4E8)) OPP(p, 0xA4E8)--;
+    if (theirs / 2 < OPP(p, 0xA4E8)) {
+        OPP(p, 0xA4E8)--;
+        LOGN("ENEMY has %d squads: now keeps %d guarding its flag (A4E8)", theirs, OPP(p, 0xA4E8));
+    }
     if (mine < 3 || theirs / 4 > mine || theirs < 3) ai_all_out(p);   /* the end is near: all out */
     if (mine == 0)   { game_over(p, false); p->result_code = 12; return true; }
     if (theirs == 0) { game_over(p, true); p->result_code = 2; return true; }
     if (their_men > 0 && my_men / their_men >= OPP(p, 0xA4EA) && my_men > 20) {
+        LOGN("ENEMY offers to surrender: your %d men against its %d (ratio %d at least A4EA %d)",
+             my_men, their_men, my_men / their_men, OPP(p, 0xA4EA));
         OPP(p, 0xA4EA) = 500;               /* only offered once */
         snd_alert();                        /* ovl6:373D */
         p->mode = PM_PROMPT;
@@ -500,8 +513,11 @@ static bool update_delays(Play *p, bool hazards)
         if ((t == TER_MOUNTAIN && mountain >= 16) || (t == TER_WATER && water >= 20)) lose = rnd(p) < 2;
         if (!lose && t == TER_WATER && water >= 40) lose = rnd(p) < 4;
         if (!lose || q->fighting) continue;
+        int before = q->archers + q->knights + q->barbarians;
         lose_man(p, i, i);
+        if (q->archers + q->knights + q->barbarians < before) LOGN("EVENT %s loses a man in the %s", SQN(i), t == TER_WATER ? "deep water" : "high mountains");
         if (q->men > 0) continue;
+        LOGN("EVENT %s squad %d is lost", q->friendly ? "your" : "the enemy's", i);
         if (q->friendly) alert_lost(p, i, t);
         squads_update(p);
         if (check_victory(p, i, i)) return true;
@@ -571,6 +587,7 @@ static void check_over(Play *p, int key);
 static void capture(Play *p, int k, int i, int j)
 {
     PSquad *q = &p->sq[k];
+    LOGN("EVENT %s is captured without a fight", SQN(k));
     if (q->friendly) { p->captured_mine += q->men; alert_battle(p, k, O5(p, 0x13C), O5(p, 0x293)); }   /* YOUR SQUAD CAPTURED */
     else             { p->captured_theirs += q->men; alert_battle(p, k, DS(p, 0x1E3), O5(p, 0x293)); } /* ENEMY CAPTURED */
     q->archers = q->knights = q->barbarians = q->spies = 0;
@@ -598,16 +615,23 @@ static void battles(Play *p)
             q->clock = FIGHT_ON;
             q->kill = edge(p, i, q->foe) * 2 + 60;
             if (tile_fort(tile_at_cell(p, cell_of(q))) && q->archers) q->kill *= 2;
+            LOGN("EVENT %s fights it out on the map with %s: kills with chance %d/128 x 25/128 an iteration",
+                 SQN(i), SQN(q->foe), q->kill);
             if (q->friendly) alert_battle(p, i, O5(p, 0x114), "");   /* A L E R T - FIGHTING */
             continue;
         }
         if (rnd(p) >= q->kill || rnd(p) >= 25) continue;
+        int before = e->archers + e->knights + e->barbarians;
         lose_man(p, i, q->foe);
+        if (e->archers + e->knights + e->barbarians < before) LOGN("EVENT %s loses a man to %s", SQN(q->foe), SQN(i));
         if (e->men > 0) continue;
         int f = q->foe;                         /* the other squad is beaten */
+        LOGN("EVENT %s beats squad %d on the map", SQN(i), f);
         e->spies = 0;
-        if (!e->friendly && rnd(p) > OPP(p, 0xA4E2) && cell_of(e) == p->target_cell)
+        if (!e->friendly && rnd(p) > OPP(p, 0xA4E2) && cell_of(e) == p->target_cell) {
             p->target_cell = -1;                /* ovl6:4FFC: the enemy gives up that target */
+            LOGN("ENEMY gives up its target (beaten there; chance (127 - A4E2)/128)");
+        }
         q->condition = SDL_max(q->condition >> 1, 1);
         alert_battle(p, f, O5(p, 0x12A), DS(p, q->friendly ? 0x1DA : 0x1DE));   /* NOTICE - BATTLE WON/LOST */
         q->fighting = e->fighting = false;
@@ -621,7 +645,7 @@ static void battles(Play *p)
 /* ovl6:49B6: sighting, and squads meeting. */
 static void encounters(Play *p)
 {
-    bool seen[MAX_SQUADS] = { false };
+    bool seen[MAX_SQUADS] = { false }, logged[MAX_SQUADS] = { false };
     int seen_rule = rule(p, RULE_ENEMY_SEEN);
     for (int i = 0; i < MAX_SQUADS; i++) {
         PSquad *a = &p->sq[i];
@@ -649,6 +673,8 @@ static void encounters(Play *p)
                 if (tile_fort(ti) && !tile_fort(tj) && !a->archers) continue;
                 if (!tile_fort(ti) && tile_fort(tj) && !b->archers) continue;
                 int r = strength(p, i, j);
+                LOGN("EVENT %s meets %s: strength %d (over 50 or under -50: a walkover unless in a fort)",
+                     SQN(i), SQN(j), r);
                 if ((r < -50 && !tile_fort(ti)) || (r > 50 && !tile_fort(tj))) {
                     capture(p, r < -50 ? i : j, i, j);   /* one side gives up without a fight */
                     if (p->mode == PM_PROMPT) return;
@@ -662,11 +688,16 @@ static void encounters(Play *p)
                 if (p->demo) { p->demo = 2; p->sel = i; }   /* ovl6:5AAD: the demo zooms to it */
                 a->clock = b->clock = 1;
                 a->moving = b->moving = 0;
+                LOGN("EVENT encounter: both stop; they fight on the map after %d iterations unless you Zoom", p->fight_delay);
                 break;
             }
             if ((d < seen_rule && seen_rule < RULE_SEEN_ALL) || (seen_rule >= RULE_SEEN_ALL && d < 20)) {
                 seen[i] = seen[j] = true;
-                if (!b->seen) alert_sighted(p, j);
+                if (!b->seen) {
+                    if (!logged[j]) LOGN("EVENT %s sighted by your squad %d (distance %d)", SQN(j), i, d);
+                    logged[j] = true;
+                    alert_sighted(p, j);
+                }
             }
         }
     }
@@ -814,6 +845,7 @@ static void ai_cell_values(Play *p)
         int c = flag_cell(p, f);
         if (c >= 0 && c < MAP_W * MAP_H) p->cell_value[c] = (int16_t)(p->cell_value[c] + p->value_flag);
     }
+    gamelog_grid(p, "Cell values worked out again (ai_cell_values):", p->cell_value);
 }
 
 /* ovl6:760E: steps between two cells, moving diagonally */
@@ -835,8 +867,13 @@ static void ai_choose_attack_flag(Play *p)
         if (v > 0) v = 0;
         v -= cell_distance(c, ref) * 8;
         if (rnd(p) < OPPV(p, 0xA4F0)) v -= rnd(p);
+        LOGV("ENEMY   your flag %d at %s scores %d", f, CELLN(c), v);
         if (v > best) { p->attack_flag = f; best = v; }
     }
+    if (p->attack_flag >= 0)
+        LOGN("ENEMY chooses to go for your flag %d at %s (score %d: your hold on it less A4E4, 8 a cell from the last one, randomness A4F0)",
+             p->attack_flag, CELLN(flag_cell(p, p->attack_flag)), best);
+    else LOGN("ENEMY finds none of your flags to go for");
 }
 
 /* ovl6:7DDE: squads of one side standing in a cell */
@@ -1046,7 +1083,10 @@ static bool ai_route(Play *p)
             }
         }
     }
-    if (!found) return false;
+    if (!found) {
+        LOGN("ENEMY finds no route for squad %d from %s to %s", p->ai_sq, CELLN(start), CELLN(dest));
+        return false;
+    }
     n = 0;                                         /* back from the goal */
     for (int c = dest;;) {
         list[0] = (int16_t)c;
@@ -1076,6 +1116,16 @@ static bool ai_route(Play *p)
         p->route[e++] = PATH_END;
         while (e <= at) p->route[e++] = 0;
     }
+    if (gamelog_on(p, GLOG_NORMAL)) {
+        static const char *const DIR[9] = { "?", "E", "SE", "S", "SW", "W", "NW", "N", "NE" };
+        char way[200] = "";
+        for (int k = q->route_pos; k < MAP_W * MAP_H && p->route[k] >= 1 && p->route[k] <= 8; k++) {
+            SDL_strlcat(way, " ", sizeof way);
+            SDL_strlcat(way, DIR[p->route[k]], sizeof way);
+        }
+        LOGN("ENEMY route for squad %d from %s to %s: %d cells, cost %d; marches the first part:%s",
+             p->ai_sq, CELLN(start), CELLN(dest), n, dist[dest], way);
+    }
     return true;
 }
 
@@ -1087,6 +1137,7 @@ static void ai_join(Play *p)
     int j = join_partner(p, i) - 1;
     if (j < 0) return;
     PSquad *t = &p->sq[j];
+    int before = q->men;
     for (int guard = 0; guard < 64 && t->men < 14 && q->men != 0; guard++) {
         if (q->barbarians)   { q->barbarians--; t->barbarians++; }
         else if (q->knights) { q->knights--; t->knights++; }
@@ -1094,6 +1145,7 @@ static void ai_join(Play *p)
         else if (q->spies)   { q->spies--; t->spies++; }
         count_men(p);
     }
+    if (q->men < before) LOGN("ENEMY squad %d gives %d men to %s", i, before - q->men, SQN(j));
     if (q->men == 0) squads_update(p);
 }
 
@@ -1139,6 +1191,7 @@ static void enemy_split_in_fort(Play *p, int i)
     else if (q->archers) { q->archers--; n->archers = 1; }
     else                 { q->spies--; n->spies = 1; }
     squads_update(p);
+    LOGN("ENEMY %s splits a man off into a new squad: %s", SQN(i), SQN(k));
 }
 
 static void ai_plan(Play *p);
@@ -1154,19 +1207,38 @@ static void ai_decide(Play *p)
         bool plan = false;
         if (tile_fort(tile_of_cell(p, here))) {        /* keep a fort */
             ai_nearest_squad(p, true, here, 0);
-            if (q->men < 14 || ours == 1) return;
-            if (p->ai_dist < 4 && q->food > 10) return;
+            if (q->men < 14 || ours == 1) {
+                LOGV("ENEMY %s holds the fort (%s)", SQN(i), q->men < 14 ? "under 14 men" : "the only squad there");
+                return;
+            }
+            if (p->ai_dist < 4 && q->food > 10) {
+                LOGV("ENEMY %s holds the fort (your nearest squad %d cells away, food %d)", SQN(i), p->ai_dist, q->food);
+                return;
+            }
         }
         if (q->food < OPPV(p, 0xA4EC) && supply_distance(p, i) > 9) plan = true;   /* hungry and far from food */
+        if (plan) LOGV("ENEMY %s is hungry (food %d under A4EC %d) and far from food", SQN(i), q->food, OPPV(p, 0xA4EC));
         if (!plan) {
             bool check_hold = true;
             if (rnd(p) <= OPPV(p, 0xA4E6) && rnd(p) >= 100) check_hold = false;
-            if (check_hold && !p->ai_hold) return;
-            if (here == p->home_cell && OPPV(p, 0xA4E8) >= ours) return;
-            if (q->condition < OPPV(p, 0xA4EE)) return;   /* rest first */
+            if (check_hold && !p->ai_hold) {
+                LOGV("ENEMY %s holds ground (%s worth %d)", SQN(i), here == p->home_cell ? "its flag's cell," : "a cell",
+                     here >= 0 && here < MAP_W * MAP_H ? p->cell_value[here] : 0);
+                return;
+            }
+            if (here == p->home_cell && OPPV(p, 0xA4E8) >= ours) {
+                LOGV("ENEMY %s guards its flag (%d squads there, A4E8 %d)", SQN(i), ours, OPPV(p, 0xA4E8));
+                return;
+            }
+            if (q->condition < OPPV(p, 0xA4EE)) {   /* rest first */
+                LOGV("ENEMY %s rests (condition %d under A4EE %d)", SQN(i), q->condition, OPPV(p, 0xA4EE));
+                return;
+            }
+            LOGV("ENEMY %s may move on from the ground it holds", SQN(i));
         }
     }
     if (here != p->target_cell) ai_plan(p);
+    else LOGV("ENEMY %s stays: it is at the target", SQN(i));
 }
 
 /* ovl6:7886: where to send a squad: food, its own flag, or the target */
@@ -1177,19 +1249,27 @@ static void ai_plan(Play *p)
     int food = ai_food_cell(p, i), here = cell_of(q);
     if (q->food < OPPV(p, 0xA4EC) && food < 999) {
         p->ai_dest = q->dest = food;
+        LOGN("ENEMY sends %s to eat at %s (food %d under A4EC %d)", SQN(i), CELLN(food), q->food, OPPV(p, 0xA4EC));
     } else if (ai_count_heading(p, p->home_cell) < OPPV(p, 0xA4E8)) {   /* guard the flag, fast */
         q->speed = 1;
         p->ai_dest = q->dest = p->home_cell;
+        LOGN("ENEMY sends %s to guard its flag at %s, fast (fewer than A4E8 %d squads there or on the way)",
+             SQN(i), CELLN(p->home_cell), OPPV(p, 0xA4E8));
     } else {
+        int old_target = p->target_cell;
         if (ai_count_stopped(p, p->target_cell, false) >= OPPV(p, 0xA4DC) && rnd(p) < 60) {
             p->target_cell = -1;                       /* enough squads there: a new target */
             if (here >= 0 && here < MAP_W * MAP_H && p->cell_value[here]) p->ai_hold = true;
+            LOGN("ENEMY has enough squads (A4DC %d) at its target %s: chooses a new one%s", OPPV(p, 0xA4DC),
+                 CELLN(old_target), p->ai_hold ? "; squads holding ground now stay" : "");
         }
         if (p->target_cell == -1) {
             if (p->attack_flag == -1) ai_choose_attack_flag(p);
             int flag_c = flag_cell(p, p->attack_flag);
             if (rnd(p) < OPPV(p, 0xA4E2)) {
                 p->target_cell = flag_c;               /* straight for your flag */
+                LOGN("ENEMY new target: straight for your flag %d at %s (chance A4E2 %d/128)", p->attack_flag,
+                     CELLN(flag_c), OPPV(p, 0xA4E2));
             } else {
                 int best = -860;
                 for (int c = 0; c < MAP_W * MAP_H; c++) {
@@ -1199,14 +1279,23 @@ static void ai_plan(Play *p)
                     if (tile_fort(t) && s == 0) v = 150;                                 /* an empty fort */
                     v += p->cell_value[c];
                     if (rnd(p) < OPPV(p, 0xA4F0)) v -= rnd(p);
+                    LOGV("ENEMY   %s: worth %d, scores %d", CELLN(c), p->cell_value[c], v);
                     if (v > best) { best = v; p->target_cell = c; }
                 }
+                if (p->target_cell != -1)
+                    LOGN("ENEMY new target: %s, the best score %d (its worth, +100 held weakly by you, 150 an empty fort, randomness A4F0)",
+                         CELLN(p->target_cell), best);
             }
-            if (p->target_cell == -1) p->target_cell = flag_c;
+            if (p->target_cell == -1) {
+                p->target_cell = flag_c;
+                LOGN("ENEMY new target: your flag %d at %s (nothing else worth taking)", p->attack_flag, CELLN(flag_c));
+            }
         } else if (rnd(p) < 25) {
+            if (p->ai_hold) LOGN("ENEMY lets squads holding ground move on again");
             p->ai_hold = false;
         }
         p->ai_dest = q->dest = p->target_cell;
+        LOGN("ENEMY sends %s to its target %s", SQN(i), CELLN(p->target_cell));
     }
     if (ai_route(p)) q->planned = true;
 }
@@ -1228,11 +1317,16 @@ static void ai_follow_route(Play *p)
     here = cell_of(q);
     int j = ai_nearest_squad(p, true, here, 2);
     if (OPPV(p, 0xA4F2) >= p->ai_dist && (q->archers || !tile_fort(tile_of_cell(p, cell_of(&p->sq[j]))))) {
+        LOGN("ENEMY %s attacks %s, %d cells away (strength %d, at least A4F4 %d)", SQN(i), SQN(j), p->ai_dist,
+             strength(p, i, j), OPPV(p, 0xA4F4));
         p->ai_dist <<= 2;                              /* attack */
         tx = p->sq[j].x;
         ty = p->sq[j].y;
         goto go;
     }
+    if (j >= 0 && j < MAX_SQUADS)
+        LOGV("ENEMY %s: your nearest squad it could attack is %d, %d cells (attacks within A4F2 %d)", SQN(i), j,
+             p->ai_dist, OPPV(p, 0xA4F2));
     p->ai_dist = 5;
     code = p->route[q->route_pos];
 again:
@@ -1240,8 +1334,13 @@ again:
     if (code != PATH_END && code != 0) {               /* the next cell of the route */
         int c = here + CELL_STEP[code >= 1 && code <= 8 ? code : 0];
         p->ai_dist = 30;
-        if (!ai_make_path(p, cell_x(c), cell_y(c), 30)) p->route[q->route_pos] = (int8_t)code;
-        else q->route_pos++;
+        if (!ai_make_path(p, cell_x(c), cell_y(c), 30)) {
+            p->route[q->route_pos] = (int8_t)code;
+            LOGV("ENEMY %s waits: the path memory is full", SQN(i));
+        } else {
+            q->route_pos++;
+            LOGV("ENEMY %s marches on to %s", SQN(i), CELLN(c));
+        }
         return;
     }
     dest = q->dest;
@@ -1255,12 +1354,17 @@ again:
     q->moving = 0;                                     /* arrived */
     q->on_route = 0;
     q->planned = false;
-    if (here == p->target_cell) p->target_cell = -1;
+    LOGN("ENEMY %s %s %s", SQN(i), here == dest ? "has arrived at" : "can't get to", CELLN(dest));
+    if (here == p->target_cell) {
+        p->target_cell = -1;
+        LOGN("ENEMY has taken its target: it will choose a new one");
+    }
     ai_join(p);
     ai_join(p);
     f = ai_nearest_flag(p, false, 4);                  /* stand on our flag if it is close */
     if (f == -1 || here != dest || p->ai_dist <= 1) return;
 grab_flag:
+    LOGN("ENEMY %s goes for %s flag %d at %d,%d", SQN(i), p->flag[f].white ? "your" : "its own", f, p->flag[f].x, p->flag[f].y);
     tx = p->flag[f].x;
     ty = p->flag[f].y;
     p->ai_dist = 35;
@@ -1272,6 +1376,8 @@ go:
         if (!ai_make_path(p, tx, ty, p->ai_dist)) spd = 0;
         q->speed = spd;
         q->on_route = spd;
+        LOGN("ENEMY   %s, up to %d steps", spd ? (spd == 1 ? "at a fast march" : spd == 2 ? "marching" : "marching slowly")
+                                            : "but the path memory is full: it waits", p->ai_dist);
     }
 }
 
@@ -1288,6 +1394,7 @@ static void ai_tick(Play *p)
     PSquad *q = &p->sq[p->ai_next];
     if (!q->used || q->moving || q->fighting || q->friendly) return;
     p->ai_sq = p->ai_next;
+    LOGV("ENEMY looks at %s (%s)", SQN(p->ai_sq), q->on_route ? "on a route" : q->planned ? "has a plan" : "no orders");
     if (q->on_route) {
         if (p->mode != PM_TRACE) ai_follow_route(p);
     } else if (!q->planned) {
@@ -1299,7 +1406,7 @@ static void ai_tick(Play *p)
  * The enemy guards one of its flags, one in a fort if it can. */
 static int count_flags(Play *p)
 {
-    int white = 0, black = 0;
+    int white = 0, black = 0, old_home = p->home_flag;
     for (int f = 0; f < MAX_FLAGS; f++) {
         if (!p->flag[f].present) continue;
         if (p->flag[f].white) { white++; continue; }
@@ -1308,6 +1415,8 @@ static int count_flags(Play *p)
                   : (tile_fort(tile_of_cell(p, flag_cell(p, f))) || p->home_flag == -1);
         if (take) { p->home_flag = f; p->home_cell = flag_cell(p, f); }
     }
+    if (p->home_flag != old_home && p->home_flag >= 0)
+        LOGN("ENEMY guards its flag %d at %s", p->home_flag, CELLN(p->home_cell));
     return white == 0 ? 1 : black == 0 ? 2 : 0;
 }
 
@@ -1320,12 +1429,15 @@ static void ai_start(Play *p)
     ai_choose_attack_flag(p);
     p->home_flag = -1;
     count_flags(p);
+    LOGN("ENEMY gives its first orders (5 times)");
     for (int k = 0; k < 5; k++) ai_tick(p);
 }
 
 /* check_victory (ovl6:36C7, 37F2): a general losing badly attacks all out */
 static void ai_all_out(Play *p)
 {
+    if (OPP(p, 0xA4E2) != 200 || OPP(p, 0xA4E8) != 0 || OPP(p, 0xA4F4) != -100)
+        LOGN("ENEMY goes all out: every squad goes for your flags and attacks anything (A4E2 200, A4E8 0, A4F4 -100)");
     OPP(p, 0xA4E2) = 200;
     OPP(p, 0xA4E8) = 0;
     OPP(p, 0xA4F4) = -100;
@@ -1333,7 +1445,10 @@ static void ai_all_out(Play *p)
 
 void play_enemy_beaten(Play *p, int en)
 {
-    if (rnd(p) > OPPV(p, 0xA4E2) && cell_of(&p->sq[en]) == p->target_cell) p->target_cell = -1;
+    if (rnd(p) > OPPV(p, 0xA4E2) && cell_of(&p->sq[en]) == p->target_cell) {
+        p->target_cell = -1;
+        LOGN("ENEMY gives up its target (beaten there; chance (127 - A4E2)/128)");
+    }
 }
 
 /* ovl6:52F8: every 16 ticks, food from the supply lines and condition from
@@ -1368,8 +1483,14 @@ static void food_and_condition(Play *p)
         }
         if ((tile_village(t) || tile_fort(t)) && q->food > 10) q->condition++;
         q->condition = SDL_clamp(q->condition, 1, 49);
-        if (moving == 1 && q->condition < 15) q->speed = q->moving = 2;   /* too tired */
-        if (moving == 2 && q->condition < 5) q->speed = q->moving = 3;
+        if (moving == 1 && q->condition < 15) {   /* too tired */
+            q->speed = q->moving = 2;
+            LOGN("EVENT %s is too tired for a fast march (condition %d): marches", SQN(i), q->condition);
+        }
+        if (moving == 2 && q->condition < 5) {
+            q->speed = q->moving = 3;
+            LOGN("EVENT %s is too tired to march (condition %d): marches slowly", SQN(i), q->condition);
+        }
     }
 }
 
@@ -1388,6 +1509,7 @@ static void forts_train(Play *p)
                     if (r < 42) q->archers++;
                     else if (r < 84) q->knights++;
                     else q->barbarians++;
+                    LOGN("EVENT the fort trains %s for %s", r < 42 ? "an archer" : r < 84 ? "a knight" : "a barbarian", SQN(i));
                 }
                 break;
             }
@@ -1420,6 +1542,7 @@ static int flags_check(Play *p)
             if (!fl->present || fl->white == q->friendly) continue;
             int dx = q->x - fl->x, dy = q->y - fl->y;
             if (dx < -1 || dx > 1 || dy < -1 || dy > 2) continue;
+            LOGN("EVENT %s takes %s flag %d at %d,%d", SQN(i), fl->white ? "your" : "the enemy's", f, fl->x, fl->y);
             if (fl->white) {
                 p->flags_taken++;
                 alert_flag(p, f, true);
@@ -1501,6 +1624,7 @@ static void check_over(Play *p, int key)
 
 static void trace_start(Play *p)       /* ovl6:477D, ovl6:6E1A */
 {
+    LOGN("YOU Move: trace a path for %s", SQN(p->sel));
     snd_beep();                         /* ovl6:3E05 */
     PSquad *q = &p->sq[p->sel];
     if (q->has_path) stop_squad(p, p->sel);
@@ -1521,6 +1645,7 @@ static void trace_start(Play *p)       /* ovl6:477D, ovl6:6E1A */
 
 static void trace_cancel(Play *p)
 {
+    LOGN("YOU cancel the path for %s: it stops", SQN(p->sel));
     snd_beep();                         /* ovl6:3E2D */
     stop_squad(p, p->sel);
     /* WAR.EXE leaves the cancelled steps in the path memory; free them */
@@ -1555,6 +1680,13 @@ static void trace_confirm(Play *p)     /* ovl6:48AA */
     q->path_pos = next_slot(q->path_pos);
     q->moving = q->speed;
     q->countdown = q->speed;
+    if (gamelog_on(p, GLOG_NORMAL)) {
+        int steps = 0;
+        for (int k = q->path_pos; p->path[k] != PATH_END && p->path[k] != 0 && steps < PATH_SIZE; k = next_slot(k)) steps++;
+        int x = q->mark_x - 1, y = q->mark_y - 4;      /* where the box was */
+        LOGN("YOU order %s to %s to %d,%d in %s: %d steps", SQN(p->sel),
+             q->speed == 1 ? "march fast" : q->speed == 2 ? "march" : "march slowly", x, y, CELLN(((y + 5) / 10) * 10 + ((x + 1) >> 3)), steps);
+    }
     cmd_normal(p);
 }
 
@@ -1718,6 +1850,8 @@ static void info_speed(Play *p)        /* ovl6:7072: S steps slow, march, fast, 
     if (q->condition < 5 && q->speed == 2) q->speed = 0;    /* or to march */
     if (q->has_path) q->moving = q->speed;                  /* 0 halts a moving squad */
     if (q->speed == 0) q->speed = 3;
+    LOGN("YOU Speed: %s %s", SQN(p->sel), q->has_path && q->moving == 0 ? "halts" :
+         q->speed == 1 ? "marches fast" : q->speed == 2 ? "marches" : "marches slowly");
     info_orders(p);
     info_condition(p);
 }
@@ -1733,6 +1867,7 @@ void play_clear_path(Play *p, int i) { clear_path(p, i); }
  * battle's squads carry on along their paths (ovl6:3589) */
 void play_after_battle(Play *p, int a, int b)
 {
+    LOGN("EVENT back on the map: %s; %s", p->sq[a].men ? SQN(a) : "your squad is gone", p->sq[b].men ? SQN(b) : "the enemy squad is gone");
     p->zoom_squad = -1;
     p->sq[a].clock = p->sq[b].clock = 0;
     p->sq[a].fighting = p->sq[b].fighting = false;
@@ -1749,6 +1884,7 @@ void play_after_battle(Play *p, int a, int b)
 
 void play_resume(Play *p)
 {
+    LOGN("Play resumes");
     p->result = PLAY_RUNNING;
     p->key = 0;
     squads_update(p);
@@ -1889,6 +2025,7 @@ static void start_game(Play *p, const Campaign *c, const GameAssets *ga, uint32_
     cmd_normal(p);
     if (check_victory(p, -1, -1)) { check_over(p, 0); return; }
     ai_start(p);                        /* a new game: the enemy's first orders */
+    gamelog_state(p, "The game at the start");
     if (demo) p->demo_key = PK_KP_MINUS;   /* ovl6:3197: the demo scrolls up the map first */
     snd_new_game();                     /* ovl6:317D, 3194, 31FE */
     check_over(p, 0);
@@ -1988,6 +2125,7 @@ static void group_start(Play *p, bool join)
     }
     p->g_join = join;
     p->mode = PM_GROUP;
+    LOGN("YOU %s: %s with squad %d", join ? "Join" : "Detach", SQN(p->sel), p->partner);
     group_show(p);
 }
 
@@ -2013,6 +2151,7 @@ static void group_key(Play *p, int key)
         snd_beep();                                         /* ovl6:698A */
         text_reset(p);
         squads_update(p);
+        LOGN("YOU End: now %s; %s", a->used ? SQN(p->sel) : "squad gone", b->used ? SQN(p->partner) : "other squad gone");
         p->over_squad = false;
         if (a->used) cmd_squad(p);
         else cmd_normal(p);
@@ -2082,6 +2221,7 @@ static void formation_key(Play *p, int key)
         snd_beep();                                         /* ovl6:4722 */
         formation_text(p);
     } else if (key == PK_E || (key >= PK_HOME && key <= PK_PGDN)) {   /* E, or a cursor key */
+        LOGN("YOU Formation: %s takes formation %d", SQN(p->sel), q->formation);
         if (key == PK_E) snd_beep();                        /* ovl6:46B5 */
         p->over_squad = false;
         cmd_squad(p);
@@ -2100,10 +2240,11 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
     }
     if (p->mode == PM_PROMPT) {
         if (p->ended) {                 /* the map can still be scrolled */
-            if (key == PK_ENTER || key == PK_SPACE) p->result = p->outcome;
+            if (key == PK_ENTER || key == PK_SPACE) { p->result = p->outcome; LOGN("YOU %s: the game ends", gamelog_key(key)); }
             else cursor_input(p, key);
         } else if (p->prompt_surrender) {
             if (key == PK_Y) {
+                LOGN("YOU surrender (Y)");
                 p->prompt_surrender = false;
                 clear_row(p, 24);
                 print(p, O5(p, 0x47));  /* Your opponent accepts your surrender */
@@ -2111,15 +2252,18 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
                 p->outcome = PLAY_LOST;
                 p->result_code = 11;
             } else if (key == PK_N) {
+                LOGN("YOU don't surrender after all (N)");
                 p->prompt_surrender = false;
                 p->mode = PM_NORMAL;
                 cmd_normal(p);
             }
         } else if (p->prompt_quit) {    /* the remake's Esc */
             if (key == PK_Y) {
+                LOGN("YOU quit to the title page (Y)");
                 p->prompt_quit = false;
                 p->result = PLAY_QUIT;
             } else if (key == PK_N || key == PK_ESC) {
+                LOGN("YOU carry on (%s)", gamelog_key(key));
                 p->prompt_quit = false;
                 p->mode = PM_NORMAL;
                 cmd_normal(p);
@@ -2127,11 +2271,13 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         } else if (p->prompt_offer) {   /* ovl6:37B6 */
             if (key == PK_Y || key == PK_N) snd_beep();   /* ovl6:37C5, 37E3 */
             if (key == PK_Y) {
+                LOGN("YOU accept the enemy's surrender (Y)");
                 print(p, DS(p, 0x1CF)); /* Yes */
                 p->ended = true;
                 p->outcome = PLAY_WON;
                 p->result_code = 1;
             } else if (key == PK_N) {
+                LOGN("YOU refuse the enemy's surrender (N)");
                 print(p, DS(p, 0x1D3)); /* No */
                 ai_all_out(p);          /* ovl6:37F2: refused, the enemy attacks all out */
                 p->prompt_offer = false;
@@ -2157,8 +2303,9 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         return;
     }
     if (p->mode == PM_NORMAL) {
-        if (key == PK_ALT_S) { p->result = PLAY_SAVE; return; }   /* save the game (ovl6:3BE5) */
+        if (key == PK_ALT_S) { LOGN("YOU save the game (Alt+S)"); p->result = PLAY_SAVE; return; }   /* save the game (ovl6:3BE5) */
         if (key == PK_ESC) {            /* the remake: leave the game */
+            LOGN("YOU Esc: quit to the title page?");
             clear_row(p, 23);
             clear_row(p, 24);
             tpos(p, 24, 0);
@@ -2168,6 +2315,7 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
             return;
         }
         if (key == PK_S) {              /* Surrender */
+            LOGN("YOU Surrender?");
             snd_beep();                 /* ovl6:3BE2 */
             clear_row(p, 23);
             clear_row(p, 24);
@@ -2179,6 +2327,8 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
         if (key == PK_T) {              /* Time: slow, medium, fast, faster */
             p->time_div >>= 2;
             if (p->time_div < 1) p->time_div = 64;
+            LOGN("YOU Time: %s (a tick each %d iterations)", p->time_div == 64 ? "slow" : p->time_div == 16 ? "medium" :
+                 p->time_div == 4 ? "fast" : "faster", p->time_div);
             snd_beep();                 /* ovl6:3C1E */
             show_time(p);
         } else if (key == PK_C) {       /* Clear the messages */
@@ -2186,15 +2336,20 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
             text_reset(p);
             show_clear(p);
         } else if (key == PK_V) {       /* View */
+            LOGV("YOU View");
             snd_beep();                 /* ovl6:3C4B */
             show_view(p);
             return;
         }
     } else if (p->mode == PM_SQUAD) {
         const PSquad *q = &p->sq[p->sel];
-        if (key == PK_I) { show_info(p); return; }
-        if (key == PK_Z && q->fighting && q->clock > 0) { p->zoom_squad = p->sel; return; }   /* Zoom (ovl6:3D97) */
-        if (key == PK_S) { show_size(p); return; }
+        if (key == PK_I) { LOGV("YOU Info: %s", SQN(p->sel)); show_info(p); return; }
+        if (key == PK_Z && q->fighting && q->clock > 0) {   /* Zoom (ovl6:3D97) */
+            LOGN("YOU Zoom: %s against %s, to the battle screen", SQN(p->sel), SQN(q->foe));
+            p->zoom_squad = p->sel;
+            return;
+        }
+        if (key == PK_S) { LOGV("YOU Size: %s", SQN(p->sel)); show_size(p); return; }
         if (key == PK_M && q->friendly && !q->fighting) { trace_start(p); return; }
         if (key == PK_D && p->free_slot > -1 && q->friendly && !q->fighting) {   /* Detach (ovl6:3C99) */
             p->partner = p->free_slot;
@@ -2216,6 +2371,7 @@ static void handle_key(Play *p, int key)       /* ovl6:3B87 */
 void play_frame(Play *p, int held)
 {
     if (p->result != PLAY_RUNNING) return;
+    gamelog_iteration(p);
     int key = p->key ? p->key : held;
     p->key = 0;
     if (p->demo) {
@@ -2230,6 +2386,7 @@ void play_frame(Play *p, int held)
     if (key == 0 && !frozen && p->tick_count >= p->time_div) {   /* campaign_play: one tick */
         p->tick_count = 0;
         p->ticks++;
+        gamelog_tick(p);
         int r = flags_check(p);
         if (r) { game_over(p, r == 2); p->result_code = r == 1 ? 10 : 0; return; }
         encounters(p);
@@ -2242,6 +2399,7 @@ void play_frame(Play *p, int held)
             supply_map(p);
             food_and_condition(p);
             forts_train(p);
+            if (gamelog_on(p, GLOG_VERBOSE)) gamelog_squads(p, "Every 16 ticks: food, condition, training");
         }
     }
     if (p->demo) key = p->demo_key;             /* the demo may scroll to a message */
