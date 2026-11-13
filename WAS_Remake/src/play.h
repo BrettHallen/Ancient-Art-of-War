@@ -141,6 +141,9 @@ typedef struct {
 
     int      dist;           /* 689A: the distance between the last two squadrons compared */
     int      losses[4];      /* 64A5, 64A7, 64A9, 64AB: your ships, theirs, your flagships, theirs */
+    int      captured[2];    /* 64A1, 64A3: your ships taken by the enemy, theirs taken by you (step 4) */
+    int      battle_req;     /* Zoom (1) or Practice (2) asked for: main.c starts the sea battle */
+    int      battle_shore;   /* 686B: the shore in the battle, from the map (ovl4:7EEA) */
     int      battle_a, battle_b;   /* 6301, 6303: the last Zoom's squadrons (step 4) */
     int      crown_threat;   /* 6309 */
     int      merchant_lost;  /* 6898 */
@@ -196,5 +199,13 @@ int  play_map_h(const Play *p);
 
 /* The squadron's map cell (squadron_cell rt:1985) */
 int  play_cell(const Play *p, int sq);
+
+/* For the sea battle (battle.c) */
+int  play_random(Play *p);                       /* random() rt:2F0D */
+void play_list_ships(Play *p, int sq);           /* rt_0630 into p->list */
+void play_clear_paths(Play *p, int sq);          /* rt_0f55 */
+void play_place_detached(Play *p, int from, int to, int steps, int at);   /* rt_1f2d */
+/* campaign_play starts again after a battle (ovl4:7650 with [6465] = 0) */
+void play_after_battle(Play *p, bool practice, bool left);
 
 #endif

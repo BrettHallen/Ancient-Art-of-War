@@ -36,7 +36,7 @@ Note for the remake: the At Sea 16-colour set is the **Tandy 1000** version. Its
 | 6 | 0x1D160 | 13,168 | C9B0 | Sea battle support: loads SO6, SO7, SO8; the results ("They lost N ships", "Leaving the battle.") |
 | 7 | 0x204D0 | 13,792 | C9B0 | Boarding: the fight on deck (picture B; Flag, Quarterdeck, Poopdeck, Railing; Attack / Leave / Cross / Again) |
 
-Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 137 named from WAS.EXE itself (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
+Routines named so far: 105 matched to WAR.EXE.asm by their instruction sequence (the C library, file I/O, text, sound, delay, random, the scroll and menu helpers, the editors' helpers, some campaign-play routines) and 204 named from WAS.EXE itself, 67 of them in the sea battle and boarding (see the NAMED FUNCTIONS list at the top of WAS.EXE.asm).
 
 Video: CGA mode 4, or Hercules with `WAS HERC` (an argument starting with H; see `README.md`): the same drawing, with the row table DS:0D3B pointing at Hercules scanlines 72-271 (from byte 4, 90 bytes a row, four banks), so the CGA bytes show as 1-bit pixels, 640x200 in the middle of 720x348. [0ECB]: 0 CGA, 1 Hercules, 2 when the BIOS equipment word's video bits are 00 (an EGA or VGA card).
 
@@ -65,7 +65,7 @@ New format for all of them (not WAR's two formats):
 | SPO | Battle report: boarding scene | 9 |
 | SPP, SPQ | Battle report: two more boarding scenes | none (CGA only) |
 | AD | The face in the opening (Thor Foote's eyes). The picture uses the first 2133 bytes; load_picture stops there, so the other 2025 bytes are never read | 13 |
-| B | Boarding: the view along the deck (overlay 7). Also the file looked for to find the At Sea disk ("B:B", "A:B", "B") | 29 |
+| B | Boarding: the view along the deck (overlay 7), unpacked again every frame into the boarding buffer's two fields. Also the file looked for to find the At Sea disk ("B:B", "A:B", "B") | 29 |
 
 ## WAST.DAT format (16-colour graphics) - decoded
 **The same archive and run-length code as WARET.DAT** (`WAR_file_reference.md`):
@@ -151,9 +151,9 @@ Opponents (SO2): Thor Foote, the Duke of Medina Sidonia, Blackbeard, Martin Trom
 | SO3 | 3,858 | Scroll font/sprites; story, title and rules steps; "PREPARE FOR WAR!", go to war / make changes / quit; the RULES texts |
 | SO4 | 507 | Main menus: make/change/remove a campaign, Options Shoppe, RULEBOOK / STORYBOOK / MAP MAKER / ENEMY / FLEET |
 | SO5 | 862 | Campaign play messages (overlay 4): surrender, ALERT - ENEMY SIGHTED, WARNING - ENCOUNTER, SUNK IN ROUGH WATERS, LOST IN SHALLOW WATER, FLAG TAKEN, MERCHANT LOST/CAPTURED, SPEED Anchored / Half Sail / Full Sail, Join / Detach / Surrender, ZOOMING |
-| SO6 | 853 | Sea battle texts: "strikes her colors", "boards the", "sinks under heavy fire", "sinks after a collision", "retreated", the orders (mimic, follow ship in front, general chase, avoid battle, board), Fire, View, Course |
-| SO7 | 1,764 | Sea battle data (no text) |
-| SO8 | 18,492 | Sea battle sprites (ships), loaded by overlays 5 and 6 |
+| SO6 | 853 | Read to DS:4AF5 by ovl6_c9b0. Sea battle texts at the start ("strikes her colors", "boards the", Speed, Gun, Orders-, the ship types, Time ( faster / fast / medium / slow / slower ), View, Fire, "and to change, when done", the orders Course ->, mimic, follow ship in front, general chase, avoid battle, board (offsets in the tables DS:18ED and DS:18F9), "sinks under heavy fire", "sinks after a collision", "retreated"); then the panel's icons (+103h), the wind icon (+247h), the turning tables (+253h toward a ship, +293h keeping station), the skills (+2D3h, your ships' rt_5199 values), the gun crews' places (+2E5h, +2EDh) and small crew pictures (+31Dh, +329h, +32Fh) |
+| SO7 | 1,764 | Read to DS:4257 (70Eh bytes), right after the gun crew's panel buffer at DS:3F3D (44 bytes x 18 lines): the gun crew's pictures, at the offsets from DS:3F3D in the tables DS:1899-18EB |
+| SO8 | 18,492 | Read into an allocated block (overlays 5 and 6): the ships for the close view (16 headings, turning frames, frigates; offsets in the tables DS:180F, 1839, 1859, 1879), the crew men (DS:18B5, 18C1), the sinking (DS:182F) and the explosion (+4562h, 4594h, 45F0h, 4682h). Freed while boarding (overlay 7 uses the space) and read again afterwards |
 
 ## Data in WAS.EXE's data segment
 - Strings for the map and battle screens ("Wind is from the ...", "You sank the ...", "grapples", "Zoom Pass", "ENEMY FRIGATE", "MERCHANT SUPPLIES SQUAD", "CROWN CAPTURED"), the file names (SM at DS:002A, S0-SB at DS:0BB5), the font (DS:089C).
@@ -167,7 +167,10 @@ Opponents (SO2): Thor Foote, the Duke of Medina Sidonia, Blackbeard, Martin Trom
 | 05AF | Pennant, drawn one line pair above a squadron with a flagship |
 | 05BD | Cargo, drawn one line pair above a merchant squadron |
 - The keypad's marker steps at DS:0739 (dx) and DS:0744 (dy), for scan codes 47h-51h.
-- The digits of Info's 0-100 scale at DS:05EF-062A (8x6 icons). From about DS:1100 on: more tables and sprite data, to be mapped as the code is named.
+- The digits of Info's 0-100 scale at DS:05EF-062A (8x6 icons).
+- The sea battle: the time's iteration counts DS:10AA and animation phases DS:10B0 (by time 0-4), the screen row table DS:0D3B, the overview's ship pictures, the pointer tables into SO6, SO7 and SO8 (DS:180F-18EB). Its variables from DS:69CF (time, selected ship 69D1, menu 69D3, view 69D5-69DD) and the ship arrays 69E1-6B13 (see WAS_Analysis/README.md).
+- Boarding (overlay 7): the shots' pictures DS:1905, 191F, 1931; the parts of the deck as boxes, five words each of min x, max x, min y, max y for the five parts at DS:193B, 1945, 194F, 1959 (yours) and 1963, 196D, 1977, 1981 (the enemy's); the men's scripts DS:198B-1CA3 (entries of three words: step in the buffer, picture number, state; 101 or 102 ends one with the facing); the tunes DS:1CA5 (notes) / 1CB5 (lengths) for your Attack and 1CC3 / 1CCD for the enemy's; the men's pictures DS:1CD5-3E63 (w bytes, h lines, then per line w mask/value pairs for each field), 48 of them in the order of the table boarding_load_b writes to DS:6D5A. The variables: 64D7 the man's opponent, 64DD the countdown to the fight, 6CF4-6D08 pointers to the men's arrays (in the buffer after B), 6D0A the scripts, 6DBE-6DDF the orders, 6DC1 the result, 6DC7 the counts.
+- From about DS:1100 on: more tables and sprite data, to be mapped as the code is named.
 
 ## Documentation
 `WAS_Documentation`: the manual is being scanned (so far the cover, title, contents, credits and introduction: Book I instruction manual p3, Book II planning guide p31, Book III history of fighting sail p53, Book IV appendixes p105); the quick reference card and the hard-disk installation sheet. Text in `WAS_Analysis/manual_ocr/`.

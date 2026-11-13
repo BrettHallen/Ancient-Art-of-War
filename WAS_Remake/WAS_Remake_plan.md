@@ -29,6 +29,7 @@ Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/R
 
 ## To agree
 - The scope of each step, as it comes up.
+- The battle and the boarding in 16 colours: WAST.EXE (the Tandy version) may draw them in its own colours (WAST.DAT has a 16-colour deck for boarding); how is not yet known (WAST.EXE is EXEPACKed). Until then the remake shows the CGA battle in the 16-colour mode as well (Hercules shows it as WAS HERC does).
 
 ## Build order (as for WAR)
 1. Asset loader + viewer - done (12 Nov)
@@ -57,7 +58,17 @@ Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/R
    - checked in DOSBox: tracing (the box, the land stopping it), the mark, sailing to the end, Join and Detach (all four screens each), the sighting/encounter/fighting/battle messages, "In Port", the wind's face (North and South), a crown taken on tick 20 with "You Won" (a key then ends the game at once, as WAS.EXE does after ovl4:C51A), the offer to surrender: pixel-identical, apart from the enemy's moves
    - tests: test_rules.c; fuzz_play.c also traces paths at the fastest time and checks the path ring
    - left for step 5: the merchants (created at ovl4:BEE3 with the enemy's routes, db21), port_side (ovl4:BD3C, the strength map ovl4:E805); for step 4: Zoom, Practice; for step 8: the crown's flashing tune
-4. Battles: the sea battle (overlays 5 and 6: Zoom, courses, firing, orders) and boarding (overlay 7).
+4. Battles - done (13 Nov)
+   - the way in: Zoom on an encounter's countdown, Practice on a lone squadron (battle_ask, the shore [686B] from the map tile, a port beside or the land around); afterwards campaign_play goes on (play_after_battle: the flagships, the coast, end_check unless you Left, the ports' inversion)
+   - fiber.c: WAS.EXE's battle draws straight to the screen and waits in delay() inside its loops, so the ported code runs as it was written, on a thread of its own taking turns with the main loop (a semaphore each way; only one runs at a time). The battle keeps its own clock: delay() units (50 us), each look at an empty keyboard, and the drawing and the rest of the work counted in 8086 instructions at 300 a millisecond; it hands back to the main loop when its clock passes real time, so it runs at an XT's speed on any machine
+   - battle.c (overlays 5 and 6): the setup (ovl6_c9b0: SO6, SO7, SO8 into the data-segment copy at the offsets WAS.EXE's pointers use; the ships placed from the squadrons), the main loop (ovl5_7650), the keys (ovl5_7ac6: Gun, Course, Speed, Orders, Aim, Fire, View, Time, Pause, Leave, the ship keys, the view's scrolling), the panel (ovl6: the masts, speed, wind, compass, the gun crews and their animations, the orders, the messages), the end (ovl6_d5aa: ships captured, lost and the squadrons' changes back on the map)
+   - battle_ships.c: drawing the ships (ovl5_afc6, rt_5ed1 with the sail holes and the sinking), sailing and turning (ovl5_b4c5, b841, rt_59ec), collisions, running aground and grappling (ovl5_bc12: "X grapples Y. Zoom Pass"), the guns (ovl5_936d, the hits abb6, the explosion a7ad), the speeds (ovl6_f0d2) and the orders and aim of every ship, yours and the enemy's (rt_34bf-4b35); where WAS.EXE reads a ship index of -1 or 6 the neighbouring arrays are rebuilt in WAS.EXE's layout
+   - battle_gfx.c: the hand-written drawing routines (rt_5dc5-6765: the sea, the shore, masks, the box, the text) with their instruction counts
+   - boarding.c (overlay 7): the deck B unpacked every frame into two fields where SO8 was (SO8 is loaded again afterwards), 40 men with their scripts and pictures from WAS.EXE's tables, Attack / Leave, FROM Flag / Quarterdeck / Poopdeck / Railing TO ... / Cross / Again, the enemy's orders every sixth frame, the officers' pistols, the end (the winners cheer, the loser's flag struck) and the ship taken
+   - checked in DOSBox (WAS_Analysis/tools/dosbox, with GEO.WASHINGTON's squadron moved beside MACABRE's in the DOSBox copy of S0): Practice's overview and close view and Zoom's first screens pixel-identical; the boarding's deck pixel-identical (the men stand where the random numbers put them). Timing at 300 cycles: Practice at faster time 83 ms an iteration in the overview, 160-167 ms close (the remake 88 and 161 ms); a boarding frame about 0.50 s while the crews wait and 0.6 s as the fight starts (the remake 0.48 and 0.64 s)
+   - tests: test_battle.c, fuzz_battle.c
+   - not ported: the joystick (as in WAR); WAS.EXE's extra wait on fast PCs ([0D19] > 1500), as the remake runs at an XT's speed
+   - left for step 5: the enemy's moves on the map; step 6: the demo's battles (the code is there, b->demo); step 8: the battle's sounds (counted, not played)
 5. The enemy commander.
 6. Menus, options, saved games, battle report, the opening and the demo.
 7. The editors (map maker, ships, rules, story, title).

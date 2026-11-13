@@ -1543,33 +1543,38 @@ static void start_trace(Play *p)
 
 /* ------------------------------------------------------------------ Detach and Join */
 
-/* rt_1f2d: a squadron made by Detach is put one byte beside the old one,
- * east or west, or two line pairs north or south, where there is sea */
-static void place_new(Play *p, int from, int to)
+/* rt_1f2d (place_detached): squadron b gets a's side and is put by squadron at's
+ * place, (steps * 3 + 1) bytes east or west, or twice that many line pairs north
+ * or south, where there is sea. Detach: steps 0, at = a; after a sea battle the
+ * ships that sailed off it: steps 1, at = the other squadron. */
+void play_place_detached(Play *p, int from, int to, int steps, int at)
 {
     PSquad *a = &p->sq[from], *b = &p->sq[to];
     b->side = a->side;
-    int cell = play_cell(p, from), t = map_at(p, cell), col = cell % 10, row = cell / 10;
+    int cell = play_cell(p, at), t = map_at(p, cell), col = cell % 10, row = cell / 10;
     bool east = col == 9 || coast_b(t) || coast_d(t) || t == 42 || t == 48 ||
                 !tile_sea(map_at(p, cell + 1)) || tile_land(map_at(p, cell + 1));
     bool west = col == 0 || coast_a(t) || coast_c(t) || t == 49 || t == 50 ||
                 !tile_sea(map_at(p, cell - 1)) || tile_land(map_at(p, cell - 1));
     bool north = row == 0 || coast_a(t) || coast_b(t) || (t >= 43 && t <= 45) ||
                  !tile_sea(map_at(p, cell - 10)) || tile_land(map_at(p, cell - 10));
+    int n = steps * 3 + 1;
     b->has_route = b->has_path = b->routed = false;
     b->port_speed = 0;
     b->speed = 0;
     b->used = true;
-    b->x = a->x;
-    b->y = a->y;
-    if (east && west) b->y += north ? 2 : -2;
-    else if (east) b->x--;
-    else b->x++;
+    b->x = p->sq[at].x;
+    b->y = p->sq[at].y;
+    if (east && west) b->y += north ? 2 * n : -2 * n;
+    else if (east) b->x -= n;
+    else b->x += n;
     b->supplies = a->supplies;
     b->mark = 0;
     b->partner = 0;
     b->heading = 0;
 }
+
+static void place_new(Play *p, int from, int to) { play_place_detached(p, from, to, 0, from); }
 
 /* ovl4_a952: the two columns of names */
 static void dj_names(Play *p)
@@ -1805,6 +1810,37 @@ static void show_fleet(Play *p)
 
 /* ------------------------------------------------------------------ keys */
 
+/* campaign_input ovl4:7EEA: Zoom or Practice: the shore for the battle from the map
+ * cell (686B), then campaign_play returns 2 and rt_0000 runs the sea battle */
+static void battle_ask(Play *p, int kind)
+{
+    int cell = play_cell(p, p->sel), t = map_at(p, cell), shore = 0;
+    if (t == 42 || t == 48 || t == 53 || t == 54) shore = 1;
+    else if (t >= 49 && t <= 52) shore = 2;
+    else if (t >= 43 && t <= 47) shore = 3;
+    else if (t >= 37 && t <= 41) shore = 4;
+    else if (coast_b(t)) shore = 5;
+    else if (coast_d(t)) shore = 6;
+    else if (coast_c(t)) shore = 7;
+    else if (coast_a(t)) shore = 8;
+    int port = port_of_cell(p, cell);
+    if (port != -1) {
+        if (cell + 1 == port) shore = 9;
+        else if (cell - 1 == port) shore = 10;
+        else if (cell - 10 == port) shore = 11;
+        else shore = 12;
+    }
+    if (shore == 0) {
+        int col = cell % 10;
+        if (col < 9 && tile_land(map_at(p, cell + 1))) shore = 1;
+        if (col > 0 && tile_land(map_at(p, cell - 1))) shore = 2;
+        if (cell > 9 && tile_land(map_at(p, cell - 10))) shore = 3;
+        if (cell < 190 && tile_land(map_at(p, cell + 10))) shore = 4;
+    }
+    p->battle_shore = shore;
+    p->battle_req = kind;
+}
+
 static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
 {
     if (p->mode == PM_PROMPT) {
@@ -1895,7 +1931,12 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
             p->free_slot = join_partner(p, p->sel) - 1;
             if (p->free_slot > -1) { dj_start(p, true); return; }
         }
-        /* Zoom and Practice come with step 4 */
+        if (key == PK_Z && q->partner && q->ctrl != 0 && q->ctrl != -1) { battle_ask(p, 1); return; }   /* Zoom */
+        if (key == PK_P && !q->partner && q->ctrl == -2 && commandable(p, p->sel)) {               /* Practice */
+            p->sq[p->sel].port_speed = q->speed;
+            battle_ask(p, 2);
+            return;
+        }
         if (key == PK_M && q->side == -1 && !q->partner) { start_trace(p); return; }
     } else if (p->mode == PM_TRACE) {
         if (key == PK_C) {                      /* Cancel */
@@ -2100,6 +2141,37 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
     end_check(p, p->battle_b, p->battle_a);
     if (p->mode == PM_OFFER) p->offer_at_start = true;   /* the rest comes after the answer */
     else start_rest(p);
+}
+
+int  play_random(Play *p) { return rnd(p); }
+void play_list_ships(Play *p, int sq) { list_ships(p, sq); }
+void play_clear_paths(Play *p, int sq) { clear_paths(p, sq); }
+
+/* campaign_play (ovl4:7650) entered again after a sea battle: the counts, the end of
+ * the game (end_check with the battle's squadrons, unless you left it), and the map's
+ * command line. ovl4_ed83 (the enemy after a battle) comes with step 5. */
+void play_after_battle(Play *p, bool practice, bool left)
+{
+    (void)practice;
+    p->battle_req = 0;
+    mark_flagships(p);
+    p->mode = PM_NORMAL;
+    p->key = 0;
+    p->msg_last = 0;
+    p->msg_rows = 0;
+    p->text_rows = 2;
+    for (int r = 0; r < 25; r++) clear_row(p, r);
+    clear_panel(p);
+    coast_init(p);
+    if (!left) end_check(p, p->battle_b, p->battle_a);
+    p->over_squad = false;
+    if (p->mode != PM_END && p->mode != PM_OFFER) {
+        cmd_normal(p);
+        check_over(p, 0);
+    }
+    for (int cl = 0; cl < NUM_CELLS; cl++)   /* the map buffer is drawn again, then ovl4_c21c */
+        p->inverted[cl] = p->map[cl] >= 74 && p->map[cl] <= 76 && p->port_sup[cl] == 0;
+    text_rows_add(p, 0);
 }
 
 void play_key(Play *p, int key, bool shift)

@@ -6,7 +6,15 @@ The remake uses the original pictures, map tiles, sprites and font, in either th
 **No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `AD`, `B`, the `S` files and `SITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
 ## Status
-Steps 1 to 3 of the plan (`WAS_Remake_plan.md`) are done.
+Steps 1 to 4 of the plan (`WAS_Remake_plan.md`) are done.
+
+**Sea battles and boarding** (step 4, overlays 5 to 7 of WAS.EXE):
+- **Zoom** (**Z** over your squadron while an encounter counts down) fights the encounter as a sea battle; **Practice** (**P** over a squadron that has no enemy near) sails it on its own, with the guns loading at their fastest
+- the battle: your ships and the enemy's in the overview or the close **View**, each under its orders (Course, follow, chase, avoid ...), sailing with the wind, turning, firing broadsides; sails get holed, hulls damaged, ships strike their colours, sink, run aground or grapple one another. Your selected ship is steered and fought from the panel: **G**un side, **C**ourse, **S**peed (sails), **O**rders, **A**im, **F**ire, **+** / **-** for your next ship, **T**ime, **P**ause, **L**eave
+- **boarding**: when ships grapple, *X grapples Y. Zoom Pass*: **Z** goes on deck. Forty men of the two crews, as many on each side as the ships' damage, types and other ships alongside allow. **A**ttack (or **L**eave), then send your men FROM one part of your deck TO another (**F**lag, **Q**uarterdeck, **P**oopdeck, **R**ailing; **C**ross to the enemy's flag; **A**gain sends another; Esc starts over). The side that clears the other's deck or reaches its flag takes the ship
+- afterwards the map shows the ships captured and lost, and the game goes on
+
+The battle runs at the speed it had on an IBM PC/XT, as the rest of the game does: its first screens and the boarding's deck match the original in DOSBox pixel for pixel, and its timings were measured there. In the 16-colour mode the battle is shown in its CGA colours for now (how the Tandy version draws it is still to be found out). The battle's sounds come with step 8.
 
 **Campaign play, the rules** (step 3, overlay 4 of WAS.EXE): your squadrons can now be sailed, and the game follows the original's rules:
 - **Move**: over one of your squadrons press **M**, trace its path with the marker (it becomes a box that stays on the sea and moves at half speed, as in the original), and press **M** to mark the end (**C** cancels). The squadron sets out at full sail and a little cross marks where it will stop; in **Info**, **S** changes its speed (anchored, half sail, full sail)
@@ -18,7 +26,7 @@ Steps 1 to 3 of the plan (`WAS_Remake_plan.md`) are done.
 - **Detach** (**D**) and **Join** (**J**): move ships between a squadron and a new one, or one beside it (**-** / **+** mark a ship, **S** switches it, **E** ends)
 - the end: the last ship or the last flagship of a side lost, or a crown taken (*BLACK CROWN CAPTURED*), shows *You Won* or *You Lost*; the opponent may offer to surrender (Y or N)
 
-The tracing box, the path's mark, sailing to the end of a path, Join, Detach, the messages, "In Port", the wind's face, a crown taken with *You Won*, and the opponent's offer match the original pixel for pixel (checked in DOSBox). The enemy does not move yet (step 5), and neither do the merchants that bring supplies to ports (step 5, as they use the enemy's routes); Zoom and Practice come with step 4.
+The tracing box, the path's mark, sailing to the end of a path, Join, Detach, the messages, "In Port", the wind's face, a crown taken with *You Won*, and the opponent's offer match the original pixel for pixel (checked in DOSBox). The enemy does not move yet (step 5), and neither do the merchants that bring supplies to ports (step 5, as they use the enemy's routes).
 
 **Campaign play, the map** (step 2): press **Enter** on a campaign's map in the viewer to play it. The game starts as the original does, at the bottom of the map with the marker in the middle:
 - the marker (the arrows or the keypad, held down to keep moving; it moves 27 times a second, as the original on an IBM PC/XT) and scrolling (- and +; with Shift, to the top or bottom)
@@ -35,7 +43,7 @@ The tracing box, the path's mark, sailing to the end of a path, Join, Detach, th
 - the map sprites: the anchor, the crossed swords of an encounter, a ship under sail in 16 headings, the flagship's pennant and the merchant's cargo, each as the player's (white with a black outline) and the enemy's (black with a white outline)
 - the eleven campaigns: the map with every squadron where it starts (at anchor, with the pennant over a squadron that has a flagship), the opponent and the number of ships on each side; **I** shows the campaign's story, then its squadrons and ships; **Enter** plays it
 
-The rest follows the build order in the plan: the sea battle and boarding, the enemy, the menus, the editors and sound.
+The rest follows the build order in the plan: the enemy, the menus, the editors and sound.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):
@@ -97,6 +105,8 @@ The original keys:
 | - / +, Tab / Ctrl | Scroll the map; with Shift, jump to the top or bottom |
 | M | Over your squadron: trace its path; M again marks the end, C cancels |
 | I | Info about the squadron under the marker (S: its speed, on a traced path); E ends |
+| Z | Over your squadron in an encounter: Zoom into the sea battle |
+| P | Over your squadron with no enemy near: Practice (elsewhere: Pause) |
 | D, J | Detach, Join: - and + mark a ship, S switches it to the other squadron, E ends |
 | F | Fleet: the ships on each side; any key returns |
 | T | Time: slow, medium, fast, faster |
@@ -105,6 +115,25 @@ The original keys:
 | S | Surrender (Y or N) |
 | Y, N | Answer the opponent's offer to surrender |
 | Enter | After the game is over: back to the viewer |
+
+In the sea battle:
+
+| Key | Action |
+|-----|--------|
+| G | The side the gun crew works |
+| C, S, A | Course, Speed (sails), Aim: - and + change it, Enter ends |
+| O | Orders for the selected ship: - and + choose, Enter ends |
+| F | Fire the loaded guns |
+| + / - | Your next / previous ship |
+| V | The overview or the close view |
+| Space | The view back on your ship |
+| 1-9, keypad | Scroll the view |
+| T | Time: steps through the five speeds |
+| P | Pause |
+| L | Leave the battle |
+| Z, P | When ships grapple: Zoom (board) or Pass |
+| A, L | On deck: Attack, or Leave |
+| F, Q, P, R, C, A | On deck: FROM / TO Flag, Quarterdeck, Poopdeck, Railing, Cross to the enemy's flag; Again sends another man; Esc starts over |
 
 And the remake's own: **Tab** switches between CGA, 16 colours and Hercules (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)* (for now it goes back to the viewer).
 

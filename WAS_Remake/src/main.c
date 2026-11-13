@@ -35,6 +35,7 @@
 #include <SDL3/SDL_main.h>
 
 #include "assets.h"
+#include "battle.h"
 #include "campaign.h"
 #include "gfx.h"
 #include "icon.h"
@@ -53,6 +54,8 @@ typedef struct {
     bool          playing;
     Campaign      game;          /* the campaign being played */
     Play          play;
+    Battle       *battle;        /* the sea battle (Zoom, Practice), or NULL */
+    Uint64        battle_ns;     /* the battle's last run */
     int           tapped;        /* marker key pressed since the last frame */
     bool          aspect_43;     /* true: 4:3 like a CRT, false: square pixels */
     Screen        screen;
@@ -122,7 +125,8 @@ static void render(App *app)
     SDL_SetRenderDrawColor(app->ren, 0, 0, 0, 255);
     SDL_RenderClear(app->ren);
     if (app->have_assets) {
-        if (app->playing) play_draw(&app->play, &app->screen, app->viewer.mode);
+        if (app->playing && app->battle) battle_draw(app->battle, &app->screen, app->viewer.mode);
+        else if (app->playing) play_draw(&app->play, &app->screen, app->viewer.mode);
         else viewer_draw(&app->viewer, &app->screen);
         bool herc = app->viewer.herc && app->tex_herc;
         int w = herc ? HERC_W : SCREEN_W, h = herc ? HERC_H : SCREEN_H;
@@ -366,6 +370,65 @@ static void play_step(App *app)
     app->tapped = 0;
     play_frame(&app->play, held);
     if (app->play.result != PLAY_RUNNING) app->playing = false;   /* back to the viewer (the title page: step 6) */
+    if (app->playing && app->play.battle_req) {                  /* Zoom or Practice: the sea battle */
+        app->battle = SDL_malloc(sizeof *app->battle);
+        if (!app->battle || !battle_start(app->battle, &app->play, app->play.battle_req == 2)) {
+            SDL_free(app->battle);
+            app->battle = NULL;
+            app->play.battle_req = 0;
+            return;
+        }
+        app->battle_ns = SDL_GetTicksNS();
+    }
+}
+
+static void end_battle(App *app)
+{
+    battle_finish(app->battle);
+    SDL_free(app->battle);
+    app->battle = NULL;
+}
+
+/* The sea battle runs on its own clock; the screen is shown 60 times a second. */
+static void battle_step(App *app)
+{
+    Uint64 now = SDL_GetTicksNS();
+    battle_run(app->battle, (double)(now - app->battle_ns) / 1000.0);
+    app->battle_ns = now;
+    if (app->battle->state != BATTLE_RUNNING) end_battle(app);
+}
+
+/* An SDL key as WAS.EXE's battle reads it (DOS function 08h): a character, or 0
+ * and the scan code for the cursor keys and the keypad (NumLock is off) */
+static void battle_keydown(App *app, SDL_Keycode k, SDL_Keymod mod)
+{
+    bool shift = (mod & SDL_KMOD_SHIFT) != 0;
+    int scan = 0, ch = 0;
+    switch (k) {
+    case SDLK_HOME: case SDLK_KP_7: scan = 0x47; break;
+    case SDLK_UP: case SDLK_KP_8: scan = 0x48; break;
+    case SDLK_PAGEUP: case SDLK_KP_9: scan = 0x49; break;
+    case SDLK_LEFT: case SDLK_KP_4: scan = 0x4B; break;
+    case SDLK_RIGHT: case SDLK_KP_6: scan = 0x4D; break;
+    case SDLK_END: case SDLK_KP_1: scan = 0x4F; break;
+    case SDLK_DOWN: case SDLK_KP_2: scan = 0x50; break;
+    case SDLK_PAGEDOWN: case SDLK_KP_3: scan = 0x51; break;
+    case SDLK_RETURN: case SDLK_KP_ENTER: ch = 13; break;
+    case SDLK_ESCAPE: ch = 27; break;
+    case SDLK_SPACE: ch = ' '; break;
+    case SDLK_BACKSPACE: ch = 8; break;
+    case SDLK_KP_PLUS: ch = '+'; break;
+    case SDLK_KP_MINUS: ch = '-'; break;
+    case SDLK_MINUS: ch = shift ? '_' : '-'; break;
+    case SDLK_EQUALS: ch = shift ? '+' : '='; break;
+    case SDLK_PLUS: ch = '+'; break;
+    default:
+        if (k >= SDLK_A && k <= SDLK_Z) ch = (int)(k - SDLK_A) + (shift ? 'A' : 'a');
+        else if (k >= SDLK_0 && k <= SDLK_9) ch = (int)(k - SDLK_0) + '0';
+        break;
+    }
+    if (scan) battle_key(app->battle, 0, scan);
+    else if (ch) battle_key(app->battle, ch, 0);
 }
 
 /* ------------------------------------------------------------------ main */
@@ -444,7 +507,16 @@ int main(int argc, char **argv)
     const Uint64 frame_ns = SDL_NS_PER_SECOND / PLAY_HZ;
     while (running) {
         SDL_Event e;
-        if (app.playing) {
+        if (app.playing && app.battle) {
+            Uint64 now = SDL_GetTicksNS();
+            if (now >= next_frame) {
+                next_frame = now + SDL_NS_PER_SECOND / 60;
+                battle_step(&app);
+                render(&app);
+                continue;
+            }
+            if (!SDL_WaitEventTimeout(&e, (Sint32)((next_frame - now) / SDL_NS_PER_MS) + 1)) continue;
+        } else if (app.playing) {
             Uint64 now = SDL_GetTicksNS();
             if (now >= next_frame) {
                 next_frame = (now - next_frame > frame_ns * 4) ? now + frame_ns : next_frame + frame_ns;
@@ -470,6 +542,11 @@ int main(int argc, char **argv)
                 bool mod = (e.key.mod & (SDL_KMOD_ALT | SDL_KMOD_GUI)) != 0;
                 if (k == SDLK_Q && (e.key.mod & SDL_KMOD_GUI)) running = false;
                 else if (k == SDLK_RETURN && mod) toggle_fullscreen(&app);
+                else if (app.playing && app.battle) {
+                    if (k == SDLK_TAB) viewer_key(&app.viewer, VK_MODE);
+                    else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
+                    else battle_keydown(&app, k, e.key.mod);
+                }
                 else if (app.playing) {
                     if (k == SDLK_TAB) viewer_key(&app.viewer, VK_MODE);
                     else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
@@ -502,6 +579,7 @@ int main(int argc, char **argv)
         }
     }
 
+    if (app.battle) { fiber_stop(&app.battle->fiber); SDL_free(app.battle); }
     if (app.have_assets) assets_free(&app.ga);
     SDL_DestroyTexture(app.up);
     SDL_DestroyTexture(app.tex);
