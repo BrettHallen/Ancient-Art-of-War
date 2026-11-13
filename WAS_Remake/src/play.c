@@ -224,6 +224,79 @@ int crown_beside(const Play *p, int cell, int side)
     return -1;
 }
 
+/* ovl3_8146: the map maker's check of a map (see play.h). Work arrays as
+ * WAS.EXE's: the land marks (43ED), the way each cell was come into (3F3D)
+ * and the stack of cells still to go on from (457D). */
+int play_map_check(const GameAssets *ga, const uint8_t map[NUM_CELLS], long *steps)
+{
+    Play *p = SDL_calloc(1, sizeof *p);
+    if (!p) return 1;
+    uint32_t keep[EV_COUNT];
+    SDL_memcpy(keep, play_ev, sizeof keep);
+    p->ga = ga;
+    SDL_memcpy(p->map, map, NUM_CELLS);
+    bool land[NUM_CELLS];
+    int16_t came[NUM_CELLS], stack[NUM_CELLS * 8 + 8];
+    long n = 0;
+    for (int c = 0; c < NUM_CELLS; c++) land[c] = tile_land(map[c]);
+    coast_init(p);
+    int result = 1;
+    for (int c = 0; c < NUM_CELLS && result == 1; c++) {
+        n++;
+        if (land[c]) continue;
+        if (repair_port(p, c, false) == -1 && supply_port(p, c, false) == -1 &&
+            crown_beside(p, c, 0) == -1 && crown_beside(p, c, -1) == -1) continue;
+        int col = c % 10;
+        if (c < 10 || c > 189 || col == 0 || col == 9) continue;   /* at the edge already */
+        SDL_memset(came, 0, sizeof came);
+        came[c] = 9;
+        stack[0] = (int16_t)c;
+        int top = 1;
+        bool out = false;
+        while (!out) {
+            if (--top < 0) { result = 0; break; }
+            int at = stack[top], acol = at % 10;
+            for (int d = 1; d <= 8; d++) {
+                n++;
+                if (!way_blocked(p, d, at, acol)) {
+                    bool edge = (at < 10 && d > 5) || (at > 189 && d < 5 && d > 1) ||
+                                (acol == 0 && d > 3 && d < 7) || (acol == 9 && (d == 8 || d == 1 || d == 2));
+                    if (edge) {
+                        if (at != c) { out = true; break; }
+                    } else {
+                        int to = dir_off(p, d) + at;
+                        if (to >= 0 && to < NUM_CELLS && !land[to] && !coast_pass(p, d, to) && came[to] == 0 &&
+                            top < (int)SDL_arraysize(stack)) {
+                            came[to] = (int16_t)d;
+                            stack[top++] = (int16_t)to;
+                        }
+                    }
+                }
+                if (at == c) d++;                  /* from the port's own cell: only N, E, S, W */
+            }
+        }
+    }
+    for (int c = 0; c < NUM_CELLS && result == 1; c++) {     /* every port and crown beside water */
+        int t = map[c];
+        if (t < 74 || t > 77) continue;
+        int col = c % 10, row = c / 10, b;
+        n++;
+        b = c - 10;
+        if (row != 0 && !land[b] && !coast_c(map[b]) && !coast_d(map[b])) continue;
+        b = c + 10;
+        if (row != 19 && !land[b] && !coast_a(map[b]) && !coast_b(map[b])) continue;
+        b = c + 1;
+        if (col != 9 && !land[b] && !coast_a(map[b]) && !coast_c(map[b])) continue;
+        b = c - 1;
+        if (col != 0 && !land[b] && !coast_b(map[b]) && !coast_d(map[b])) continue;
+        result = -1;
+    }
+    SDL_memcpy(play_ev, keep, sizeof keep);
+    SDL_free(p);
+    if (steps) *steps = n;
+    return result;
+}
+
 /* port_of_cell (ovl4:C268): the port or crown a squadron at this cell uses */
 static int port_of_cell(const Play *p, int cell)
 {

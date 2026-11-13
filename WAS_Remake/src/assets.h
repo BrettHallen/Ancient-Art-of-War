@@ -101,6 +101,7 @@ typedef struct {
        report, the Options Shoppe, the opening), SO3 (the scrolls' letters and
        words), SO4 (the campaign menu), the WAS disk's SITLES and SDITLES */
     uint8_t  so2[0x1600], so3[0x1000], so4[0x200];
+    uint8_t  so0[0x200], so1[0x300];           /* the map maker's and the ships editor's (step 7) */
     uint8_t  sitles[876], sditles[876];
     bool     have_menus;
     AssetSet set[MODE_COUNT];

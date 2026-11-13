@@ -380,6 +380,22 @@ static int play_keycode(SDL_Keycode k)
     }
 }
 
+/* The menus and editors: every key as WAS.EXE's keyboard handler sees it
+ * (scan codes); the editors' letters (map tiles, commands, Y and N) */
+static int menu_keycode(SDL_Keycode k)
+{
+    static const char ROW1[] = "qwertyuiop", ROW2[] = "asdfghjkl", ROW3[] = "zxcvbnm";
+    if (k == SDLK_ESCAPE) return PK_ESC;
+    if (k == SDLK_BACKSPACE) return PK_BACKSPACE;
+    if (k == SDLK_DELETE || k == SDLK_KP_PERIOD) return PK_DELETE;
+    if (k >= SDLK_1 && k <= SDLK_9) return 0x02 + (int)(k - SDLK_1);
+    if (k == SDLK_0) return 0x0B;
+    for (int i = 0; ROW1[i]; i++) if (k == (SDL_Keycode)ROW1[i]) return 0x10 + i;
+    for (int i = 0; ROW2[i]; i++) if (k == (SDL_Keycode)ROW2[i]) return 0x1E + i;
+    for (int i = 0; ROW3[i]; i++) if (k == (SDL_Keycode)ROW3[i]) return 0x2C + i;
+    return play_keycode(k);
+}
+
 static bool is_cursor_pk(int pk) { return pk >= PK_HOME && pk <= PK_PGDN && pk != PK_KP_MINUS && pk != PK_KP_PLUS; }
 
 /* The marker key held down: arrows combine into diagonals. In WAS.EXE a key
@@ -657,6 +673,10 @@ int main(int argc, char **argv)
     const Uint64 frame_ns = SDL_NS_PER_SECOND / PLAY_HZ;
     while (running) {
         SDL_Event e;
+        bool want_text = app.in_menu && app.menu && menu_wants_text(app.menu);   /* the editors' typing */
+        if (want_text != SDL_TextInputActive(app.win)) {
+            if (want_text) SDL_StartTextInput(app.win); else SDL_StopTextInput(app.win);
+        }
         if (app.in_menu && app.menu) {                 /* overlay 1 runs on its own clock, shown 60 times a second */
             Uint64 now = SDL_GetTicksNS();
             if (now >= next_frame) {
@@ -704,11 +724,12 @@ int main(int argc, char **argv)
                 if (k == SDLK_Q && (e.key.mod & SDL_KMOD_GUI)) running = false;
                 else if (k == SDLK_RETURN && mod) toggle_fullscreen(&app);
                 else if (app.in_menu && app.menu) {
-                    if (k == SDLK_TAB) viewer_key(&app.viewer, VK_MODE);
+                    if (k == SDLK_LSHIFT || k == SDLK_RSHIFT) menu_shift(app.menu, true);
+                    else if (k == SDLK_TAB) viewer_key(&app.viewer, VK_MODE);
                     else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
                     else if (k == SDLK_F12 && menu_on_title(app.menu)) { app.in_menu = false; update_title(&app); }
                     else {
-                        int pk = k == SDLK_ESCAPE ? PK_ESC : k == SDLK_Q ? 0x10 : play_keycode(k);
+                        int pk = menu_keycode(k);
                         if (pk) menu_key(app.menu, pk);
                     }
                 }
@@ -744,8 +765,11 @@ int main(int argc, char **argv)
                 else if (k == SDLK_F2 || k == SDLK_A) app.aspect_43 = !app.aspect_43;
                 else if (app.have_assets) viewer_key(&app.viewer, viewer_keycode(k, (e.key.mod & SDL_KMOD_SHIFT) != 0));
                 dirty = true;
+            } else if (e.type == SDL_EVENT_TEXT_INPUT && app.in_menu && app.menu) {
+                menu_text(app.menu, e.text.text);       /* the editors' typing */
             } else if (e.type == SDL_EVENT_KEY_UP && app.in_menu && app.menu) {
-                menu_key_up(app.menu);
+                if (e.key.key == SDLK_LSHIFT || e.key.key == SDLK_RSHIFT) menu_shift(app.menu, false);
+                else menu_key_up(app.menu);
             } else if (e.type == SDL_EVENT_MOUSE_WHEEL && app.have_assets && !app.playing && !app.in_menu) {
                 viewer_scroll(&app.viewer, (int)SDL_roundf(-e.wheel.y * TILE_H / 2));
                 dirty = true;

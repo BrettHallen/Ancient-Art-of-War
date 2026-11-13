@@ -423,14 +423,15 @@ bool assets_load(GameAssets *ga, const char *dir, char *err, size_t errlen)
         [0x6868 - 0x684C] = 1,                      /* the wind 6865 off */
     };
     SDL_memcpy(ga->scnf, SCNF_DEFAULT, sizeof ga->scnf);
-    /* the menus' files (ovl1: load_so2, load_o3, SO4 in ovl1_82af, SITLES) */
-    struct { const char *name; uint8_t *to; size_t size, min; } mf[5] = {
+    /* the menus' files (ovl1: load_so2, load_o3, SO4 in ovl1_82af, SITLES; the editors' SO0, SO1) */
+    struct { const char *name; uint8_t *to; size_t size, min; } mf[7] = {
         { "SO2", ga->so2, sizeof ga->so2, 0x14D3 }, { "SO3", ga->so3, sizeof ga->so3, 0xEEE },
         { "SO4", ga->so4, sizeof ga->so4, 0x1FB }, { "SITLES", ga->sitles, sizeof ga->sitles, 876 },
         { "SDITLES", ga->sditles, sizeof ga->sditles, 876 },
+        { "SO0", ga->so0, sizeof ga->so0, 0x1EE }, { "SO1", ga->so1, sizeof ga->so1, 0x28B },   /* ovl3_7650, ovl2_7650 */
     };
     ga->have_menus = true;
-    for (int k = 0; k < 5; k++) {
+    for (int k = 0; k < 7; k++) {
         uint8_t *d = assets_load_file(dir, mf[k].name, &n);
         if (!d || n < mf[k].min) ga->have_menus = false;
         if (d) SDL_memcpy(mf[k].to, d, SDL_min(n, mf[k].size));

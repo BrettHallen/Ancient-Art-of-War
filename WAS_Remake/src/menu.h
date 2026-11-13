@@ -41,6 +41,11 @@ void  menu_save(Menu *m, const Play *p);      /* Alt+S: save the game */
 /* WAS.EXE's keyboard: a scan code (PK_...) pressed, and the key let go */
 void  menu_key(Menu *m, int key);
 void  menu_key_up(Menu *m);
+void  menu_shift(Menu *m, bool down);         /* [081A]: Shift held (the ships editor's jumps) */
+/* The editors' typing (the story, a title, a ship's name): while this is
+ * true, SDL's text input goes to menu_text */
+bool  menu_wants_text(const Menu *m);
+void  menu_text(Menu *m, const char *utf8);
 /* Run overlay 1 for us microseconds of an IBM PC/XT's time */
 void  menu_run(Menu *m, double us);
 void  menu_draw(const Menu *m, Screen *s, GfxMode mode);

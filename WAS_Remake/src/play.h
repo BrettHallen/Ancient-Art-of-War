@@ -37,7 +37,7 @@
 
 /* WAS.EXE's scan codes are used as key codes (as in the WAR remake). */
 enum {
-    PK_NONE = 0, PK_ESC = 0x01, PK_MINUS = 0x0C, PK_EQUALS = 0x0D, PK_TAB = 0x0F,
+    PK_NONE = 0, PK_ESC = 0x01, PK_MINUS = 0x0C, PK_EQUALS = 0x0D, PK_BACKSPACE = 0x0E, PK_TAB = 0x0F, PK_DELETE = 0x53,
     PK_E = 0x12, PK_T = 0x14, PK_Y = 0x15, PK_I = 0x17, PK_P = 0x19, PK_ENTER = 0x1C, PK_CTRL = 0x1D,
     PK_S = 0x1F, PK_D = 0x20, PK_F = 0x21, PK_J = 0x24, PK_Z = 0x2C, PK_C = 0x2E,
     PK_N = 0x31, PK_M = 0x32, PK_SPACE = 0x39,
@@ -254,5 +254,11 @@ void play_clear_paths(Play *p, int sq);          /* rt_0f55 */
 void play_place_detached(Play *p, int from, int to, int steps, int at);   /* rt_1f2d */
 /* campaign_play starts again after a battle (ovl4:7650 with [6465] = 0) */
 void play_after_battle(Play *p, bool practice, bool left);
+
+/* The map maker's check (ovl3_8146): 1 the map will do, 0 a port or crown
+ * has no way by sea to the map's edge ("ALL PORTS MUST HAVE A SUPPLY PATH."),
+ * -1 one has no water beside it ("ALL PORTS MUST BE NEXT TO WATER.").
+ * *steps: the cells and directions looked at (for the time it takes). */
+int  play_map_check(const GameAssets *ga, const uint8_t map[NUM_CELLS], long *steps);
 
 #endif

@@ -23,118 +23,18 @@
  *
  * Each function names the WAS.EXE routine it ports.
  */
-#include "menu.h"
+#include "menu_int.h"
 #include "dsmap.h"
-#include "fiber.h"
 
 #include <SDL3/SDL.h>
 
-#define BUF_SIZE  0x7D00          /* BUF: field 0 at 0, field 1 at 3E80h */
-#define FIELD     0x3E80
-#define D19       290             /* [0D19]: WAS.EXE's calibrated delay count (the title page waits 7.3 s for the demo) */
-#define SS_SIZE   0x28CC          /* the saved game: DS:3F39-6804 */
-#define SS_START  0x3F39
-#define MAX_DISKS 12
-#define DISKS_DIR "Data Disks"
-
-/* WAS.EXE's own codes */
-#define R_BACK    0x270B          /* Esc: the page before */
-#define R_AGAIN   0x270A          /* the scroll again (the other disk) */
-#define R_FAIL    0x270F
-
-/* SO3: the scrolls' letters (loaded at DS:3F3D, [648B]) */
-#define F_UPPER   0x000           /* 'A'-'Z': 16 x 10, 44 bytes each */
-#define F_LOWER   0x478           /* 'a'-'z': 8 x 8, 20 bytes each (small capitals) */
-#define F_QUEST   0x680
-#define F_EXCL    0x694
-#define F_SPACE   0x6A8           /* 8 x 10 of parchment: clears a cell */
-#define F_COMMA   0x6C0
-#define F_QUOTES  0x6CC
-#define F_PERIOD  0x6D8
-#define F_DIGITS  0x6E0           /* '0'-'9': 24 bytes each */
-#define F_POINTER 0x8B4           /* the sword, AND-drawn */
-#define F_COLON   0xCF2
-#define F_RPAREN  0xD06
-#define F_LPAREN  0xD1A
-#define F_DASH    0xD2E
-#define F_SLASH   0xD42
-#define F_UNDER   0xD56
-#define F_BAR     0xD6E
-#define I_ESC     0xCBE           /* key icons in SO3 */
-#define I_SPACE   0xC36
-#define I_ENTER   0x62B           /* key icons in WAS.EXE's data segment */
-#define I_PLUS    0x64D
-#define I_MINUS   0x66F
-
-/* What overlay 1's ported routines are asked to do (WAS.EXE's main loop, rt:0000) */
-enum { E_START, E_TITLE, E_REPORT, E_SAVE };
-
-struct Menu {
-    GameAssets *ga;
-    Campaign   *camps;
-    char        data_root[1024];  /* the data folder: SCNF, DRIVE and Data Disks/ */
-    char        data_dir[1100];   /* the data disk "in the drive": Data Disks/<name>/ */
-    char        disks[MAX_DISKS][64];
-    int         ndisks, disk;
-    int         shoppe_disk;      /* the Options Shoppe's choice (ndisks: a new one) */
-
-    Fiber       fiber;
-    bool        fiber_on;
-    int         entry;
-    double      clock_us, target_us;
-    MenuAction  action;
-    bool        on_title;
-
-    /* the machine */
-    uint8_t     vram[80 * SCREEN_H];          /* the CGA screen, a line after another */
-    uint8_t     v16[SCREEN_W * SCREEN_H];     /* the same in 16 colours */
-    uint8_t     buf[BUF_SIZE];                /* BUF */
-    uint8_t     b16[SCREEN_W * 400];          /* BUF in 16 colours, a line after another */
-    uint8_t     c16[2][4];                    /* CGA colours (palette 1, palette 0) in the 16 */
-    int         view;                         /* ([3F39] - BUF) / 80: the line pair at the top */
-    bool        pal0;                         /* CGA palette 0 (the scrolls) */
-    int         rows;                         /* [645B]: text rows below the picture */
-    int         blit_lines;                   /* 100 + [6459] / 2 */
-    int         ccol, crow;                   /* the text position [0831], [0833] */
-    uint16_t    rnd, rnd_ptr;                 /* random(): DS:0808, 080A */
-    int         beeps;
-
-    /* the keyboard: [0804] the last key pressed (taken by menu_poll_key), [0802] the key down */
-    int         q804[1], n804;
-    int         k802;
-    bool        up802;
-
-    /* overlay 1's variables */
-    int         a6485;                        /* which page the scroll is */
-    int         a6487;                        /* the title chosen */
-    int         a6497;                        /* the disk in the drive: 2 the WAS disk, 1 a data disk */
-    int         a64DD;                        /* titles on the scroll */
-    int         a64D1, a64D3, a64D5, a64D7;   /* the scroll's writing position (BUF offsets) */
-    int         a6870;                        /* the text cell (an index into story) */
-    int         a6469;
-    int         a6471;                        /* the campaign menu's item */
-    bool        a6467;                        /* the scroll's pictures are in BUF */
-    uint8_t     story[0x348 + 64];            /* DS:4E53: the scroll's text, 26 rows of 32 */
-    uint8_t     names[36];                    /* DS:0BB5: the disk's S file names */
-    bool        disk_list;                    /* the remake: the scroll lists the data disks */
-    Campaign    game;
-    int         opponent;                     /* [646F] */
-    bool        demo;
-
-    /* the battle report */
-    int         rep_code, rep[6], rep_opp;
-
-    /* saving and loading */
-    uint8_t     ss[SS_SIZE];
-    bool        have_ss;
-    const Play *save_from;
-};
+static void ed_from_s(Menu *m, const uint8_t *d, size_t size);
+static void scroll_store(Menu *m, const char *s);
 
 /* ------------------------------------------------------------------ the clock, random() and the keys */
 
-#define WORK(m, n) ((m)->clock_us += (n) * (1000.0 / 300.0))
 
-static void maybe_yield(Menu *m)
+void maybe_yield(Menu *m)
 {
     if (m->clock_us >= m->target_us) fiber_yield(&m->fiber);
 }
@@ -149,7 +49,7 @@ static int rnd(Menu *m)
 }
 
 /* delay() (rt:2F6E): random() units / 2 times, 50 us a unit on an XT */
-static void delay(Menu *m, int units)
+void delay(Menu *m, int units)
 {
     unsigned n = (unsigned)(units & 0xFFFF) >> 1;
     if (n == 0) n = 1;
@@ -158,7 +58,7 @@ static void delay(Menu *m, int units)
     maybe_yield(m);
 }
 
-static void beep_low(Menu *m) { m->beeps++; delay(m, 0x3E8); }   /* rt:05A9 (the sound is step 8) */
+void beep_low(Menu *m) { m->beeps++; delay(m, 0x3E8); }   /* rt:05A9 (the sound is step 8) */
 
 /* a tune (ovl1: play_tune 8B7A, 9AAB, 9B45, the opening): the notes are step 8;
  * WAS.EXE plays them before it goes on, so the time is kept */
@@ -170,10 +70,10 @@ static int dsw(const Menu *m, unsigned off) { return off + 1 < DS_SIZE ? (int16_
 static const char *SO2(const Menu *m, unsigned off) { return assets_buf_string(m->ga->so2, sizeof m->ga->so2, off); }
 static const char *SO3(const Menu *m, unsigned off) { return assets_buf_string(m->ga->so3, sizeof m->ga->so3, off); }
 static const char *SO4(const Menu *m, unsigned off) { return assets_buf_string(m->ga->so4, sizeof m->ga->so4, off); }
-static const char *DS(const Menu *m, unsigned off) { return assets_ds_string(m->ga, off); }
+const char *DS(const Menu *m, unsigned off) { return assets_ds_string(m->ga, off); }
 
 /* menu_poll_key (ovl1:8AA9): the last key pressed, once */
-static int poll_key(Menu *m)
+int poll_key(Menu *m)
 {
     WORK(m, 5);
     m->a6469 = 100;
@@ -185,26 +85,46 @@ static int poll_key(Menu *m)
 }
 
 /* [0802]: the key held down (a key let go is still seen once) */
-static int key802(Menu *m)
+int key802(Menu *m)
 {
     WORK(m, 10);
     int k = m->k802;
     if (m->up802) { m->k802 = 0; m->up802 = false; }
-    if (!k) maybe_yield(m);
+    maybe_yield(m);                                     /* a loop waiting for one key while another is held goes on */
     return k;
 }
 
-static void keys_clear(Menu *m) { m->n804 = 0; m->k802 = 0; m->up802 = false; }   /* [0804] = [0802] = 0 */
+void keys_clear(Menu *m) { m->n804 = 0; m->k802 = 0; m->up802 = false; }   /* [0804] = [0802] = 0 */
 
-static bool key_down(int k) { return k == PK_EQUALS || k == PK_KP_PLUS || k == PK_CTRL; }   /* is_scroll_down_key rt_126A */
-static bool key_up(int k)   { return k == PK_MINUS || k == PK_KP_MINUS || k == PK_TAB; }    /* is_scroll_up_key rt_1217 */
+/* rt_313c and rt_3110: the BIOS's keyboard handler in and out. While it is
+ * in, keys go to its buffer as DOS reads them (letters as typed) and
+ * [0802] and [0804] are left alone. */
+void text_begin(Menu *m) { m->text_on = true; m->ndos = 0; }
+void text_end(Menu *m) { m->text_on = false; m->ndos = 0; }
+
+static void dos_push(Menu *m, int c) { if (m->ndos < (int)SDL_arraysize(m->dosq)) m->dosq[m->ndos++] = c; }
+
+/* rt_2e8e: DOS's next character (int 21h 0Bh, 08h): 0 if none; a cursor
+ * key is 0 then its scan code, which WAS.EXE reads as 27 (Esc) then the scan code */
+int dos_key(Menu *m)
+{
+    WORK(m, 120);
+    if (m->ndos == 0) { maybe_yield(m); return 0; }
+    int c = m->dosq[0];
+    m->ndos--;
+    SDL_memmove(m->dosq, m->dosq + 1, (size_t)m->ndos * sizeof m->dosq[0]);
+    return c;
+}
+
+bool key_down(int k) { return k == PK_EQUALS || k == PK_KP_PLUS || k == PK_CTRL; }   /* is_scroll_down_key rt_126A */
+bool key_up(int k)   { return k == PK_MINUS || k == PK_KP_MINUS || k == PK_TAB; }    /* is_scroll_up_key rt_1217 */
 
 /* ------------------------------------------------------------------ the screen and BUF */
 
 static uint8_t *line16(Menu *m, int line) { return &m->v16[line * SCREEN_W]; }
 
 /* a CGA byte written to the screen (4 pixels) */
-static void scr_byte(Menu *m, int line, int xb, uint8_t b)
+void scr_byte(Menu *m, int line, int xb, uint8_t b)
 {
     if (line < 0 || line >= SCREEN_H || xb < 0 || xb >= 80) return;
     m->vram[line * 80 + xb] = b;
@@ -213,7 +133,7 @@ static void scr_byte(Menu *m, int line, int xb, uint8_t b)
 }
 
 /* XOR a byte of the screen: each pixel flips (0 <-> 3, 1 <-> 2; in 16 colours its complement) */
-static void scr_xor(Menu *m, int line, int xb, uint8_t mask)
+void scr_xor(Menu *m, int line, int xb, uint8_t mask)
 {
     if (line < 0 || line >= SCREEN_H || xb < 0 || xb >= 80) return;
     m->vram[line * 80 + xb] ^= mask;
@@ -236,7 +156,7 @@ static void scr_and(Menu *m, int line, int xb, uint8_t b)
 
 /* a byte written into BUF at offset a (BUF-relative); the 16-colour copy gets
  * the same pixels in the nearest colours */
-static void buf_byte(Menu *m, int a, uint8_t b)
+void buf_byte(Menu *m, int a, uint8_t b)
 {
     if (a < 0 || a >= BUF_SIZE) return;
     m->buf[a] = b;
@@ -282,7 +202,7 @@ static bool load_picture(Menu *m, PictureId id, int off)
 }
 
 /* rt_2715: BUF from [3F39] to the screen, a field each line */
-static void blit(Menu *m, int lines)
+void blit(Menu *m, int lines)
 {
     for (int y = 0; y < lines && y < SCREEN_H; y++) {
         int lp = m->view + (y >> 1), field = y & 1;
@@ -292,11 +212,12 @@ static void blit(Menu *m, int lines)
         int l16 = lp * 2 + field;
         if (l16 < 400) SDL_memcpy(line16(m, y), &m->b16[l16 * SCREEN_W], SCREEN_W);
     }
+    if (m->sq_on || m->mk_on) ed_overlay(m, SDL_min(lines, SCREEN_H));   /* the ships editor */
     WORK(m, 30 + lines * 50);
     maybe_yield(m);
 }
 
-static void blit_menu(Menu *m) { blit(m, m->blit_lines); }   /* rt_2715([6459]) */
+void blit_menu(Menu *m) { blit(m, m->blit_lines); }   /* rt_2715([6459]) */
 
 /* scroll_copy_lines (ovl1:CA44): n line pairs of BUF from offset a to the screen at line y */
 static void copy_lines(Menu *m, int a, int y, int n)
@@ -340,7 +261,7 @@ static void and_pointer(Menu *m, unsigned off, int xb, int y)
 }
 
 /* draw_icon (rt_2cc4): a bitmap (width in bytes, height in line pairs) onto the screen */
-static void draw_icon_from(Menu *m, const uint8_t *src, size_t size, unsigned off, int y, int xb)
+void draw_icon_from(Menu *m, const uint8_t *src, size_t size, unsigned off, int y, int xb)
 {
     if (off + 2 > size) return;
     int w = src[off], h = src[off + 1] * 2;
@@ -350,7 +271,7 @@ static void draw_icon_from(Menu *m, const uint8_t *src, size_t size, unsigned of
             if (s < size) scr_byte(m, y + l, xb + i, src[s]);
     WORK(m, 20 + h * (w + 6));
 }
-static void icon_ds(Menu *m, unsigned off, int y, int xb) { draw_icon_from(m, m->ga->ds, DS_SIZE, off, y, xb); }
+void icon_ds(Menu *m, unsigned off, int y, int xb) { draw_icon_from(m, m->ga->ds, DS_SIZE, off, y, xb); }
 static void icon_so3(Menu *m, unsigned off, int y, int xb) { draw_icon_from(m, m->ga->so3, sizeof m->ga->so3, off, y, xb); }
 
 /* xor_box (ovl1:CAF7): a box with rounded corners (x, w in bytes; h in line pairs) */
@@ -383,23 +304,23 @@ static void xor_frame(Menu *m, int x, int y, int w, int h)
 }
 
 /* draw_hline (rt:2B95): a white line */
-static void hline(Menu *m, int line, int xb, int len)
+void hline(Menu *m, int line, int xb, int len)
 {
     for (int i = 0; i < len; i++) scr_byte(m, line, xb + i, 0xFF);
     WORK(m, 20 + len);
 }
 
 /* goto_xy, clear_text_row (rt:2C48, which also goes to its start), print_string (rt_32d4) */
-static void gotoxy(Menu *m, int col, int row) { m->ccol = col; m->crow = row; }
+void gotoxy(Menu *m, int col, int row) { m->ccol = col; m->crow = row; }
 
-static void clear_row(Menu *m, int row)
+void clear_row(Menu *m, int row)
 {
     for (int l = 0; l < 8; l++) for (int xb = 0; xb < 80; xb++) scr_byte(m, row * 8 + l, xb, 0);
     gotoxy(m, 0, row);
     WORK(m, 8 * 45);
 }
 
-static void clear_all_rows(Menu *m) { for (int r = 24; r >= 0; r--) clear_row(m, r); }   /* ovl1:8519 */
+void clear_all_rows(Menu *m) { for (int r = 24; r >= 0; r--) clear_row(m, r); }   /* ovl1:8519 */
 
 /* the font, a byte (8 pixels) as a CGA word of colour 3 (DS:088C) */
 static void char_line(Menu *m, int line, int col, uint8_t bits, bool x)
@@ -413,7 +334,7 @@ static void char_line(Menu *m, int line, int col, uint8_t bits, bool x)
     else { scr_byte(m, line, col * 2, hi); scr_byte(m, line, col * 2 + 1, lo); }
 }
 
-static void put_char(Menu *m, int c)
+void put_char(Menu *m, int c)
 {
     if (c == '\n') { m->crow++; return; }
     if (c == '\r') { m->ccol = 0; return; }
@@ -425,8 +346,8 @@ static void put_char(Menu *m, int c)
     if (++m->ccol >= 40) { m->ccol = 0; m->crow++; }
 }
 
-static void print(Menu *m, const char *s) { while (*s) put_char(m, (unsigned char)*s++); maybe_yield(m); }
-static void print_at(Menu *m, int col, int row, const char *s) { gotoxy(m, col, row); print(m, s); }
+void print(Menu *m, const char *s) { while (*s) put_char(m, (unsigned char)*s++); maybe_yield(m); }
+void print_at(Menu *m, int col, int row, const char *s) { gotoxy(m, col, row); print(m, s); }
 
 /* ovl1_cf52 and ovl1_a935: text XORed onto a picture at a text position */
 static void xor_text(Menu *m, const char *s, int col, int row)
@@ -451,7 +372,7 @@ static void xor_number(Menu *m, int v, int col, int row)
 }
 
 /* text_rows_add (rt:0BC2) with rt_2ae4: the white line and the rows below the picture */
-static void text_rows_add(Menu *m, int n)
+void text_rows_add(Menu *m, int n)
 {
     m->rows += n;
     int a6459 = 200 - m->rows * 16 - 4;
@@ -463,12 +384,12 @@ static void text_rows_add(Menu *m, int n)
 }
 
 /* set_cga_palette: palette 1 for the pictures, 0 for the scrolls */
-static void palette(Menu *m, bool pal0) { m->pal0 = pal0; }
+void palette(Menu *m, bool pal0) { m->pal0 = pal0; }
 
-static void show_one_moment(Menu *m) { clear_row(m, 24); print_at(m, 10, 24, DS(m, 0x6A)); }   /* ovl1:8A2F */
+void show_one_moment(Menu *m) { clear_row(m, 24); print_at(m, 10, 24, DS(m, 0x6A)); }   /* ovl1:8A2F */
 
 /* ovl1_bec5: [+] or [-] on row 24 */
-static void plus_or_minus(Menu *m)
+void plus_or_minus(Menu *m)
 {
     clear_row(m, 24);
     icon_ds(m, I_PLUS, 192, 0);
@@ -564,8 +485,19 @@ static void advance(Menu *m)                 /* scroll_advance (ovl1:B7AA) */
 static void scroll_char(Menu *m, int c)
 {
     int d = m->a64D1;
+    bool typing = m->a6485 == 3 || m->a6485 == 0 || m->a6485 == 10;   /* the scroll editor keeps the text's marks */
     copy_glyph(m, F_SPACE, d);
-    if (is_capital(cell(m, m->a6870))) copy_glyph(m, F_SPACE, d + 2);
+    if (is_capital(cell(m, m->a6870))) {
+        copy_glyph(m, F_SPACE, d + 2);
+        if (typing && m->a6870 + 1 < 0x348) m->story[m->a6870 + 1] = ' ';
+    }
+    if (typing && is_capital(c) && m->a6870 + 1 < 0x348) {   /* a capital takes the next cell too: 01h */
+        m->story[m->a6870 + 1] = 1;
+        if (m->a6870 + 2 < 0x348 && m->story[m->a6870 + 2] == 1) {
+            m->story[m->a6870 + 2] = ' ';
+            copy_glyph(m, F_SPACE, d + 4);
+        }
+    }
     WORK(m, 30);
     unsigned off = F_SPACE;
     int dy = 0;
@@ -656,6 +588,7 @@ static void scroll_write(Menu *m)
         advance(m);
     }
     m->a64DD--;
+    if (m->a6485 == 3) { at_cell(m, 9, 0); scroll_store(m, DS(m, 0x167)); }   /* TITLES */
     m->view = 0;
     if (m->a64DD == 0 && (m->a6485 == 5 || m->a6485 == 7)) return;
     if (m->a6485 != 9) unroll(m);
@@ -791,20 +724,288 @@ static void set_opt(Menu *m, unsigned ds, int v)
 static bool load_campaign(Menu *m, int k)
 {
     char name[4] = { (char)m->names[k * 3], (char)m->names[k * 3 + 1], 0, 0 };
-    if (!campaign_load_file(&m->game, drive_dir(m), name)) return false;
-    char title[33];
-    int n = 0;
-    for (int c = 2; c < 31; c++) {
-        uint8_t ch = cell(m, (3 + 2 * k) * 32 + c);
-        if (ch >= 0x20 && ch < 0x7F) title[n++] = (char)ch;
+    size_t size = 0;
+    uint8_t *d = assets_load_file(drive_dir(m), name, &size);
+    bool ok = campaign_parse(&m->game, name, d, size);
+    if (ok) ed_from_s(m, d, size);
+    SDL_free(d);
+    if (!ok) return false;
+    if (m->a6485 == 1) {                                /* going to war: the title from the scroll */
+        char title[33];
+        int n = 0;
+        for (int c = 2; c < 31; c++) {
+            uint8_t ch = cell(m, (3 + 2 * k) * 32 + c);
+            if (ch >= 0x20 && ch < 0x7F) title[n++] = (char)ch;
+        }
+        while (n > 0 && title[n - 1] == ' ') n--;
+        title[n] = 0;
+        if (n) SDL_strlcpy(m->game.title, title, sizeof m->game.title);
     }
-    while (n > 0 && title[n - 1] == ' ') n--;
-    title[n] = 0;
-    if (n) SDL_strlcpy(m->game.title, title, sizeof m->game.title);
     m->opponent = m->game.opponent;
     SDL_memcpy(m->story, m->game.story_raw, 0x348);
     WORK(m, 6000);
     return true;
+}
+
+/* ------------------------------------------------------------------ step 7: the campaign being made or changed */
+
+static int16_t rd16s(const uint8_t *p) { return (int16_t)(p[0] | (p[1] << 8)); }
+static void wr16(uint8_t *p, int v) { p[0] = (uint8_t)v; p[1] = (uint8_t)(v >> 8); }
+
+/* load_campaign (ovl1:C388): an S file's map, squadrons and ships into DS */
+static void ed_from_s(Menu *m, const uint8_t *d, size_t size)
+{
+    Fleet *f = &m->ed;
+    if (!d || size < 0x85C) return;
+    SDL_memcpy(f->map, d + 0x348, 200);
+    const uint8_t *a = d + 0x410;
+    for (int i = 0; i < 40; i++) {
+        f->side[i] = rd16s(a + 2 * i);
+        f->speed[i] = rd16s(a + 80 + 2 * i);
+        f->x[i] = rd16s(a + 160 + 2 * i);
+        f->y[i] = rd16s(a + 240 + 2 * i);
+        f->supplies[i] = (int8_t)a[320 + i];
+        f->ship_sq[i] = (int8_t)a[360 + i];
+        f->sails[i] = (int8_t)a[400 + i];
+        f->type[i] = (int8_t)a[440 + i];
+    }
+    SDL_memcpy(f->names, d + 0x604, 600);
+    if (size >= S_SIZE) SDL_memcpy(f->hull, d + 0x85C, 40);
+}
+
+/* write_campaign_file (ovl1:C527): the story, the map, the squadrons and
+ * ships, the opponent, the rules, the names, the hulls */
+static void ed_to_s(const Menu *m, uint8_t out[S_SIZE])
+{
+    const Fleet *f = &m->ed;
+    SDL_memcpy(out, m->story, 0x348);
+    SDL_memcpy(out + 0x348, f->map, 200);
+    uint8_t *a = out + 0x410;
+    for (int i = 0; i < 40; i++) {
+        wr16(a + 2 * i, f->side[i]);
+        wr16(a + 80 + 2 * i, f->speed[i]);
+        wr16(a + 160 + 2 * i, f->x[i]);
+        wr16(a + 240 + 2 * i, f->y[i]);
+        a[320 + i] = (uint8_t)f->supplies[i];
+        a[360 + i] = (uint8_t)f->ship_sq[i];
+        a[400 + i] = (uint8_t)f->sails[i];
+        a[440 + i] = (uint8_t)f->type[i];
+    }
+    wr16(out + 0x5F0, m->opponent);
+    for (int r = 0; r < NUM_RULES; r++) wr16(out + 0x5F2 + 2 * r, m->game.rules[r]);
+    SDL_memcpy(out + 0x604, f->names, 600);
+    SDL_memcpy(out + 0x85C, f->hull, 40);
+}
+
+/* blank_armies (ovl1:9370): no squadrons, no ships, no names */
+static void blank_armies(Menu *m)
+{
+    for (int i = 0; i < 40; i++) {
+        m->ed.speed[i] = 9999;
+        m->ed.side[i] = -1;
+        m->ed.type[i] = -1;
+        m->ed.ship_sq[i] = -1;
+    }
+    SDL_memset(m->ed.names, 0, sizeof m->ed.names);
+    WORK(m, 40 * 700);
+}
+
+static void default_rules(Menu *m)                  /* ovl1:93FA */
+{
+    uint16_t *r = m->game.rules;                        /* DS:64AD */
+    r[0] = 40; r[1] = 10; r[7] = 1; r[3] = 1; r[6] = 1; r[4] = 2; r[5] = 80;
+}
+
+/* disk_error (ovl1:AA0A): a file could not be written */
+static void disk_error(Menu *m)
+{
+    clear_row(m, 23);
+    print(m, DS(m, 0x121));                             /* Unable to use data disk. */
+    clear_row(m, 24);
+    print(m, DS(m, 0x13A));                             /* Press any key to continue. */
+    keys_clear(m);
+    while (!key802(m)) WORK(m, 20);
+}
+
+/* write_campaign_file (ovl1:C527): S file k of the data disk */
+static bool write_campaign_file(Menu *m, int k)
+{
+    char name[4] = { (char)m->names[k * 3], (char)m->names[k * 3 + 1], 0, 0 }, path[1200];
+    uint8_t s[S_SIZE];
+    ed_to_s(m, s);
+    SDL_snprintf(path, sizeof path, "%s%s", m->data_dir, name);
+    bool ok = SDL_SaveFile(path, s, S_SIZE);
+    WORK(m, 8000);
+    if (!ok) { disk_error(m); return false; }
+    char title[sizeof m->game.title];
+    SDL_strlcpy(title, m->game.title, sizeof title);
+    campaign_parse(&m->game, name, s, S_SIZE);          /* what is played from it */
+    SDL_strlcpy(m->game.title, title, sizeof m->game.title);
+    return true;
+}
+
+/* write_titles (ovl1:C8D2): the file names and the scroll's text, SITLES */
+static bool write_titles(Menu *m)
+{
+    char path[1200];
+    uint8_t t[876];
+    SDL_memcpy(t, m->names, 36);
+    SDL_memcpy(t + 36, m->story, 0x348);
+    SDL_snprintf(path, sizeof path, "%sSITLES", m->data_dir);
+    bool ok = SDL_SaveFile(path, t, sizeof t);
+    WORK(m, 4000);
+    if (!ok) disk_error(m);
+    return ok;
+}
+
+/* save_or_reload (thunk 18, ovl1:8538): 100 writes the changes, 101 reads
+ * the campaign again */
+static void save_or_reload(Menu *m, int a)
+{
+    if (a == 100) write_campaign_file(m, m->a6487);
+    else if (a == 101) load_campaign(m, m->a6487);
+}
+
+/* ------------------------------------------------------------------ step 7: the scroll editor (the story, a title) */
+
+#define F_QUILL 0x7D0                                   /* the pen the scroll editor writes with */
+
+static bool scroll_key_ok(int k)                    /* ovl1:BBDE: the characters the scroll has no letter for */
+{
+    return !(k == '\\' || k == '>' || k == '<' || k == '~' || k == '@' || k == '#' || k == '$' || k == '%' ||
+             k == '^' || k == '&' || k == '*' || k == '=' || k == '+' || k == '`');
+}
+
+static void scroll_back(Menu *m)                    /* ovl1:B81F: a cell back, over a capital's second half */
+{
+    for (int guard = 0; guard < 64; guard++) {
+        m->a6870--;
+        m->a64D3 -= 2;
+        if (m->a64D3 < 0) {
+            if (m->a64D5 > 0) { m->a64D3 = 60; row_up(m); }
+            else { m->a6870++; m->a64D3 += 2; }
+        } else m->a64D1 -= 2;
+        if (cell(m, m->a6870) != 1) break;
+    }
+    text_cell(m);
+}
+
+/* ovl1_b580: a string onto the scroll and into its text */
+static void scroll_store(Menu *m, const char *s)
+{
+    for (; *s; s++) {
+        scroll_char(m, (unsigned char)*s);
+        if (m->a6870 >= 0 && m->a6870 < 0x348) m->story[m->a6870] = (uint8_t)*s;
+        advance(m);
+    }
+}
+
+static void story_step_words(Menu *m)               /* ovl1:9171 */
+{
+    clear_row(m, 23);
+    print(m, SO3(m, 0x99C));                            /* The fifth step is to write a story. */
+    clear_row(m, 24);
+    print(m, SO3(m, 0x9E5));                            /* Press */
+    print(m, SO3(m, 0xEC6));                            /*  any key. */
+    while (!dos_key(m)) {}
+    beep_low(m);
+    clear_row(m, 23);
+}
+
+static void scroll_done_help(Menu *m)               /* ovl1:9138 */
+{
+    clear_row(m, 24);
+    icon_so3(m, I_ESC, 192, 0);
+    print_at(m, 4, 24, SO3(m, 0x939));                  /* when done. */
+}
+
+/* title_step (ovl1:9200): the pen goes down to the new title's row */
+static void title_step(Menu *m)
+{
+    m->a64DD++;
+    clear_row(m, 24);
+    at_cell(m, 2, 3);
+    for (int k = 0; k < m->a64DD; k++) {
+        blit_menu(m);
+        and_pointer(m, F_QUILL, m->a64D3 + 5, m->a64D5 * 12 + 58 - m->view * 2);
+        row_down(m);
+        row_down(m);
+    }
+    clear_row(m, 23);
+    print(m, SO3(m, 0x9C2));                            /* The last step is to write a title. */
+    clear_row(m, 24);
+    print(m, SO3(m, 0x9E5));                            /* Press */
+    icon_ds(m, I_ENTER, 192, 12);
+    print_at(m, 9, 24, SO3(m, 0x939));                  /* when done. */
+    m->a6487 = m->a64DD;
+}
+
+/* scroll_editor (ovl1:B21E): typing on the scroll, the story (Esc when
+ * done) or a title on its row (Enter when done) */
+static void scroll_editor(Menu *m)
+{
+    text_begin(m);
+    int letters = 0;                                    /* a title's letters: Enter ends it only when there are some */
+    if (m->a6485 == 0) story_step_words(m);
+    scroll_done_help(m);
+    m->view = 0;
+    m->k802 = 0;
+    at_cell(m, 0, 0);
+    dos_key(m);
+    bool title = m->a6485 == 3;
+    if (title) title_step(m);
+    for (;;) {
+        blit_menu(m);
+        and_pointer(m, F_QUILL, m->a64D3 + 7, m->a64D5 * 12 + 58 - m->view * 2);
+        int k;
+        do {
+            while (!(k = dos_key(m))) {}
+        } while (!scroll_key_ok(k));
+        if (k == 27) {                                  /* a cursor key, or Esc */
+            k = dos_key(m);
+            if (title) {
+                if (k == PK_LEFT && m->a64D3 > 4) scroll_back(m);
+                if (k == PK_RIGHT && m->a64D3 < 58 && (m->a64D3 > 4 || cell(m, m->a6870) != ' ')) advance(m);
+                continue;
+            }
+            if (k == PK_UP) row_up(m);
+            else if (k == PK_DOWN) row_down(m);
+            else if (k == PK_LEFT) scroll_back(m);
+            else if (k == PK_RIGHT) advance(m);
+            else if (k == 0) { beep_low(m); break; }
+            continue;
+        }
+        if (k == 13) {
+            if (title) { if (letters) break; continue; }
+            if (m->a64D5 < 25) { m->a64D3 = 0; row_down(m); }
+            continue;
+        }
+        if (k == 8 && (m->a64D3 > 0 || m->a64D5 > 0)) {
+            if (title) {
+                if (m->a64D3 >= 58) { scroll_char(m, ' '); m->story[m->a6870] = ' '; }
+                if (m->a64D3 <= 4) continue;
+            }
+            scroll_back(m);
+            if (letters && cell(m, m->a6870) > ' ') letters--;
+            scroll_char(m, ' ');
+            m->story[m->a6870] = ' ';
+            continue;
+        }
+        if (title && m->a64D3 == 4 && k == ' ') continue;
+        if (cell(m, m->a6870) == 1) { m->a6870--; m->a64D3 -= 2; m->a64D1 -= 2; }   /* a capital's second half: its first */
+        if (k > ' ') letters++;
+        else if (k == ' ' && cell(m, m->a6870) > ' ' && letters) letters--;
+        scroll_char(m, k);
+        if (m->a6870 >= 0 && m->a6870 < 0x348) m->story[m->a6870] = (uint8_t)k;
+        if (title && m->a64D3 >= 58) continue;
+        advance(m);
+    }
+    m->view = 0;
+    clear_row(m, 23);
+    clear_row(m, 24);
+    dos_key(m);
+    text_end(m);
+    keys_clear(m);
 }
 
 /* ------------------------------------------------------------------ the pages */
@@ -823,13 +1024,27 @@ static void scroll_pictures(Menu *m)        /* show_scroll ovl1:7F31: SPE and SP
 /* titles_help (ovl1:AD76) for the titles (mode 1) */
 static void titles_help(Menu *m)
 {
+    int mode = m->a6485;
     clear_row(m, 23);
-    icon_so3(m, I_ESC, 184, 52);
-    print_at(m, 30, 23, DS(m, 0x155));                  /* to back up */
-    gotoxy(m, 0, 23);
-    print(m, m->disk_list ? "Select a data disk.     " : SO3(m, 0xBDD));   /* Select a campaign title. */
+    if (mode == 5) {
+        print(m, SO3(m, 0xB9B));                        /* Changed your mind?  Press */
+        icon_so3(m, I_ESC, 184, 52);
+    } else if (mode == 7) print(m, SO3(m, 0xBB5));      /* Select the campaign you want to change. */
+    else if (mode == 1) {
+        icon_so3(m, I_ESC, 184, 52);
+        print_at(m, 30, 23, DS(m, 0x155));              /* to back up */
+        gotoxy(m, 0, 23);
+        print(m, m->disk_list ? "Select a data disk.     " : SO3(m, 0xBDD));   /* Select a campaign title. */
+    } else print_at(m, 7, 23, SO3(m, 0xBDD));
     help_change_select(m);
-    print_at(m, 23, 24, SO3(m, 0xBF6));                 /* to select. */
+    if (mode == 7) print_at(m, 12, 24, SO3(m, 0xEDE));  /* point, */
+    gotoxy(m, 23, 24);
+    if (mode == 5) {
+        print(m, SO3(m, 0xCB4));                        /* to erase. */
+        put_char(m, ' ');
+        gotoxy(m, 9, 24);
+    }
+    print(m, SO3(m, 0xBF6));                            /* to select. */
 }
 
 /* the remake: the data disks listed on the scroll, laid out as SITLES */
@@ -853,16 +1068,22 @@ static void disks_text(Menu *m)
 /* ovl1_ab0a: choose a title with the pointer */
 static int titles_choose(Menu *m)
 {
+    int mode = m->a6485;
     at_cell(m, 0, 3);
     m->view = 0;
     titles_help(m);
     bool moved = false;
     m->a6487 = 0;
+    keys_clear(m);
+    if (mode == 5 || mode == 7) {                       /* the first campaign, not ( war disk ) */
+        row_down(m);
+        row_down(m);
+        m->a6487 = 1;
+    }
     if (m->disk_list) {                       /* the remake: start at the disk in the drive */
         for (int k = 0; k < m->disk; k++) { row_down(m); row_down(m); }
         m->a6487 = m->disk;
     }
-    keys_clear(m);
     for (;;) {
         blit_menu(m);
         and_pointer(m, F_POINTER, 3, (m->a64D5 + 4) * 12 + 4 - m->view * 2);
@@ -878,12 +1099,27 @@ static int titles_choose(Menu *m)
                 m->a6497 = 1;
                 return R_AGAIN;
             }
-            break;
+            if (mode != 5) break;
+            for (;;) {                                  /* Erase this title? (Y or N) */
+                clear_row(m, 23);
+                clear_row(m, 24);
+                print(m, SO3(m, 0xB80));
+                gotoxy(m, 0, 24);
+                while (!(k = poll_key(m))) delay(m, 0x1F4);
+                if (k == PK_N || k == PK_Y) break;
+            }
+            if (k == PK_Y) break;
+            beep_low(m);
+            titles_help(m);
+            continue;
         }
         if (k == PK_ESC && m->disk_list) { m->disk_list = false; return R_AGAIN; }   /* the remake: no disk after all */
-        if (k == PK_ESC && m->a6485 == 1) return R_BACK;
+        if (k == PK_ESC && mode == 1) return R_BACK;
+        if (k == PK_ESC && mode == 7) return R_BACK;    /* the remake: WAS.EXE has no way back here */
+        if (k == PK_ESC && mode == 5) { m->a6487 = -1; beep_low(m); break; }
         if (key_up(k)) {
-            if (--m->a6487 < 0) m->a6487 = 0;
+            int first = (mode == 5 || mode == 7) ? 1 : 0;
+            if (--m->a6487 < first) m->a6487 = first;
             else { beep_low(m); row_up(m); row_up(m); moved = true; }
         } else if (key_down(k)) {
             int last = m->disk_list ? m->ndisks - 1 : m->a64DD;
@@ -962,12 +1198,22 @@ static int rules_choose(Menu *m)
     int r = 0;
     bool moved = false;
     keys_clear(m);
+    if (m->a6485 == 11) {                               /* a new campaign's fourth step */
+        clear_row(m, 23);
+        print(m, SO3(m, 0xD96));                        /* The fourth step is to s */
+        print(m, SO3(m, 0xED0));                        /* et the rules. */
+        clear_row(m, 24);
+        print(m, SO3(m, 0x9E5));                        /* Press */
+        print(m, SO3(m, 0xEC6));                        /*  any key. */
+        while (!poll_key(m)) WORK(m, 20);
+        beep_low(m);
+    }
     clear_row(m, 23);
     icon_ds(m, I_PLUS, 184, 0);
     print_at(m, 3, 23, DS(m, 0x160));                   /* or */
     icon_ds(m, I_MINUS, 184, 12);
     print_at(m, 9, 23, DS(m, 0x163));                   /* to */
-    print(m, SO3(m, 0xC01));                            /* look at the rules. */
+    print(m, SO3(m, m->a6485 == 2 ? 0xC01 : 0xC14));    /* look at the rules. / select the rule to change. */
     clear_row(m, 24);
     icon_so3(m, I_SPACE, 192, 0);
     print_at(m, 7, 24, SO3(m, 0x991));                  /* to change, */
@@ -1012,7 +1258,9 @@ static int rules_choose(Menu *m)
  * data disk with a saved game, "Saved game / New campaigns" first */
 static int titles_load(Menu *m)
 {
-    if (m->a6485 == 1 && m->a6497 == 1 && !m->disk_list && ss_exists(m)) {
+    int mode = m->a6485;
+    if (mode == 3 || mode == 5 || mode == 7 || mode == 9) m->a6497 = 1;   /* data_disk_prompt: the data disk (a folder) is in */
+    if (mode == 1 && m->a6497 == 1 && !m->disk_list && ss_exists(m)) {
         clear_row(m, 23);
         clear_row(m, 24);
         print(m, SO3(m, 0xE23));                        /* Saved game             New campaigns */
@@ -1026,6 +1274,7 @@ static int titles_load(Menu *m)
         }
     }
     m->a6487 = 0;
+    if (mode != 3) blank_armies(m);
     SDL_memset(m->story, ' ', 0x348);
     scroll_clear(m);
     show_one_moment(m);
@@ -1056,16 +1305,39 @@ static int show_scroll(Menu *m)
     keys_clear(m);
     for (;;) {
         scroll_pictures(m);
-        int r = 0;
-        if (m->a6485 == 1) {
+        int mode = m->a6485;
+        if (mode == 0 || mode == 10) {                  /* the story to write */
+            if (mode == 10) clear_all_rows(m);
+            scroll_palette(m);
+            scroll_write(m);
+            text_rows_add(m, 0);
+            scroll_editor(m);
+            if (mode == 10) {
+                clear_row(m, 23);
+                for (;;) {
+                    clear_row(m, 24);
+                    print(m, SO3(m, 0xDB3));            /* Save the changes? (Y or N) */
+                    int k;
+                    while (!(k = key802(m))) WORK(m, 20);
+                    if (k == PK_Y) { print(m, SO3(m, 0xE5A)); save_or_reload(m, 100); break; }
+                    if (k == PK_N) { print(m, DS(m, 0xD9)); save_or_reload(m, 101); break; }
+                }
+            }
+        } else if (mode == 1 || mode == 5 || mode == 7) {   /* the titles */
             int l2 = titles_load(m);
             if (l2 == 0) return R_FAIL;
             if (l2 == 2) return load_saved_game(m) ? 100 : 0x270E;
             for (int row = 24; row > 7; row--) clear_row(m, row);
             scroll_palette(m);
             scroll_write(m);
+            if (m->a64DD == 0 && mode != 1) {           /* the remake: nothing to change or remove */
+                clear_row(m, 24);
+                print(m, "No campaigns on this data disk.");
+                delay(m, 40000);
+                return 6;
+            }
             text_rows_add(m, 0);
-            r = titles_choose(m);
+            int r = titles_choose(m);
             if (r == R_BACK) return R_BACK;
             if (r == R_AGAIN) continue;
             if (m->disk_list) {                          /* the remake: that disk goes in the drive */
@@ -1074,9 +1346,11 @@ static int show_scroll(Menu *m)
                 m->a6497 = 1;
                 continue;
             }
-            scroll_clear(m);
-            if (!load_campaign(m, m->a6487)) return R_FAIL;
-        } else if (m->a6485 == 4) {
+            if (mode != 5) {
+                scroll_clear(m);
+                if (!load_campaign(m, m->a6487)) return R_FAIL;
+            }
+        } else if (mode == 4) {                         /* the story to read */
             scroll_palette(m);
             scroll_write(m);
             text_rows_add(m, 0);
@@ -1088,15 +1362,24 @@ static int show_scroll(Menu *m)
             print_at(m, 23, 24, SO3(m, 0x939));         /* when done. */
             if (story_view(m) == R_BACK) return R_BACK;
             scroll_clear(m);
-        } else if (m->a6485 == 2) {
+        } else if (mode == 2 || mode == 6 || mode == 11) {   /* the rules */
             for (int row = 24; row > 7; row--) clear_row(m, row);
             scroll_palette(m);
             rules_write(m);
             text_rows_add(m, 0);
             if (rules_choose(m) == R_BACK) return R_BACK;
+            if (mode == 6) save_or_reload(m, 100);
+        } else if (mode == 3) {                         /* the new campaign's title */
+            titles_load(m);
+            scroll_palette(m);
+            scroll_write(m);
+            text_rows_add(m, 0);
+            scroll_editor(m);
+            if (!write_titles(m)) return 0x270E;
         }
         clear_row(m, 22);
-        roll_up(m);
+        if (mode != 5 || m->a6487 == -1) roll_up(m);
+        if (mode == 7) clear_all_rows(m);
         clear_row(m, 23);
         clear_row(m, 24);
         keys_clear(m);
@@ -1117,6 +1400,7 @@ static void opp_frame(Menu *m, int o)
 static int choose_opponent(Menu *m)
 {
     static const unsigned DESC[6] = { 0, 66, 143, 215, 0x117, 0x155 };
+    int mode = m->a6485;
     m->a6467 = false;
     m->view = 0;
     if (!load_picture(m, PIC_OPPONENTS, 0)) return R_FAIL;
@@ -1125,6 +1409,23 @@ static int choose_opponent(Menu *m)
     palette(m, false);
     clear_row(m, 0);
     int o = SDL_clamp(m->opponent, 0, 5), k = 0;
+    if (mode == 9) {                                    /* a new campaign's third step */
+        print(m, SO2(m, 0x3A7));                        /* The third step is to select the enemy */
+        clear_row(m, 1);
+        print(m, SO2(m, 0x3CD));                        /* leader. */
+        put_char(m, ' ');
+        print(m, SO3(m, 0x9E5));                        /* Press */
+        print(m, SO2(m, 0x3D5));                        /*  any key. */
+        draw_icon_from(m, m->ga->so2, sizeof m->ga->so2, 0x14D3, 8, 46);   /* Esc */
+        print_at(m, 27, 1, SO2(m, 0x10EE));             /* to quit. */
+        clear_row(m, 24);
+        keys_clear(m);
+        while (!(k = poll_key(m))) WORK(m, 20);
+        if (k == PK_ESC) { beep_low(m); show_one_moment(m); return 5; }
+        o = 0;
+        goto select;
+    }
+    if (mode == 10) goto select;                        /* a campaign changed: the opponent at once */
     print(m, SO2(m, DESC[o]));
     clear_row(m, 24);
     print(m, SO2(m, 0x3DF));                            /*   to change the opponent,   to continue */
@@ -1137,8 +1438,9 @@ static int choose_opponent(Menu *m)
         if (key_down(k)) { if (++o > 5) o = 0; break; }
         if (key_up(k)) { if (--o < 0) o = 5; break; }
         if (k == PK_ENTER) goto chosen;
-        if (k == PK_ESC) return R_BACK;
+        if (k == PK_ESC && mode == 2) return R_BACK;
     }
+select:
     beep_low(m);                                        /* ovl1:8F2D */
     help_change_select(m);
     print_at(m, 23, 24, SO3(m, 0xBF6));                 /* to select. */
@@ -1160,12 +1462,13 @@ static int choose_opponent(Menu *m)
         if (key_down(k)) { if (++o > 5) o = 0; }
         else if (key_up(k)) { if (--o < 0) o = 5; }
         else if (k == PK_ENTER) break;
-        if (k == PK_ESC) return R_BACK;
+        if (k == PK_ESC && mode == 2) return R_BACK;
         opp_frame(m, o);
     }
 chosen:
     beep_low(m);
     m->opponent = o;
+    if (mode == 10) save_or_reload(m, 100);
     return 0;
 }
 
@@ -1282,25 +1585,33 @@ static int title_ship(Menu *m)
     }
 }
 
-/* the campaign menu (ovl1_82af, ovl1_a5f5): SPG and SO4; the frame round a scene blinks */
-static void scene_frame(Menu *m, int i)
+/* the campaign menu (ovl1_82af) and the change menu (editor_menu ovl1:843C):
+ * SPG or SPH with SO4's words, campaign_menu_choose (ovl1_a5f5): the frame
+ * round a scene blinks. tab: SO4's names, then the frames' places, widths
+ * and heights */
+typedef struct { PictureId pic; unsigned names, pos, w, h; } Scenes;
+
+static const Scenes CAMPAIGN_MENU = { PIC_SCENES_1, 0x1E3, 0x19B, 0x1A7, 0x1B3 };
+static const Scenes CHANGE_MENU = { PIC_SCENES_2, 0x1EF, 0x1BF, 0x1CB, 0x1D7 };
+
+static void scene_frame(Menu *m, const Scenes *t, int i)
 {
-    int pos = so4w(m, 0x19B + 2 * i), y = (pos / 80) * 2, x = pos % 80;
+    int pos = so4w(m, t->pos + 2 * i), y = (pos / 80) * 2, x = pos % 80;
     delay(m, 0x3E8);
-    xor_frame(m, x, y, so4w(m, 0x1A7 + 2 * i), so4w(m, 0x1B3 + 2 * i));
+    xor_frame(m, x, y, so4w(m, t->w + 2 * i), so4w(m, t->h + 2 * i));
     delay(m, 0x320);
-    xor_frame(m, x, y, so4w(m, 0x1A7 + 2 * i), so4w(m, 0x1B3 + 2 * i));
+    xor_frame(m, x, y, so4w(m, t->w + 2 * i), so4w(m, t->h + 2 * i));
 }
 
-static int campaign_menu(Menu *m)
+static int scenes_menu(Menu *m, const Scenes *t, int start)
 {
     m->a6467 = false;
     m->view = 0;
-    if (!load_picture(m, PIC_SCENES_1, 0)) return R_FAIL;
+    if (!load_picture(m, t->pic, 0)) return R_FAIL;
     m->rows = 1;
     blit(m, 200);
     palette(m, false);
-    int i = SDL_clamp(m->a6471, 0, 5), k = PK_EQUALS;   /* ovl1_a5f5 */
+    int i = SDL_clamp(start, 0, 5), k = PK_EQUALS;      /* ovl1_a5f5 */
     plus_or_minus(m);
     print_at(m, 9, 24, SO3(m, 0xD86));                  /* to move marker, */
     icon_ds(m, I_ENTER, 192, 50);
@@ -1317,17 +1628,19 @@ static int campaign_menu(Menu *m)
                 delay(m, 0x190);
                 xor_box(m, x, 0, 18, 6);
             }
-            print_at(m, 15, 0, SO4(m, (unsigned)so4w(m, 0x1E3 + 2 * i)));
+            print_at(m, 15, 0, SO4(m, (unsigned)so4w(m, t->names + 2 * i)));
         }
         k = poll_key(m);
         if (key_down(k)) { if (++i > 5) i = 0; delay(m, 0x3E8); }
         else if (key_up(k)) { if (--i < 0) i = 5; delay(m, 0x3E8); }
         else if (k == PK_ENTER) break;
-        scene_frame(m, i);
+        scene_frame(m, t, i);
     }
     show_one_moment(m);
     return i;
 }
+
+static int campaign_menu(Menu *m) { return scenes_menu(m, &CAMPAIGN_MENU, m->a6471); }
 
 /* options_shoppe (ovl1:9BCB): SPK, nine lines in small capitals */
 static void shoppe_line(Menu *m, int k)
@@ -1482,6 +1795,137 @@ static void opening(Menu *m)
     keys_clear(m);
 }
 
+/* ------------------------------------------------------------------ step 7: making, changing and removing campaigns */
+
+/* change_campaign (ovl1:92C9): a new campaign takes the data disk's next title */
+static int change_campaign(Menu *m)
+{
+    blank_armies(m);
+    default_rules(m);
+    m->opponent = 0;
+    m->a6485 = 9;
+    if (!titles_load(m)) return 5;
+    scroll_write(m);
+    if (++m->a64DD > 11) {
+        m->beeps++;                                     /* rt_30f9 */
+        delay(m, 0xBB8);
+        clear_row(m, 24);
+        print(m, SO3(m, 0x9EB));                        /* Can't add any more campaigns! */
+        delay(m, 30000);
+        return 5;
+    }
+    m->a6487 = m->a64DD;
+    return 0;
+}
+
+/* new_campaign (ovl1:8395): the opponent, the rules, the story, then the
+ * file is written and the title typed */
+static int new_campaign(Menu *m)
+{
+    m->a6485 = 9;
+    int r = choose_opponent(m);
+    if (r) return r;
+    SDL_memset(m->story, ' ', 0x348);
+    m->a6485 = 11;
+    if ((r = show_scroll(m)) != 0) return r;
+    m->a6485 = 0;
+    if ((r = show_scroll(m)) != 0) return r;
+    if (!write_campaign_file(m, m->a6487)) return 0;
+    m->a6485 = 3;
+    if (show_scroll(m) == 0) {
+        print_at(m, 6, 12, SO3(m, 0xC9A));              /* THIS CAMPAIGN IS COMPLETE */
+        m->complete = true;
+        delay(m, 50000);                                /* the remake: 2 1/2 s before the title page */
+    }
+    return 0;
+}
+
+/* rt:037F: change a campaign: choose it, then the change menu until EXIT */
+static int change_menu(Menu *m)
+{
+    int keep = m->a6497;
+    m->a6485 = 7;
+    int r = show_scroll(m);
+    if (r) { m->a6497 = keep; return r; }
+    m->a6473 = 0;
+    for (;;) {
+        m->a6473 = scenes_menu(m, &CHANGE_MENU, m->a6473);
+        switch (m->a6473) {
+        case R_FAIL: return R_FAIL;
+        case 0:                                         /* RULEBOOK */
+            m->a6485 = 6;
+            if ((r = show_scroll(m)) != 0) return r;
+            break;
+        case 1:                                         /* STORYBOOK */
+            m->a6485 = 10;
+            if ((r = show_scroll(m)) != 0) return r;
+            break;
+        case 2:                                         /* MAP MAKER */
+            m->a6485 = 0;
+            r = map_maker(m);
+            if (r > 9000) return r;
+            save_or_reload(m, r);
+            break;
+        case 3:                                         /* EXIT */
+            m->a6497 = keep;
+            return 0;
+        case 4:                                         /* ENEMY */
+            m->a6485 = 10;
+            if (choose_opponent(m)) return R_FAIL;
+            break;
+        default:                                        /* FLEET */
+            m->a6485 = 0;
+            r = ships_editor(m);
+            if (r > 9000) return r;
+            save_or_reload(m, r);
+            break;
+        }
+    }
+}
+
+/* scroll_erase_line (ovl1:8693): the title rubbed out a letter at a time */
+static void scroll_erase_line(Menu *m)
+{
+    for (int i = 0; i < 33; i++) {
+        scroll_char(m, ' ');
+        m->a64D1 += 2;
+        blit_menu(m);
+        WORK(m, 25);                                    /* speaker_click */
+        delay(m, 0x1F4);
+    }
+    m->beeps++;
+}
+
+/* remove_campaign (ovl1:8579): its title goes, the titles below move up and
+ * its file name goes to the end of the list (the S file stays) */
+static int remove_campaign(Menu *m)
+{
+    int keep = m->a6497;
+    m->a6485 = 5;
+    int r = show_scroll(m);
+    if (r) { m->a6497 = keep; return r; }
+    if (m->a64DD >= 1 && m->a6487 >= 1) {
+        int k = m->a6487;
+        if (k < 11) {
+            uint8_t t[3];
+            SDL_memcpy(t, m->names + k * 3, 3);
+            SDL_memmove(m->names + k * 3, m->names + k * 3 + 3, (size_t)(11 - k) * 3);
+            SDL_memcpy(m->names + 33, t, 3);
+        }
+        int at = m->a6870, n = 0x2FF - at;
+        if (at >= 0 && n > 0 && n < 0x3E7) SDL_memmove(m->story + at, m->story + at + 64, (size_t)n);
+        int last = m->a64DD * 64 + 95;
+        if (last >= 0 && last + 32 <= 0x348) SDL_memset(m->story + last, ' ', 32);
+        scroll_erase_line(m);
+        roll_up(m);
+        scroll_clear(m);
+        m->a64DD--;
+        write_titles(m);
+    }
+    m->a6497 = keep;
+    return 0;
+}
+
 /* the editors' menu loop (rt_0270): the campaign menu and what it leads to */
 static int changes(Menu *m)
 {
@@ -1489,10 +1933,28 @@ static int changes(Menu *m)
         int i = campaign_menu(m);
         if (i == R_FAIL) return R_FAIL;
         m->a6471 = i;
+        if (i == 0) {                                  /* Make a new campaign: six steps */
+            if (change_campaign(m)) return 0;
+            m->a6485 = 3;
+            if (map_maker(m)) return 0;
+            m->a6485 = 9;
+            if (ships_editor(m)) return 0;
+            new_campaign(m);
+            return 0;
+        }
+        if (i == 1) {                                  /* Change a campaign */
+            int r = change_menu(m);
+            if (r == R_BACK || r == 6) continue;       /* the remake: Esc, or nothing to change */
+            return r == R_FAIL ? R_FAIL : 0;
+        }
+        if (i == 2) {                                  /* Remove a campaign */
+            int r = remove_campaign(m);
+            if (r == 0 || r == 5 || r == 6) continue;
+            return r == R_FAIL ? R_FAIL : 0;
+        }
         if (i == 3) return 0;                          /* Return to title page */
         if (i == 4) opening(m);                        /* The Ancient Art of War. */
         else if (i == 5) options_shoppe(m);            /* Ye Olde Options Shoppe. */
-        /* 0-2, making, changing and removing campaigns: step 7 */
     }
 }
 
@@ -1712,6 +2174,16 @@ void menu_save(Menu *m, const Play *p)
 void menu_key(Menu *m, int key)
 {
     if (!key) return;
+    if (m->text_on) {                    /* the BIOS: what DOS reads for the keys that type nothing */
+        if (key == PK_ENTER) dos_push(m, 13);
+        else if (key == PK_ESC) dos_push(m, 27);
+        else if (key == PK_BACKSPACE) dos_push(m, 8);
+        else if ((key >= PK_HOME && key <= PK_PGDN && key != PK_KP_MINUS && key != PK_KP_PLUS) || key == PK_DELETE) {
+            dos_push(m, 27);
+            dos_push(m, key);
+        }
+        return;
+    }
     m->q804[0] = key;                    /* the keyboard interrupt keeps the last key (rt:3160) */
     m->n804 = 1;
     m->k802 = key;
@@ -1719,6 +2191,16 @@ void menu_key(Menu *m, int key)
 }
 
 void menu_key_up(Menu *m) { if (m->k802) m->up802 = true; }
+void menu_shift(Menu *m, bool down) { m->shift = down; }
+
+bool menu_wants_text(const Menu *m) { return m->text_on; }
+
+void menu_text(Menu *m, const char *utf8)
+{
+    if (!m->text_on) return;
+    for (const unsigned char *c = (const unsigned char *)utf8; *c; c++)
+        if (*c >= 32 && *c < 127) dos_push(m, *c);
+}
 
 void menu_run(Menu *m, double us)
 {

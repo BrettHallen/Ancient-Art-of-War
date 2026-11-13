@@ -6,12 +6,18 @@ The remake uses the original pictures, map tiles, sprites and font, in either th
 **No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `SO0`-`SO8`, `AD`, `B`, the `S` files, `SITLES` and `SDITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
 ## Status
-Steps 1 to 6 of the plan (`WAS_Remake_plan.md`) are done.
+Steps 1 to 7 of the plan (`WAS_Remake_plan.md`) are done; sound (step 8) is still to come.
+
+**The campaign editors** (step 7, overlays 1 to 3 of WAS.EXE): **make changes** now makes, changes and removes your own campaigns on a data disk, as in the original.
+- *Make a new campaign.* takes six steps: the **map maker** (a page of 18 tiles at a time, 90 in all: - and + turn the pages, the arrows move the cursor over the map, the letters A-S put a tile down; a port or crown must be next to water and have a way by sea to the map's edge), the **ships editor** (S makes a squadron at the marker; on a squadron, I opens its panel: type each ship's name, - and + go from ship to ship, T changes its type, S and H its sails and hull, R takes it out; on the squadron's line F makes it friend or foe and S sets its supplies; E ends; G and P move a squadron, R removes it; F counts the fleets), the **enemy leader**, the **rules**, the **story** (typed on the scroll; Esc when done) and the **title** (typed on the titles scroll; Enter when done). Each step asks *Continue to the next step? (Y or N)*; Esc on a step's first page gives up
+- *Change a campaign.*: choose it from the data disk's titles, then the change menu: RULEBOOK, STORYBOOK, MAP MAKER, ENEMY, FLEET, EXIT; each asks *Save the changes? (Y or N)*
+- *Remove a campaign from a data disk.*: choose it, *Erase this title? (Y or N)*, and the title is rubbed out
+- the campaigns are written in the original's format (the 2,180-byte `S` files and `SITLES`), so the original game can play and change them, and the remake the original's; checked byte for byte against files the original wrote in DOSBox. To play one, choose *( data disk )* on the titles scroll
 
 **The menus** (step 6, overlay 1 of WAS.EXE): the remake now starts as the original does.
 - *presented by* (the opening tune's length; a key skips it), then the title page: **go to war**, **make changes** or **quit**, chosen with - and + and Enter
 - **go to war**: the scroll unrolls with the titles (**Esc** goes back), then the campaign's story (- and + scroll it), then its rules (**Space** changes the rule under the sword), then the six opponents (+ goes through them; their portraits blink while you choose), then a quote and *PREPARE FOR WAR!* while the campaign loads
-- **make changes**: the campaign menu (- and + move the frame, Enter): *The Ancient Art of War.* plays the opening (Sun Tzu's lines in time with its tune), *Ye Olde Options Shoppe.* sets the fight delay, the wind, the reload time, the cannon aim, the display, the data disk, the sounds and the joystick (Space changes the line under the sword, Enter keeps them, in `SCNF`). Making, changing and removing campaigns come with step 7
+- **make changes**: the campaign menu (- and + move the frame, Enter): *The Ancient Art of War.* plays the opening (Sun Tzu's lines in time with its tune), *Ye Olde Options Shoppe.* sets the fight delay, the wind, the reload time, the cannon aim, the display, the data disk, the sounds and the joystick (Space changes the line under the sword, Enter keeps them, in `SCNF`); making, changing and removing campaigns are step 7's (above)
 - **saving**: **Alt+S** during play saves the game on the data disk (*<C>ontinue with game or <Q>uit?*); a saved game there is asked about when you open *( data disk )* on the titles scroll: *Saved game* or *New campaigns*
 - the **battle report** at the end of a game, won or lost, with the picture for your opponent, the ships sunk and captured and the flags taken
 - the **demo**: left alone on the title page for about 7 seconds, the game plays one of the campaigns by itself, scrolling to the news and zooming into a battle; any key ends it
@@ -130,6 +136,9 @@ The viewer opens with **F12** on the title page. `--screenshots OUTDIR [game-fol
 
 ### The menus
 The original keys: **-** and **+** (on the keypad, or - and = on the main keyboard) to choose, **Enter** to select, **Esc** to go back a page, **Space** to change a rule or an option, and the letters the pages ask for (S or N, C or Q). Any key ends the demo.
+
+### The editors
+The original keys, shown on the bottom row of each page. Map maker: arrows move the cursor, - and + turn the tile pages, A-S (not P) put a tile down, Enter when done. Ships editor: arrows and Home, Page Up, End, Page Down move the marker (hold them), - and + scroll the map (with Shift, to the top or bottom), S a new squadron, I Info, G Get and P Put, R Remove, F Fleet, Enter when done; in the Info panel - and + choose a ship or the squadron's line, N name, T type, S sails (or supplies), H hull, R remove, F friend or foe, E end. The story and the titles are typed; the arrows move the pen, Backspace rubs out.
 
 ### Playing
 The original keys:
