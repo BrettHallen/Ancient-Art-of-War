@@ -9,7 +9,8 @@
  * through the campaign menu and the editors (under AddressSanitizer): new
  * campaigns made, changed and removed, the map maker, the ships editor,
  * the scroll editor; every page drawn in both modes. Then every S file and
- * SITLES on the data disk must be whole and load.
+ * SITLES on the data disk must be whole and load. The speaker's sounds are
+ * rendered all along (sound_init_offline).
  *
  * Usage: fuzz_editor GAME-FOLDER WORK-FOLDER [KEYS] [SEED]
  */
@@ -19,6 +20,7 @@
 #include "../src/campaign.h"
 #include "../src/menu.h"
 #include "../src/play.h"
+#include "../src/sound.h"
 
 static uint32_t r = 1;
 static int rnd(int n) { r = r * 1103515245u + 12345u; return (int)((r >> 16) % (unsigned)n); }
@@ -37,6 +39,9 @@ int main(int argc, char **argv)
     char data[1200];
     SDL_snprintf(data, sizeof data, "%s/", argv[2]);
     SDL_CreateDirectory(data);
+    sound_init_offline();
+    sound_options(ga.scnf);
+    static float pcm[SOUND_RATE / 60 + 1];
     Menu *m = menu_create(&ga, camps, data);
     static const int KEYS[] = {
         PK_ENTER, PK_ENTER, PK_ENTER, PK_KP_PLUS, PK_KP_MINUS, PK_EQUALS, PK_MINUS, PK_ESC, PK_SPACE, PK_BACKSPACE,
@@ -50,6 +55,7 @@ int main(int argc, char **argv)
         int frames = rnd(4) == 0 ? rnd(300) : rnd(20);
         for (int f = 0; f < frames; f++) {
             menu_run(m, 1e6 / 60);
+            sound_render(pcm, SOUND_RATE / 60);
             MenuAction a = menu_action(m);
             if (a == MENU_START_GAME || a == MENU_DEMO || a == MENU_RESUME_GAME || a == MENU_QUIT) {
                 if (a == MENU_START_GAME) games++;
@@ -90,6 +96,7 @@ int main(int argc, char **argv)
     }
     SDL_free(t);
     SDL_Log("fuzz_editor: %d keys, %d typed; %d games; %d S files, %d bad", keys, texts, games, files, bad);
+    sound_quit();
     assets_free(&ga);
     return bad != 0;
 }

@@ -6,7 +6,9 @@ The remake uses the original pictures, map tiles, sprites and font, in either th
 **No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `SO0`-`SO8`, `AD`, `B`, the `S` files, `SITLES` and `SDITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
 ## Status
-Steps 1 to 7 of the plan (`WAS_Remake_plan.md`) are done; sound (step 8) is still to come.
+Steps 1 to 8 of the plan (`WAS_Remake_plan.md`) are done.
+
+**Sound** (step 8): the PC speaker, as the original drives it: every beep, buzz and tune, the scroll crackling as it unrolls, the low notes as a game starts and ends, a port running empty, the crown's tune, and the battle's guns, crashes, calls and boarding. Each note lasts the time the original's delays gave it on an IBM PC/XT, played at the time the game made it. The Options Shoppe's sound line works as in the original: *all sounds are off*, *do not play music* (the tunes stay quiet), *all sounds are on*.
 
 **The campaign editors** (step 7, overlays 1 to 3 of WAS.EXE): **make changes** now makes, changes and removes your own campaigns on a data disk, as in the original.
 - *Make a new campaign.* takes six steps: the **map maker** (a page of 18 tiles at a time, 90 in all: - and + turn the pages, the arrows move the cursor over the map, the letters A-S put a tile down; a port or crown must be next to water and have a way by sea to the map's edge), the **ships editor** (S makes a squadron at the marker; on a squadron, I opens its panel: type each ship's name, - and + go from ship to ship, T changes its type, S and H its sails and hull, R takes it out; on the squadron's line F makes it friend or foe and S sets its supplies; E ends; G and P move a squadron, R removes it; F counts the fleets), the **enemy leader**, the **rules**, the **story** (typed on the scroll; Esc when done) and the **title** (typed on the titles scroll; Enter when done). Each step asks *Continue to the next step? (Y or N)*; Esc on a step's first page gives up
@@ -32,7 +34,7 @@ The pages are drawn as WAS.EXE draws them and take the time they took on an IBM 
 - **boarding**: when ships grapple, *X grapples Y. Zoom Pass*: **Z** goes on deck. Forty men of the two crews, as many on each side as the ships' damage, types and other ships alongside allow. **A**ttack (or **L**eave), then send your men FROM one part of your deck TO another (**F**lag, **Q**uarterdeck, **P**oopdeck, **R**ailing; **C**ross to the enemy's flag; **A**gain sends another; Esc starts over). The side that clears the other's deck or reaches its flag takes the ship
 - afterwards the map shows the ships captured and lost, and the game goes on
 
-The battle runs at the speed it had on an IBM PC/XT, as the rest of the game does: its first screens and the boarding's deck match the original in DOSBox pixel for pixel, and its timings were measured there. In the 16-colour mode the battle is shown in its CGA colours for now (how the Tandy version draws it is still to be found out). The battle's sounds come with step 8.
+The battle runs at the speed it had on an IBM PC/XT, as the rest of the game does: its first screens and the boarding's deck match the original in DOSBox pixel for pixel, and its timings were measured there. In the 16-colour mode the battle is shown in its CGA colours for now (how the Tandy version draws it is still to be found out).
 
 **Campaign play, the rules** (step 3, overlay 4 of WAS.EXE): your squadrons can now be sailed, and the game follows the original's rules:
 - **Move**: over one of your squadrons press **M**, trace its path with the marker (it becomes a box that stays on the sea and moves at half speed, as in the original), and press **M** to mark the end (**C** cancels). The squadron sets out at full sail and a little cross marks where it will stop; in **Info**, **S** changes its speed (anchored, half sail, full sail)
@@ -61,7 +63,7 @@ The tracing box, the path's mark, sailing to the end of a path, Join, Detach, th
 - the map sprites: the anchor, the crossed swords of an encounter, a ship under sail in 16 headings, the flagship's pennant and the merchant's cargo, each as the player's (white with a black outline) and the enemy's (black with a white outline)
 - the eleven campaigns: the map with every squadron where it starts (at anchor, with the pennant over a squadron that has a flagship), the opponent and the number of ships on each side; **I** shows the campaign's story, then its squadrons and ships; **Enter** plays it
 
-The rest follows the build order in the plan: the editors and sound.
+All the steps of the plan's build order are done.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):

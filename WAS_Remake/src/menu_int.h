@@ -207,6 +207,11 @@ void plus_or_minus(Menu *m);                    /* ovl1_bec5 */
 void palette(Menu *m, bool pal0);
 void hline(Menu *m, int line, int xb, int len); /* rt:2B95 */
 const char *DS(const Menu *m, unsigned off);
+void mspk_on(Menu *m);                          /* the speaker at overlay 1's clock (sound.c) */
+void mspk_freq(Menu *m, int divisor);
+void mspk_off(Menu *m);
+void mspk_click(Menu *m);
+void mtone(Menu *m, int divisor, int units);    /* speaker_on, rt_2f3f, delay, rt_2f67 */
 void text_begin(Menu *m);                       /* rt_313c: the BIOS's keyboard, letters typed */
 void text_end(Menu *m);                         /* rt_3110: WAS.EXE's own again */
 int  dos_key(Menu *m);                          /* rt_2e8e: a typed character, 27 then the scan code for a cursor key, or 0 */

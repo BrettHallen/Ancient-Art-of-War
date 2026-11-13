@@ -44,6 +44,7 @@
 #include "battle.h"
 #include "campaign.h"
 #include "gamelog.h"
+#include "sound.h"
 #include "gfx.h"
 #include "icon.h"
 #include "menu.h"
@@ -253,6 +254,7 @@ static bool load_from(App *app, const char *dir, bool remember)
     char err[256] = "";
     if (app->have_assets) assets_free(&app->ga);
     app->have_assets = assets_load(&app->ga, dir, err, sizeof err);
+    sound_options(app->have_assets ? app->ga.scnf : NULL);   /* [684F] as the Options Shoppe sets it */
     if (!app->have_assets) {
         SDL_Log("Could not load the game from %s: %s", dir, err);
         if (app->win)
@@ -434,6 +436,7 @@ static void start_play(App *app)
 /* back to the menus (rt:0000's loop): the title page, the battle report or saving */
 static void to_menu(App *app)
 {
+    spk_silence(SND_PLAY);                       /* a sound of the map's cut short */
     app->playing = false;
     app->in_menu = app->menu != NULL;
     app->menu_ns = SDL_GetTicksNS();
@@ -495,7 +498,7 @@ static bool menu_step(App *app)
  * as game_init shows it again (rt:00BC; battle_report returns at once) */
 static void end_demo(App *app)
 {
-    if (app->battle) { fiber_stop(&app->battle->fiber); SDL_free(app->battle); app->battle = NULL; }
+    if (app->battle) { spk_silence(SND_BATTLE); fiber_stop(&app->battle->fiber); SDL_free(app->battle); app->battle = NULL; }
     to_menu(app);
     if (app->menu) menu_title(app->menu);
 }
@@ -650,6 +653,7 @@ int main(int argc, char **argv)
         return 1;
     }
     SDL_SetRenderVSync(app.ren, 1);
+    sound_init();                                /* step 8: the PC speaker (silent without a device) */
     app.tex = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
     SDL_SetTextureScaleMode(app.tex, SDL_SCALEMODE_NEAREST);
     app.tex_herc = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, HERC_W, HERC_H);
@@ -786,6 +790,7 @@ int main(int argc, char **argv)
     if (app.battle) { fiber_stop(&app.battle->fiber); SDL_free(app.battle); }
     gamelog_end(NULL, "The remake was closed.");
     menu_destroy(app.menu);
+    sound_quit();
     if (app.have_assets) assets_free(&app.ga);
     SDL_DestroyTexture(app.up);
     SDL_DestroyTexture(app.tex);

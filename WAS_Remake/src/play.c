@@ -15,6 +15,7 @@
  */
 #include "play_int.h"
 #include "gamelog.h"
+#include "sound.h"
 
 #include <SDL3/SDL.h>
 
@@ -38,18 +39,67 @@ static int ds_sbyte(const Play *p, unsigned off) { return (int8_t)p->ga->ds[off]
 
 uint32_t play_ev[EV_COUNT];
 
-static void beep(Play *p) { p->beeps++; }   /* beep_low and friends: the sounds (and their delays) are step 8 */
-/* beep_message (rt:30E2): a beep for 1350 delay units (the delay calls random(), so it is kept) */
-static void beep_message(Play *p) { p->beeps++; delay(p, 0x546); }
+/* the sounds' clock: the iterations so far, and within one the delays */
+static double snd_t(Play *p)
+{
+    double base = p->snd_frames * (1e6 / PLAY_HZ);
+    if (p->snd_us < base) p->snd_us = base;
+    return p->snd_us;
+}
+static void pspk_on(Play *p) { p->beeps++; spk_on(SND_PLAY, snd_t(p)); }
+static void pspk_freq(Play *p, int divisor) { spk_freq(SND_PLAY, snd_t(p), divisor); }
+static void pspk_off(Play *p) { spk_off(SND_PLAY, snd_t(p)); }
+
+/* a note: speaker_on, rt_2f3f, delay, rt_2f67 */
+static void tone(Play *p, int divisor, int units)
+{
+    pspk_on(p);
+    pspk_freq(p, divisor);
+    delay(p, units);
+    pspk_off(p);
+}
+
+static void beep(Play *p) { tone(p, 0x1F4, 0x190); }          /* beep_low (rt:0C32) */
+static void beep_message(Play *p) { tone(p, 0x3E8, 0x546); }  /* rt:30E2 */
+static void buzz(Play *p) { tone(p, 0x1F40, 0x258); }         /* rt:0C72: the marker comes onto a squadron */
+
+/* play_end_sound (ovl4:C38F): two low notes, with all sounds on */
+static void end_sound(Play *p)
+{
+    if (assets_scnf_word(p->ga, 0x684F) <= 1) return;
+    pspk_on(p);
+    pspk_freq(p, 0x2328);
+    delay(p, 0x1388);
+    pspk_freq(p, 0x2134);
+    delay(p, 0x9C4);
+    pspk_off(p);
+}
+
+/* port_empty_sound (ovl4:C57C): three notes, a port has nothing left */
+static void port_empty_sound(Play *p)
+{
+    pspk_on(p);
+    pspk_freq(p, 0xFA0);
+    delay(p, 0x4B0);
+    pspk_freq(p, 0xBB8);
+    delay(p, 0x1A4);
+    pspk_freq(p, 0x1F40);
+    delay(p, 0x2EE);
+    pspk_off(p);
+}
 
 /* delay() (rt:2F6E): WAS.EXE waits, calling random() all the while (units / 2
- * times on an XT); the remake skips that many iterations */
+ * times on an XT); the remake skips that many iterations (the random()
+ * calls are this time, not work of their own) */
 void delay(Play *p, int units)
 {
     p->stall += (int)(units * DELAY_UNIT_US * 1e-6 * PLAY_HZ + 0.5);
+    p->snd_us = snd_t(p) + (units & 0xFFFF) * DELAY_UNIT_US;
     unsigned n = (unsigned)(units & 0xFFFF) >> 1;
     if (n == 0) n = 1;
+    uint32_t keep = play_ev[EV_RND];
     while (n--) rnd(p);
+    play_ev[EV_RND] = keep;
 }
 
 /* random() (rt:2F0D): adds successive words of WAS.EXE's own code, 0-127 */
@@ -621,7 +671,7 @@ static void check_over(Play *p, int key)
         if (p->cx != q->x || p->cy < q->y - 1 || p->cy > q->y + 3) continue;
         found = true;                        /* the last one found wins, unless one is in an encounter */
         p->sel = i;
-        if (!p->over_squad) { beep(p); cmd_squad(p); }   /* rt_0c72: the buzz, select_squad */
+        if (!p->over_squad) { buzz(p); cmd_squad(p); }   /* rt_0c72: the buzz, select_squad */
         if (q->partner) break;
     }
     if (!found && p->over_squad) cmd_normal(p);
@@ -773,10 +823,17 @@ static void msg_crown(Play *p, int i, int side)
     print_region(p, i);
     int port = port_of_cell(p, play_cell(p, i));
     invert(p, port);
-    if (assets_scnf_word(p->ga, 0x684F) == 2) {
-        delay(p, 0x708 + 0x258 + 0x384 + 0x4B0 + 0x4B0 + 0x258 + 0x4B0 + 0x4B0 + 0x258 + 0x4B0 + 0x7D0 + 3 * 0x1388);
-        invert(p, port); invert(p, port); invert(p, port);   /* bab0 x 3 */
-        invert(p, port); invert(p, port); invert(p, port);   /* c35c x 3 */
+    if (assets_scnf_word(p->ga, 0x684F) == 2) {      /* the tune, the crown flashing (ovl4_bab0: delay 600, invert) */
+        static const int16_t TUNE[] = { 0xBDC, 0x708, 17, -1, 0xE16, 0x384, 17, 0x4B0, 0xE16, -1, 17, 0x4B0,
+                                        0xD50, -1, 17, 0x4B0, 0xE16, 0x7D0 };
+        pspk_on(p);
+        for (int k = 0; k < (int)SDL_arraysize(TUNE); k += 2) {
+            pspk_freq(p, TUNE[k]);
+            if (TUNE[k + 1] >= 0) delay(p, TUNE[k + 1]);
+            else { delay(p, 0x258); invert(p, port); }
+        }
+        pspk_off(p);
+        for (int k = 0; k < 3; k++) { invert(p, port); delay(p, 0x1388); }
     }
 }
 
@@ -812,7 +869,7 @@ static void end_game(Play *p, int how)
 {
     if (p->mode == PM_END || p->ended) return;
     LOGN("EVENT the game is over: you %s", how == 1 ? "lost" : "won");
-    beep(p);                                 /* play_end_sound */
+    end_sound(p);                            /* play_end_sound */
     p->rules[5] = 80;
     text_rows_add(p, 0);
     p->mode = PM_END;
@@ -1335,7 +1392,7 @@ static void eat(Play *p, int i)
         if (port == -1) port = crown_beside(p, cell, 0);
         if (port != -1 && p->port_sup[port] > 0) {
             if (p->rules[1] < 20) {          /* 20 and more: ports never run out */
-                if (--p->port_sup[port] <= 0) { invert(p, port); beep(p); LOGN("EVENT the port at %s is empty", CELLN(port)); }   /* ovl4_c57c */
+                if (--p->port_sup[port] <= 0) { invert(p, port); port_empty_sound(p); LOGN("EVENT the port at %s is empty", CELLN(port)); }   /* ovl4_c57c */
                 port_call(p, cell, q->side);
             }
             LOGV("EVENT %s takes on supplies at %s (%d + 5; the port has %d left)", SQN(i), CELLN(port), q->supplies, p->port_sup[port]);
@@ -1355,7 +1412,7 @@ static void eat(Play *p, int i)
             PShip *sh = &p->ship[s];
             if (sh->sails == 0 && sh->hull == 0) continue;
             if (p->rules[1] < 20) {
-                if (--p->port_sup[port] <= 0) { invert(p, port); beep(p); LOGN("EVENT the port at %s is empty", CELLN(port)); }
+                if (--p->port_sup[port] <= 0) { invert(p, port); port_empty_sound(p); LOGN("EVENT the port at %s is empty", CELLN(port)); }
                 port_call(p, cell, q->side);
             }
             if (sh->sails) sh->sails--;
@@ -2297,6 +2354,7 @@ static void start_rest(Play *p)
     }
     for (int cl = 0; cl < NUM_CELLS; cl++)   /* ovl4_c21c */
         if (p->map[cl] >= 74 && p->map[cl] <= 76 && p->port_sup[cl] == 0) invert(p, cl);
+    end_sound(p);                            /* ovl4:78C4: a new game's third */
     p->wind = -1;
     wind_change(p, false);
 }
@@ -2327,7 +2385,8 @@ static bool map_has(const Play *p, int tile)   /* rt_1953 */
 }
 
 /* game_init (ovl1:77AD) and campaign_play's start (ovl4:7650) */
-static void load_pause(Play *p, const uint32_t *before, int end_sounds);
+static void load_pause(Play *p, const uint32_t *before);
+static const double EV_WEIGHT[EV_COUNT];
 
 static void start(Play *p, const Campaign *c, const GameAssets *ga, uint16_t seed, uint16_t ptr, bool demo)
 {
@@ -2413,6 +2472,9 @@ static void start(Play *p, const Campaign *c, const GameAssets *ga, uint16_t see
     enemy_port_values(p);
     p->battle_a = p->battle_b = -1;
     flags_check(p);
+    end_sound(p);                            /* play_end_sound (ovl4:76EB), then the enemy's first orders */
+    uint32_t work0[EV_COUNT];
+    SDL_memcpy(work0, play_ev, sizeof work0);
     port_sources(p);
     enemy_turn(p);
     for (int i = 0; i < MAX_SHIPS; i++) {    /* squadrons put on land are lost */
@@ -2429,6 +2491,10 @@ static void start(Play *p, const Campaign *c, const GameAssets *ga, uint16_t see
         list_ships(p, i);
         for (int k = 0; k < 3 && p->list[k] != -1; k++) p->ship[p->list[k]].sq = -1;
     }
+    double work = 0;                         /* the sounds wait for that work */
+    for (int k = 0; k < EV_COUNT; k++) work += EV_WEIGHT[k] * (double)(play_ev[k] - work0[k]);
+    p->snd_us = snd_t(p) + work * (1000.0 / 300.0);
+    end_sound(p);                            /* ovl4:7800 */
     if (demo) p->demo_key = PK_KP_MINUS;     /* ovl4:7803: it scrolls up */
     port_supplies(p);
     p->sel = -1;
@@ -2437,7 +2503,7 @@ static void start(Play *p, const Campaign *c, const GameAssets *ga, uint16_t see
     if (p->mode == PM_OFFER) p->offer_at_start = true;   /* the rest comes after the answer */
     else start_rest(p);
     gamelog_state(p, "The game at the start");
-    load_pause(p, before, 2);                /* play_end_sound twice (ovl4:76EC, 7800) */
+    load_pause(p, before);
 }
 
 void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
@@ -2494,7 +2560,7 @@ void play_after_battle(Play *p, bool practice, bool left)
     for (int cl = 0; cl < NUM_CELLS; cl++)   /* the map buffer is drawn again, then ovl4_c21c */
         p->inverted[cl] = p->map[cl] >= 74 && p->map[cl] <= 76 && p->port_sup[cl] == 0;
     text_rows_add(p, 0);
-    load_pause(p, before, 0);
+    load_pause(p, before);
 }
 
 void play_resume(Play *p)
@@ -2555,12 +2621,11 @@ static const double EV_WEIGHT[EV_COUNT] = {
 /* The pause before the map appears: the counted work since before, the
  * loading, and play_end_sound's 7500 delay units each time it plays. The last
  * page of the menus (or of the battle) stays meanwhile (main.c: hidden). */
-static void load_pause(Play *p, const uint32_t *before, int end_sounds)
+static void load_pause(Play *p, const uint32_t *before)
 {
     double n = 0;
     for (int k = 0; k < EV_COUNT; k++) n += EV_WEIGHT[k] * (double)(play_ev[k] - before[k]);
-    double us = LOAD_US + n * (1000.0 / 300.0);
-    if (assets_scnf_word(p->ga, 0x684F) > 1) us += end_sounds * 7500 * DELAY_UNIT_US;
+    double us = LOAD_US + n * (1000.0 / 300.0);     /* play_end_sound's delays are in the stall already */
     p->stall += (int)(us / (1e6 / PLAY_HZ) + 0.5);
     p->hidden = true;
 }
@@ -2591,6 +2656,7 @@ static void tick_go(Play *p, int held, uint32_t *before);
 void play_frame(Play *p, int held)
 {
     if (p->result != PLAY_RUNNING) return;
+    p->snd_frames++;
     gamelog_iteration(p);
     if (p->stall > 0) { p->stall--; return; }   /* the key waits, as in the keyboard buffer */
     p->hidden = false;

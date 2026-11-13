@@ -209,7 +209,9 @@ typedef struct {
     PlayResult outcome;      /* the result once Enter is pressed */
     PlayResult result;       /* not PLAY_RUNNING once play is over */
     int      result_code;    /* 649F: 0, 2, 3, 4 won; 10, 12, 13, 14 lost; 1 their surrender accepted; 11 yours */
-    int      beeps;          /* sounds asked for (step 8 plays them): counted for the tests */
+    int      beeps;          /* sounds made (the tests count them) */
+    uint32_t snd_frames;     /* play_frame's calls: the sounds' clock (a frame each 1/PLAY_HZ s) */
+    double   snd_us;         /* the sounds' clock: the frames, and the delays within one */
 
     /* the demo (step 6): [6493] 1, 2 once an encounter is announced (Zoom next);
        the key it plays ([6896], keypad - or +: the map scrolls) */

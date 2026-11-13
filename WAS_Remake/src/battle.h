@@ -57,7 +57,8 @@ typedef struct Battle {
     BattleState state;
     int      result;          /* ovl5_7650's return: 0, or 9999 */
     bool     practice;        /* [65A9] */
-    int      beeps;           /* speaker sounds (step 8 plays them) */
+    int      beeps;           /* speaker sounds made (the tests count them) */
+    bool     spk;             /* the speaker is on (speaker_on, till rt_2f67) */
     int      saved_6867;      /* rt_0000: the guns' option, 10 during Practice */
 
     /* ships (word arrays [i], byte arrays {i} in WAS.EXE) */

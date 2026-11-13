@@ -21,8 +21,8 @@
 
 static const char *SO1(const Menu *m, unsigned off) { return assets_buf_string(m->ga->so1, sizeof m->ga->so1, off); }
 
-static void buzz(Menu *m) { m->beeps++; delay(m, 0x258); }       /* rt:0C72 */
-static void long_buzz(Menu *m) { m->beeps++; delay(m, 0xBB8); }  /* rt_30f9 */
+static void buzz(Menu *m) { mtone(m, 0x1F40, 0x258); }          /* rt:0C72 */
+static void long_buzz(Menu *m) { mtone(m, 0x1388, 0xBB8); }     /* rt_30f9 */
 
 static int sq_addr(const Menu *m, int i) { return (m->ed.y[i] + 1) * 80 + m->ed.x[i]; }   /* DS:5F85 (BUF-relative) */
 
@@ -433,7 +433,7 @@ static int name_input(Menu *m, int item)
                 if (++pos > 13) { pos = 13; continue; }
                 if (pos == 1) name_line(m, false);
                 gotoxy(m, pos + 3, row);
-            } else { m->beeps++; delay(m, 0x4B0); }      /* ovl2_8f4e */
+            } else mtone(m, 0x1388, 0x4B0);             /* ovl2_8f4e */
             continue;
         }
         if (k >= 32 && k <= 122 && pos < 14) {
@@ -447,8 +447,7 @@ static int name_input(Menu *m, int item)
             continue;
         }
         if (k == 10 || k == 13) break;
-        m->beeps++;
-        delay(m, 0x4B0);
+        mtone(m, 0x1388, 0x4B0);                        /* ovl2_8f4e */
     }
     for (pos = 13; pos >= 0 && (buf[pos] == ' ' || !buf[pos]); pos--) buf[pos] = 0;
     pos++;

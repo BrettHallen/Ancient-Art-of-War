@@ -251,8 +251,7 @@ int map_maker(Menu *m)
             int ok = play_map_check(m->ga, m->ed.map, &steps);
             WORK(m, 4000 + steps * 60);
             if (ok < 1) {
-                m->beeps++;                             /* rt_30f9 */
-                delay(m, 0xBB8);
+                mtone(m, 0x1388, 0xBB8);                /* rt_30f9 */
                 clear_row(m, 24);
                 print(m, SO0(m, ok == 0 ? 0x1AA : 0x1CD));   /* ALL PORTS MUST HAVE A SUPPLY PATH. / BE NEXT TO WATER. */
                 delay(m, 60000);

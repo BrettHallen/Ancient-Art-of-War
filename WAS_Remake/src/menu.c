@@ -25,6 +25,7 @@
  */
 #include "menu_int.h"
 #include "dsmap.h"
+#include "sound.h"
 
 #include <SDL3/SDL.h>
 
@@ -58,11 +59,23 @@ void delay(Menu *m, int units)
     maybe_yield(m);
 }
 
-void beep_low(Menu *m) { m->beeps++; delay(m, 0x3E8); }   /* rt:05A9 (the sound is step 8) */
+/* the speaker at overlay 1's clock (sound.c) */
+void mspk_on(Menu *m) { m->beeps++; spk_on(SND_MENU, m->clock_us); }
+void mspk_freq(Menu *m, int divisor) { spk_freq(SND_MENU, m->clock_us, divisor); }
+void mspk_off(Menu *m) { spk_off(SND_MENU, m->clock_us); }
+void mspk_click(Menu *m) { spk_click(SND_MENU, m->clock_us); }
 
-/* a tune (ovl1: play_tune 8B7A, 9AAB, 9B45, the opening): the notes are step 8;
- * WAS.EXE plays them before it goes on, so the time is kept */
-static void tune_wait(Menu *m, int units) { m->beeps++; delay(m, units); }
+/* a note: speaker_on, rt_2f3f, delay, rt_2f67 (beep_low and its kin) */
+void mtone(Menu *m, int divisor, int units)
+{
+    mspk_on(m);
+    mspk_freq(m, divisor);
+    delay(m, units);
+    mspk_off(m);
+}
+
+void beep_low(Menu *m) { m->n804 = 0; mtone(m, 0x1F4, 0x190); }   /* rt:0C32: [0804] = 0 too */
+
 
 static int so2w(const Menu *m, unsigned off) { return off + 1 < sizeof m->ga->so2 ? (int16_t)(m->ga->so2[off] | (m->ga->so2[off + 1] << 8)) : 0; }
 static int so4w(const Menu *m, unsigned off) { return off + 1 < sizeof m->ga->so4 ? (int16_t)(m->ga->so4[off] | (m->ga->so4[off + 1] << 8)) : 0; }
@@ -541,27 +554,31 @@ static void scroll_clear(Menu *m)
 /* ovl1_bdac: the scroll unrolls, the speaker crackling */
 static void unroll(Menu *m)
 {
-    m->beeps++;
+    mspk_on(m);
+    mspk_freq(m, 0x7530);                    /* 40 Hz, crackling as the data bit flips */
     for (int a = 0x5A0, y = 36; a < 0x1C20; a += 80, y += 2) {
-        if (rnd(m) < 95) WORK(m, 25);       /* speaker_click */
+        if (rnd(m) < 95) { WORK(m, 25); mspk_click(m); }
         int n = SDL_min((182 - y) >> 1, 14);
         copy_lines(m, a, y, 1);
         copy_lines(m, 0x39D0, y + 2, n);
         maybe_yield(m);
     }
+    mspk_off(m);
     copy_lines(m, 0, 0, 18);
 }
 
 /* ovl1_be42: the scroll rolls up */
 static void roll_up(Menu *m)
 {
-    m->beeps++;
+    mspk_on(m);
+    mspk_freq(m, 0x7530);
     for (int y = 180; y > 32; y -= 2) {
-        if (rnd(m) < 80) WORK(m, 25);
+        if (rnd(m) < 80) { WORK(m, 25); mspk_click(m); }
         int n = SDL_min((182 - y) >> 1, 14);
         copy_lines(m, 0x39D0, y + 2, n);
         maybe_yield(m);
     }
+    mspk_off(m);
     m->view = 0;
     copy_lines(m, 0, 0, 18);
 }
@@ -1264,7 +1281,7 @@ static int titles_load(Menu *m)
         clear_row(m, 23);
         clear_row(m, 24);
         print(m, SO3(m, 0xE23));                        /* Saved game             New campaigns */
-        m->beeps++;                                     /* rt_0c55 */
+        mtone(m, 0x7D0, 0x12C);                         /* rt_0c55 */
         keys_clear(m);
         for (;;) {
             int k = key802(m);
@@ -1778,10 +1795,11 @@ static void opening(Menu *m)
     bool music = opt(m, 0x684F) == 2;
     unsigned text = 0x13FB;
     int row = 3;
-    if (music) m->beeps++;
+    if (music) mspk_on(m);
     for (int i = 0; i < 64; i++) {
         int note = so2w(m, 0x447 + 2 * i), d = so2w(m, 0x48B + 2 * i);
         if (note == 0) break;
+        if (music) mspk_freq(m, note);
         if (note == 0xBDC) {
             xor_text(m, SO2(m, text), 7, row);
             text += 27;
@@ -1790,6 +1808,7 @@ static void opening(Menu *m)
         } else if (music) delay(m, d * 4);
     }
     xor_text(m, SO2(m, text), 7, row);
+    mspk_off(m);
     keys_clear(m);
     for (int i = 0; i < 0xE10 && !key802(m) && !m->n804; i++) delay(m, 100);
     keys_clear(m);
@@ -1807,8 +1826,7 @@ static int change_campaign(Menu *m)
     if (!titles_load(m)) return 5;
     scroll_write(m);
     if (++m->a64DD > 11) {
-        m->beeps++;                                     /* rt_30f9 */
-        delay(m, 0xBB8);
+        mtone(m, 0x1388, 0xBB8);                        /* rt_30f9 */
         clear_row(m, 24);
         print(m, SO3(m, 0x9EB));                        /* Can't add any more campaigns! */
         delay(m, 30000);
@@ -1890,10 +1908,10 @@ static void scroll_erase_line(Menu *m)
         scroll_char(m, ' ');
         m->a64D1 += 2;
         blit_menu(m);
-        WORK(m, 25);                                    /* speaker_click */
+        WORK(m, 25);
+        mspk_click(m);                                  /* speaker_click (the speaker off: a click) */
         delay(m, 0x1F4);
     }
-    m->beeps++;
 }
 
 /* remove_campaign (ovl1:8579): its title goes, the titles below move up and
@@ -1966,14 +1984,24 @@ static void startup(Menu *m)
     blit(m, 200);
     palette(m, false);
     keys_clear(m);
-    int units = 60000;
-    if (opt(m, 0x684F) == 2) {                          /* play_tune (ovl1:8B7A) DS:0C1A, 0C86 */
-        units = 0;
-        for (int i = 0; i < 64 && dsw(m, 0xC1A + 2 * i); i++) units += dsw(m, 0xC86 + 2 * i) * 4;
-        m->beeps++;
-    }
     /* the remake: a key skips it */
-    for (int u = 0; u < units && !m->n804 && !key802(m); u += 1000) delay(m, SDL_min(1000, units - u));
+    bool skip = false;
+    if (opt(m, 0x684F) == 2) {                          /* play_tune (ovl1:8B7A) DS:0C1A, 0C86 */
+        mspk_on(m);
+        for (int i = 0; i < 64 && dsw(m, 0xC1A + 2 * i) && !skip; i++) {
+            mspk_freq(m, dsw(m, 0xC1A + 2 * i));
+            int units = dsw(m, 0xC86 + 2 * i) * 4;
+            for (int u = 0; u < units && !skip; u += 1000) {
+                delay(m, SDL_min(1000, units - u));
+                skip = m->n804 || key802(m);
+            }
+        }
+        mspk_off(m);
+    } else
+        for (int u = 0; u < 60000 && !skip; u += 1000) {
+            delay(m, 1000);
+            skip = m->n804 || key802(m);
+        }
     keys_clear(m);
 }
 
@@ -2003,27 +2031,34 @@ static void battle_report(Menu *m)
         xor_text(m, SO2(m, 0xF86), 1, 1);               /* Victory was yours */
         static const unsigned WHY[5] = { 0xF99, 0xFB1, 0x1064, 0x10A7, 0x10D9 };
         if (code >= 0 && code <= 4) xor_text(m, SO2(m, WHY[code]), 1, 2);
-        if (music) {                                    /* ovl1_9aab: SO2+122Fh, 1295h */
-            int units = 0;
+        if (music) {                                    /* tune_victory ovl1_9aab: SO2+122Fh, 1295h */
+            mspk_on(m);
             for (int i = 0; i < 64 && so2w(m, 0x122F + 2 * i); i++) {
                 int d = so2w(m, 0x1295 + 2 * i);
-                units += d * 4 + ((d == 100 || d == 0x578 || d == 0x191) ? 0 : 0x4B0);
+                mspk_freq(m, so2w(m, 0x122F + 2 * i));
+                delay(m, d * 4);
+                if (d == 100 || d == 0x578 || d == 0x191) continue;
+                mspk_freq(m, 17);                       /* a rest between the notes */
+                delay(m, 0x4B0);
             }
-            tune_wait(m, 0);
-            for (; units > 0; units -= 20000) delay(m, SDL_min(units, 20000));
+            mspk_freq(m, 17);
+            mspk_off(m);
         }
     } else {
         xor_text(m, SO2(m, (unsigned)so2w(m, 0x10FD + 2 * SDL_clamp(m->rep_opp, 0, 5))), 1, 1);
         static const unsigned WHY[5] = { 0x107B, 0x1092, 0x104D, 0x231, 0x10D9 };
         if (code >= 10 && code <= 14) xor_text(m, SO2(m, WHY[code - 10]), 1, 2);
-        if (music) {                                    /* ovl1_9b45: SO2+110Dh, 11E5h */
-            int units = 0;
+        if (music) {                                    /* tune_defeat ovl1_9b45: SO2+110Dh, 11E5h */
+            mspk_on(m);
             for (int i = 0; i < 64 && so2w(m, 0x110D + 2 * i); i++) {
-                int d = so2w(m, 0x11E5 + 2 * i);
-                units += d / 2 + d * 4;
+                int n = so2w(m, 0x110D + 2 * i), d = so2w(m, 0x11E5 + 2 * i);
+                mspk_freq(m, n / 2);                    /* an octave up, then the note */
+                delay(m, d / 2);
+                mspk_freq(m, n);
+                delay(m, d * 4);
             }
-            tune_wait(m, 0);
-            for (; units > 0; units -= 20000) delay(m, SDL_min(units, 20000));
+            mspk_freq(m, 17);
+            mspk_off(m);
         }
     }
     clear_row(m, 24);
@@ -2114,6 +2149,7 @@ static void menu_main(void *arg)
 
 static void begin(Menu *m, int entry)
 {
+    spk_silence(SND_MENU);                              /* a sound cut short stops */
     if (m->fiber_on) fiber_stop(&m->fiber);
     m->fiber_on = false;
     m->entry = entry;

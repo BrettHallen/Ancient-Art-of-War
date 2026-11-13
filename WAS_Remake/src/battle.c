@@ -15,6 +15,7 @@
  * battle's copy of the data segment, b->m.
  */
 #include "battle_int.h"
+#include "sound.h"
 #include "gamelog.h"
 
 #include <SDL3/SDL.h>
@@ -104,10 +105,22 @@ int b_getkey(Battle *b)
 }
 
 int b_random(Battle *b) { return play_random(b->p); }   /* random() rt:2F0D */
-void b_beep(Battle *b) { b->beeps++; maybe_yield(b); }  /* beep_low (sound, with its delay: step 8) */
-void b_sound(Battle *b, int divisor) { (void)divisor; b->beeps++; }
-void b_sound_off(Battle *b) { (void)b; }
-void b_click(Battle *b) { (void)b; }
+/* the speaker at the battle's clock (sound.c): rt_2f3f with speaker_on before
+ * the first note, rt_2f67, speaker_click */
+void b_sound(Battle *b, int divisor)
+{
+    if (!b->spk) { b->beeps++; spk_on(SND_BATTLE, b->clock_us); b->spk = true; }
+    spk_freq(SND_BATTLE, b->clock_us, divisor);
+}
+void b_sound_off(Battle *b) { spk_off(SND_BATTLE, b->clock_us); b->spk = false; }
+void b_click(Battle *b) { spk_click(SND_BATTLE, b->clock_us); }
+
+void b_beep(Battle *b)                                  /* beep_low (rt:0C32) */
+{
+    b_sound(b, 0x1F4);
+    b_delay(b, 0x190);
+    b_sound_off(b);
+}
 
 int b_scnf_byte(const Battle *b, int ds)
 {
@@ -1533,6 +1546,7 @@ void battle_draw(const Battle *b, Screen *s, GfxMode mode)
 
 void battle_finish(Battle *b)
 {
+    spk_silence(SND_BATTLE);
     fiber_stop(&b->fiber);
     Play *p = b->p;
     if (gamelog_on(p, GLOG_NORMAL) && p->battle_a >= 0 && p->battle_b >= 0) {
