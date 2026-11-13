@@ -44,10 +44,11 @@ enum {
 enum { EDIT_NONE, EDIT_NEW, EDIT_CHANGE, EDIT_REMOVE };   /* campaign menu items 0, 1 and 2 */
 
 /* The demo starts when the title page has been left alone for 189 turns of
- * its loop (ovl1:42C4). Each turn is two calibrated delays, which run about
- * 0.12 s at the speed of the PCs of the day (DOSBox at 1500 cycles: 23 s in
- * all); a faster PC makes the delays, and so the wait, longer. */
-#define DEMO_IDLE_FRAMES (23 * MENU_HZ)
+ * its loop (ovl1:42C4). Each turn is two calibrated delays, so the wait
+ * depended on the PC (DOSBox at 1500 cycles: 23 s; at 300 cycles, an IBM
+ * PC/XT: about 12 s; a faster PC made it longer). The remake waits the 30
+ * seconds the manual gives ("If you don't do anything for 30 seconds..."). */
+#define DEMO_IDLE_FRAMES (30 * MENU_HZ)
 
 #define MAX_DISKS 12              /* data disks the scroll can list */
 #define DISKS_DIR "Data Disks"
@@ -55,7 +56,7 @@ enum { EDIT_NONE, EDIT_NEW, EDIT_CHANGE, EDIT_REMOVE };   /* campaign menu items
 #define DEMO_LOAD_FRAMES 30       /* then the map: 1 1/2 s in all, as in DOSBox */
 
 #define SCROLL_LINES 400
-#define VIEW_LINES   184          /* scroll window: the screen above the two text rows */
+#define VIEW_LINES   182          /* scroll window: the screen above the border and the two text rows */
 #define TEXT_TOP     52           /* first text row on the scroll (BUF + 826h) */
 #define TEXT_LEFT    24
 #define ROW_STEP     12           /* 1E0h: 6 line pairs */
@@ -222,6 +223,16 @@ static void put(Menu *m, int x, int y, uint8_t v)
 
 /* clear_text_row */
 static void clear_row(Menu *m, int row) { screen_fill(&m->cv, 0, row * 8, SCREEN_W, 8, m->c4[0]); }
+
+/* draw_text_area_border (rt:1CEB, from text_rows_add): with n text rows at the
+ * bottom, the picture ends at line 198 - 8n, under it a line in colour 3 and a
+ * black line (n = 2: lines 182 and 183; n = 1: 190 and 191) */
+static void text_border(Menu *m, int rows)
+{
+    int y = 198 - 8 * rows;
+    screen_fill(&m->cv, 0, y, SCREEN_W, 1, m->c4[3]);
+    screen_fill(&m->cv, 0, y + 1, SCREEN_W, 1, m->c4[0]);
+}
 
 /* print_string at a text position; \n goes down a row, \r to column 0 */
 static void print_at(Menu *m, int col, int row, const char *s)
@@ -415,6 +426,7 @@ static void scroll_copy(Menu *m, int from, int to, int lines)
 static void scroll_show(Menu *m)    /* blit_buffer_to_cga, and the pointer */
 {
     scroll_copy(m, m->view, 0, VIEW_LINES);
+    text_border(m, 2);
     int a = m->a692;
     if (m->ed_wait && (a == 0 || a == 11)) return;   /* the step's words first, then the pointer */
     if (a == 1 || a == 2 || a == 5 || a == 6 || a == 7 || a == 11)
@@ -437,6 +449,7 @@ static void scroll_palette(Menu *m)
 static void scroll_open(Menu *m)
 {
     scroll_palette(m);
+    text_border(m, 2);
     m->view = 0;
     scroll_build(m);
     scroll_copy(m, 0, 0, 36);
@@ -594,7 +607,7 @@ static void demo_start(Menu *m)
 static void page_title(Menu *m)
 {
     show_picture(m, PIC_TITLE_BARBARIAN, false);
-    for (int r = 23; r < 25; r++) clear_row(m, r);
+    text_border(m, 1);                  /* [A5C0] = 1: the picture down to line 189 (ovl1:41A0) */
     help_change_select(m, O3S(m, 0x991), 40, 23, O3S(m, 0xBF6));
     m->box_inverted = false;            /* a fresh picture */
     title_box(m);
@@ -797,7 +810,7 @@ static void page_campaign_menu(Menu *m)
     m->frame_on = false;
     m->sweep = -1;
     scene_text(m);
-    for (int r = 23; r < 25; r++) clear_row(m, r);
+    if (editor_menu(m)) for (int r = 23; r < 25; r++) clear_row(m, r);   /* campaign_menu: PG shows down to line 191 */
     help_change_select(m, O3S(m, 0xD86), 50, 28, O3S(m, 0xBF6));   /* to move marker, [Enter] to select. */
 }
 
@@ -835,6 +848,7 @@ static void page_shoppe(Menu *m)
 {
     show_picture(m, PIC_OPTIONS_SHOPPE, false);
     for (int k = 0; k < 6; k++) shoppe_line(m, k);
+    text_border(m, 2);                  /* ovl1:57F5: [A5C0] = 2, text_rows_add */
     for (int r = 23; r < 25; r++) clear_row(m, r);
     icon(m, true, I_PLUS, 0, 184);
     print_at(m, 3, 23, DSS(m, 0xCF));

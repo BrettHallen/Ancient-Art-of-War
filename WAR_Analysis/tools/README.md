@@ -35,7 +35,7 @@ Set-up: a working folder `$DOS` (default `/root/dos`) holding
 | `dosanswer.sh` | read the manual question off the screen and type the answer (`warword.py` decodes WARW) |
 | `doskey.sh KEY...` | key presses (xdotool names, `a+b` chords, `sleep:N`); `HOLD` sets how long each key is held (0.15 s at 1500 cycles, 0.6 s at 300) |
 | `dosshot.sh NAME` | a screenshot to `$DOS/shots/NAME.png` |
-| `screentext.py SHOT.png` | the 25 text rows of a screenshot, read with the game's font (unknown cells are `#`) |
+| `screentext.py SHOT.png` | the 25 text rows of a screenshot, read with the game's font (unknown cells are `#`); a 720x348 Hercules screenshot is read from its CGA picture |
 | `doswait.sh TEXT [SECONDS]` | wait until TEXT appears in the text rows |
 | `dosplay.sh` | from the title page, start the first campaign and wait for the map |
 | `dostime.sh WORD` | press T until the command line shows Time (WORD) |
@@ -50,6 +50,7 @@ Notes:
 - For timings record video, not screenshots: `ffmpeg -f x11grab -framerate 30 -video_size 640x400 -i :99.0+192,184 out.mp4`.
 - Alt+S saves in WAR.EXE. A saved game `S` is DS:8868-A9E5 (see `../README.md`, Saved games); patching one is the quickest way to set up a test case.
 - `dosbox_tandy.conf` / `dosbox_pcjr.conf`: for Tandy sound WAR.EXE was patched at 8132h to `90 90`.
+- `dosbox_herc.conf` / `dosbox_ed_herc.conf`: `machine=hercules` and `WAR.EXE HERC` (the second with the data disk as B:, for `dosloads.sh`). Screenshots are then 720x348; `dosanswer.sh` and `doswait.sh` work as before. Checked this way (Nov 13): the title page, the titles, story and rules scrolls, the campaign menu and the Options Shoppe matched the remake's Hercules screens (`WAR_Remake/test/test_herc`) pixel for pixel; the opponents, the map and a battle apart from what moves or blinks.
 
 ## The remake's tests
 

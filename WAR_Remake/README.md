@@ -1,7 +1,7 @@
 # The Ancient Art of War - Remake
 A modern version of The Ancient Art of War (Broderbund, 1984) for macOS, written in C with [SDL3](https://www.libsdl.org/). It also builds on Windows and Linux.
 
-The remake uses the original backgrounds, map tiles and font, in either the **CGA** (4-colour) or **VGA** (16-colour) versions.
+The remake uses the original backgrounds, map tiles and font, in either the **CGA** (4-colour) or **VGA** (16-colour) versions, or shown as on a **Hercules** monochrome card (the original's `WAR HERC`).
 
 **No original game files are included.** The remake loads all graphics, campaigns, messages, soldiers and the opponents' values from your own copy of the game, so you need the files from the original disk: `WAR.EXE`, `M`, the `P` files, the `T` files, `TITLES`, `DTITLES`, `F`, `CNF`, `O2` to `O7`, plus `WARET.DAT` for the VGA graphics.
 
@@ -13,7 +13,7 @@ The game starts as the original does (overlay 1 of WAR.EXE):
 - **make changes**: the six scenes of the campaign menu. *Ye Olde Options Shoppe* works (display, fight delay, which data disk is in the drive, sounds, joystick; saved as `CNF`) and *Return to title page*
 - **the campaign editor** (overlays 1, 3 and 4 of WAR.EXE): *Make a new campaign* takes the original's six steps: the map maker (four pages of 18 tiles, A–S put one down, P turns the page), the squads and flags (Squad, Flag, Total; over a squad Info, Size, Formation, Get and Remove), the enemy leader, the rules, the story and the title, each written on the scroll with the quill. *Change a campaign* chooses one from the data disk, then the rulebook, storybook, map maker, enemy or army, each asking *Save the last changes?* as the original does. *Remove a campaign* wipes its title off the scroll. The campaigns are written to the data disk as the original writes them (a `T` file and `TITLES`), so the original game can play them too
 - **the battle report**: victory or defeat, how it was won, and the men captured, the casualties and the flags taken on each side
-- **the demo**: left alone on the title page for 23 seconds, the box says *DEMO* and the computer plays one of the campaigns T3–TA against the first opponent, every squad in sight, at the fastest time, scrolling to what happens. As in the original, only the enemy's black squads move: the demo never gives your white squads orders, so they wait where the campaign puts them. It zooms into the first encounter, and the title page comes back when that battle ends. Any key stops it
+- **the demo**: left alone on the title page for 30 seconds (as the manual says), the box says *DEMO* and the computer plays one of the campaigns T3–TA against the first opponent, every squad in sight, at the fastest time, scrolling to what happens. As in the original, only the enemy's black squads move: the demo never gives your white squads orders, so they wait where the campaign puts them. It zooms into the first encounter, and the title page comes back when that battle ends. Any key stops it
 - **saved games**: **Alt+S** during play saves the game (*WARNING: Any previously saved game ... will be erased*, *Saving Game*, *<C>ontinue with game or <Q>uit?*). To carry on a saved game, choose *( data disk )* at the end of the titles and answer **S** for *Saved game*
 
 The map, the rules and the enemy work as they do in the original program (overlay 6 of WAR.EXE):
@@ -70,6 +70,12 @@ build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar ../WAR_Original_Files_3
 
 The app also looks in a `game` folder next to itself and in the current folder. Press **O** in the viewer to choose a different folder.
 
+**Hercules:** as `WAR HERC` did, `HERC` on the command line starts the app on a Hercules card (Tab gets there too):
+```sh
+build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar HERC
+```
+WAR.EXE drew the same picture for Hercules as for CGA, with each 4-colour pixel shown as two black or lit pixels, 640x200 in the middle of the card's 720x348 screen; the remake shows that whole screen (4:3, or square pixels with F2), lit pixels in DOSBox's grey. It matches DOSBox's Hercules screens pixel for pixel.
+
 ### Saved games and the data disks
 The original kept saved games and new campaigns on *data disks*, swapped in the drive. The remake keeps them in its folder, `~/Library/Application Support/AncientArtOfWar/Remake/` on macOS:
 
@@ -97,7 +103,7 @@ If a file can't be written there (the disk is full, say), the remake says *Game 
 | S / N | *Saved game* or *New campaigns* |
 | C / Q | After saving: continue with the game, or quit to the title page |
 | F12 | The asset viewer |
-| (no key for 23 s) | The demo; any key stops it |
+| (no key for 30 s) | The demo; any key stops it |
 
 ### Campaign editor
 | Where | Keys |
@@ -115,7 +121,7 @@ If a file can't be written there (the disk is full, say), the remake says *Game 
 | Up / Down, - / +, mouse wheel | Scroll a campaign map (as in the original, - scrolls up) |
 | Shift + - / +, Home / End | Top / bottom of the map |
 | Enter | Play the campaign shown |
-| Tab | Switch between CGA and VGA colours |
+| Tab | Switch between CGA, VGA and Hercules |
 | A | 4:3 like the original monitor, or square pixels |
 | H | Show or hide the caption |
 | F, Cmd+Enter | Full screen |
@@ -152,13 +158,13 @@ On the battle screen:
 | then A, F, B, S | Attack, Forward, Backoff or Stop; Backspace goes back |
 | R | Retreat |
 
-Tab switches between CGA and VGA colours (in the original, Tab scrolled up), F2 changes the aspect, and Cmd+Enter or Alt+Enter is full screen.
+Tab switches between CGA, VGA and Hercules (in the original, Tab scrolled up), F2 changes the aspect, and Cmd+Enter or Alt+Enter is full screen.
 
 ### Screenshots
 ```sh
 AncientArtOfWar --screenshots OUTDIR GAME-FOLDER
 ```
-This writes every screen in both colour sets as BMP files (320x200), without opening a window. Campaign maps are shown at the bottom of the map, where the game starts.
+This writes every screen in both colour sets as BMP files (320x200), and as on a Hercules card (720x348), without opening a window. Campaign maps are shown at the bottom of the map, where the game starts.
 
 ## Source
 | File | Purpose |

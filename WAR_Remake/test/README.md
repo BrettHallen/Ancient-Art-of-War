@@ -20,6 +20,7 @@ Build one with `./build.sh NAME` (or `bash build.sh NAME`): it compiles `NAME.c`
 | `test_import`, `fuzz_import` | importing the original's saved games |
 | `test_diskerr` | "Unable to use data disk." when a file can't be written |
 | `test_tab_rows` | the help rows on the scroll pages after switching CGA/VGA and back (`test_tab_rows GAME DATA OUT`) |
+| `test_herc` | Hercules (`WAR HERC`): the conversion to 720x348, Tab's three modes, every CGA screen using colours 0-3 only; writes the title page, scrolls, menus, map and a battle as Hercules screens to compare with DOSBox (`test_herc GAME DATA OUT [S-FILE]`; it includes `main.c`) |
 | `test_sound`, `tempo` | sounds, written as WAV files |
 | `fort_arrows`, `fort_trace`, `fort_import` | archers in a fort, compared with the original (`WAR_Analysis/tools/dosbox/dosfort.sh`) |
 | `fontdump` | the game's 8x8 font for `WAR_Analysis/tools/dosbox/screentext.py` |

@@ -32,8 +32,8 @@ static Uint32 SDLCALL script(void *u, SDL_TimerID id, Uint32 iv)
     t++;
     SDL_Log("t %3d: %-6s demo %d view %3d key %2x frames %d", t, g_last, g_play ? g_play->demo : -1, g_play ? g_play->view_top : -1, g_play ? g_play->demo_key : 0, g_frames);
     if (t == 2) key(SDLK_RETURN);                       /* past "presented by" */
-    if (t == 34) key(SDLK_X);                           /* a key ends the demo */
-    if (t == 100) { SDL_Event e; SDL_zero(e); e.type = SDL_EVENT_QUIT; SDL_PushEvent(&e); return 0; }
+    if (t == 40) key(SDLK_X);                           /* a key ends the demo (it starts after 30 s) */
+    if (t == 110) { SDL_Event e; SDL_zero(e); e.type = SDL_EVENT_QUIT; SDL_PushEvent(&e); return 0; }
     return 1000;
 }
 static bool test_present(SDL_Renderer *r) { return SDL_RenderPresent(r); }

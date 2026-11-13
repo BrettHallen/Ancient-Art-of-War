@@ -123,7 +123,7 @@
 
 ;==============================================================================
 ; HARDWARE
-; Video: CGA 320x200 mode 4 (detect_video also checks for Hercules). Palette set with
+; Video: CGA 320x200 mode 4, or Hercules 720x348 with WAR HERC (herc_setup). Palette set with
 ;        INT 10h AH=0Bh; AH=10h palette registers for PCjr/Tandy.
 ; Sound: PC speaker via PIT channel 2 (speaker_freq/on/off) and the Tandy/PCjr SN76489
 ;        chip at port C0h (tandy_sound).
@@ -299,6 +299,7 @@
 ; ovl1:7E09  write_titles               Write TITLES to the data disk: the 12 file names (DS:08C1) and the 26 x 32 text
 ; ovl1:7E9A  read_ascii_key             BIOS key read: the ASCII code, or 1Bh then the scan code of an extended key
 ; ovl1:7EDA  init_hardware              thunk 19. Hook INT 05h (Print Screen) and INT 1Bh (Ctrl-Break), read equipment l
+; ovl1:7FAA  center_screen              Center the screen: CRTC register 2 (horizontal sync) from [A6DE]; CGA only ([0AF
 ; ovl1:7FBD  scroll_copy_lines          Copy line pairs of the scroll buffer to the screen
 ; ovl1:7FFC  copy_glyph                 Copy an O3 glyph (width words, height line pairs) into the buffer
 ; ovl1:8037  and_pointer                AND the sword pointer onto the screen
@@ -311,8 +312,11 @@
 ; ovl1:8314  detect_joystick            Probe the game port (201h); returns 1 if a joystick responds
 ; ovl1:8341  key_disk_check             COPY PROTECTION (disk): read track 10 sectors 6 and 7, then sector 241 (must fai
 ; ovl1:83C0  wait_port_change           Wait until (port DX & BL) changes; CF=1 on timeout
-; ovl1:83D5  detect_video               Probe for Hercules (3BFh) and CGA RAM, force colour mode, set mode 4 (320x200)
-; ovl1:84B9  check_video                Run detect_video unless already done
+; ovl1:83D5  detect_video               CGA: mode 4 (320x200), a test pattern in its RAM (carry if none), the CGA row ta
+; ovl1:8441  herc_setup                 Hercules (WAR HERC): 720x348 graphics, page 1 at B800h; the row table DS:096A po
+; ovl1:84A5  herc_crtc                  Program the 6845 at 3B4h/3B5h with the 12 bytes at DS:095E (720x348 graphics)
+; ovl1:84B9  check_video                detect_video (CGA) unless WAR HERC asked for Hercules ([A9A9]); else, or if no C
+; ovl1:84D1  herc_clear                 Clear the Hercules page (4000h words at [0959])
 ; ovl1:84E5  calibrate_delay            Time a loop against PIT channel 2 and store the delay count in [0948]
 ; ovl2:8520  copy_protection            thunk 20. COPY PROTECTION (manual): loads WarW (encrypted word list) and asks fo
 ; ovl2:8606  show_welcome               "Welcome to The Ancient Art of War."
@@ -494,7 +498,8 @@
 ; [0944]  picture decode destination
 ; [0948]  delay calibration
 ; [0959]  video segment (B800h)
-; [096A]  CGA row address table
+; [096A]  row address table (CGA, or Hercules: scanline 72 + n)
+; [0AFA]  video: 0 CGA, 1 Hercules, 2 [0946] = 1018h
 ; [0B3E]  path buffer for make_data_path
 ; [0B68]  raw file / picture buffer
 ; [8868]  off-screen picture buffer pointer
@@ -535,6 +540,7 @@
 ; [A715]  rule: forest
 ; [A8C1]  trace half-speed toggle
 ; [A92F]  play mode (0, 1 squad, 2 trace, 3 size, 4 info, 99)
+; [A9A9]  WAR HERC: first argument starts with H or h
 ; [A9AA]  current file handle
 ; [AAE3]  ticks (food every 16)
 ; [AAE5]  cursor on a squad
@@ -556,7 +562,7 @@ main:
   rt:0001  00201  8bec           mov    bp, sp
   rt:0003  00203  83ec04         sub    sp, 4
   rt:0006  00206  33c0           xor    ax, ax
-  rt:0008  00208  8806a9a9       mov    byte ptr [0xa9a9], al
+  rt:0008  00208  8806a9a9       mov    byte ptr [0xa9a9], al          ; [A9A9] WAR HERC: first argument starts with H or h
   rt:000C  0020C  817e040100     cmp    word ptr [bp + 4], 1
   rt:0011  00211  7e27           jle    0x3a
   rt:0013  00213  8b7606         mov    si, word ptr [bp + 6]
@@ -574,7 +580,7 @@ main:
   rt:002E  0022E  83f848         cmp    ax, 0x48
   rt:0031  00231  7507           jne    0x3a
   rt:0033  00233  b80100         mov    ax, 1
-  rt:0036  00236  8806a9a9       mov    byte ptr [0xa9a9], al
+  rt:0036  00236  8806a9a9       mov    byte ptr [0xa9a9], al          ; [A9A9] WAR HERC: first argument starts with H or h
   rt:003A  0023A  e8b12f         call   thunk_00                       ; -> overlay 1: ovl1_startup
   rt:003D  0023D  0bc0           or     ax, ax
   rt:003F  0023F  7403           je     0x44
@@ -10468,7 +10474,7 @@ options_shoppe:
   ovl1:58F6  05AF6  eb06           jmp    0x58fe
   ovl1:58F8  05AF8  e8aeac         call   beep_low
   ovl1:58FB  05AFB  e8e015         call   scroll_row_up
-  ovl1:58FE  05AFE  8b06fa0a       mov    ax, word ptr [0xafa]
+  ovl1:58FE  05AFE  8b06fa0a       mov    ax, word ptr [0xafa]         ; [0AFA] video: 0 CGA, 1 Hercules, 2 [0946] = 1018h
   ovl1:5902  05B02  0bc0           or     ax, ax
   ovl1:5904  05B04  7407           je     0x590d
   ovl1:5906  05B06  817efe0400     cmp    word ptr [bp - 2], 4
@@ -10488,7 +10494,7 @@ options_shoppe:
   ovl1:592C  05B2C  eb06           jmp    0x5934
   ovl1:592E  05B2E  e878ac         call   beep_low
   ovl1:5931  05B31  e83916         call   scroll_row_down
-  ovl1:5934  05B34  8b06fa0a       mov    ax, word ptr [0xafa]
+  ovl1:5934  05B34  8b06fa0a       mov    ax, word ptr [0xafa]         ; [0AFA] video: 0 CGA, 1 Hercules, 2 [0946] = 1018h
   ovl1:5938  05B38  0bc0           or     ax, ax
   ovl1:593A  05B3A  7407           je     0x5943
   ovl1:593C  05B3C  817efe0400     cmp    word ptr [bp - 2], 4
@@ -14537,7 +14543,7 @@ init_hardware:
   ovl1:7F81  08181  b400           mov    ah, 0
   ovl1:7F83  08183  a33b05         mov    word ptr [0x53b], ax
   ovl1:7F86  08186  e83005         call   check_video
-  ovl1:7F89  08189  e81e00         call   ovl1_7faa
+  ovl1:7F89  08189  e81e00         call   center_screen
   ovl1:7F8C  0818C  e85605         call   calibrate_delay
   ovl1:7F8F  0818F  1e             push   ds
   ovl1:7F90  08190  ba0d22         mov    dx, 0x220d
@@ -14557,9 +14563,10 @@ init_hardware:
   ovl1:7FA8  081A8  1f             pop    ds
   ovl1:7FA9  081A9  c3             ret
 
-; ---- ovl1_7faa   (called from 1 place)
-ovl1_7faa:
-  ovl1:7FAA  081AA  833efa0a00     cmp    word ptr [0xafa], 0
+; ---- center_screen   (called from 1 place)
+;      Center the screen: CRTC register 2 (horizontal sync) from [A6DE]; CGA only ([0AFA] = 0)
+center_screen:
+  ovl1:7FAA  081AA  833efa0a00     cmp    word ptr [0xafa], 0          ; [0AFA] video: 0 CGA, 1 Hercules, 2 [0946] = 1018h
   ovl1:7FAF  081AF  750b           jne    0x7fbc
   ovl1:7FB1  081B1  bad403         mov    dx, 0x3d4
   ovl1:7FB4  081B4  b002           mov    al, 2
@@ -15080,7 +15087,7 @@ wait_port_change:
   ovl1:83D4  085D4  c3             ret
 
 ; ---- detect_video   (called from 1 place)
-;      Probe for Hercules (3BFh) and CGA RAM, force colour mode, set mode 4 (320x200)
+;      CGA: mode 4 (320x200), a test pattern in its RAM (carry if none), the CGA row table at DS:096A; [0AFA] = 0 (2 when [0946] = 1018h)
 detect_video:
   ovl1:83D5  085D5  babf03         mov    dx, 0x3bf
   ovl1:83D8  085D8  b000           mov    al, 0
@@ -15113,14 +15120,14 @@ detect_video:
   ovl1:840F  0860F  e302           jcxz   0x8413
   ovl1:8411  08611  f9             stc
   ovl1:8412  08612  c3             ret
-  ovl1:8413  08613  c706fa0a0000   mov    word ptr [0xafa], 0
+  ovl1:8413  08613  c706fa0a0000   mov    word ptr [0xafa], 0          ; [0AFA] video: 0 CGA, 1 Hercules, 2 [0946] = 1018h
   ovl1:8419  08619  813e46091810   cmp    word ptr [0x946], 0x1018
   ovl1:841F  0861F  7506           jne    0x8427
-  ovl1:8421  08621  c706fa0a0200   mov    word ptr [0xafa], 2
+  ovl1:8421  08621  c706fa0a0200   mov    word ptr [0xafa], 2          ; [0AFA] video: 0 CGA, 1 Hercules, 2 [0946] = 1018h
   ovl1:8427  08627  b80000         mov    ax, 0
   ovl1:842A  0862A  ba0020         mov    dx, 0x2000
   ovl1:842D  0862D  b9c800         mov    cx, 0xc8
-  ovl1:8430  08630  8d1e6a09       lea    bx, [0x96a]                  ; [096A] CGA row address table
+  ovl1:8430  08630  8d1e6a09       lea    bx, [0x96a]                  ; [096A] row address table (CGA, or Hercules: scanline 72 + n)
   ovl1:8434  08634  8907           mov    word ptr [bx], ax
   ovl1:8436  08636  83c302         add    bx, 2
   ovl1:8439  08639  055000         add    ax, 0x50
@@ -15129,12 +15136,13 @@ detect_video:
   ovl1:843F  0863F  f8             clc
   ovl1:8440  08640  c3             ret
 
-; ---- ovl1_8441   (called from 1 place)
-ovl1_8441:
+; ---- herc_setup   (called from 1 place)
+;      Hercules (WAR HERC): 720x348 graphics, page 1 at B800h; the row table DS:096A points CGA row n at scanline 72 + n, byte 4; [0AFA] = 1
+herc_setup:
   ovl1:8441  08641  babf03         mov    dx, 0x3bf
   ovl1:8444  08644  b003           mov    al, 3
   ovl1:8446  08646  ee             out    dx, al
-  ovl1:8447  08647  803ea9a900     cmp    byte ptr [0xa9a9], 0
+  ovl1:8447  08647  803ea9a900     cmp    byte ptr [0xa9a9], 0         ; [A9A9] WAR HERC: first argument starts with H or h
   ovl1:844C  0864C  750c           jne    0x845a
   ovl1:844E  0864E  baba03         mov    dx, 0x3ba
   ovl1:8451  08651  b380           mov    bl, 0x80
@@ -15142,11 +15150,11 @@ ovl1_8441:
   ovl1:8456  08656  7302           jae    0x845a
   ovl1:8458  08658  f9             stc
   ovl1:8459  08659  c3             ret
-  ovl1:845A  0865A  c706fa0a0100   mov    word ptr [0xafa], 1
+  ovl1:845A  0865A  c706fa0a0100   mov    word ptr [0xafa], 1          ; [0AFA] video: 0 CGA, 1 Hercules, 2 [0946] = 1018h
   ovl1:8460  08660  56             push   si
   ovl1:8461  08661  57             push   di
   ovl1:8462  08662  b93200         mov    cx, 0x32
-  ovl1:8465  08665  8d1e6a09       lea    bx, [0x96a]                  ; [096A] CGA row address table
+  ovl1:8465  08665  8d1e6a09       lea    bx, [0x96a]                  ; [096A] row address table (CGA, or Hercules: scanline 72 + n)
   ovl1:8469  08669  be5806         mov    si, 0x658
   ovl1:846C  0866C  bf5826         mov    di, 0x2658
   ovl1:846F  0866F  b85846         mov    ax, 0x4658
@@ -15161,9 +15169,9 @@ ovl1_8441:
   ovl1:8489  08689  83c25a         add    dx, 0x5a
   ovl1:848C  0868C  83c308         add    bx, 8
   ovl1:848F  0868F  e2e4           loop   0x8475
-  ovl1:8491  08691  e83d00         call   ovl1_84d1
+  ovl1:8491  08691  e83d00         call   herc_clear
   ovl1:8494  08694  8d365e09       lea    si, [0x95e]
-  ovl1:8498  08698  e80a00         call   ovl1_84a5
+  ovl1:8498  08698  e80a00         call   herc_crtc
   ovl1:849B  0869B  bab803         mov    dx, 0x3b8
   ovl1:849E  0869E  b08a           mov    al, 0x8a
   ovl1:84A0  086A0  ee             out    dx, al
@@ -15172,8 +15180,9 @@ ovl1_8441:
   ovl1:84A3  086A3  f8             clc
   ovl1:84A4  086A4  c3             ret
 
-; ---- ovl1_84a5   (called from 1 place)
-ovl1_84a5:
+; ---- herc_crtc   (called from 1 place)
+;      Program the 6845 at 3B4h/3B5h with the 12 bytes at DS:095E (720x348 graphics)
+herc_crtc:
   ovl1:84A5  086A5  bab403         mov    dx, 0x3b4
   ovl1:84A8  086A8  b90c00         mov    cx, 0xc
   ovl1:84AB  086AB  32e4           xor    ah, ah
@@ -15188,21 +15197,22 @@ ovl1_84a5:
   ovl1:84B8  086B8  c3             ret
 
 ; ---- check_video   (called from 1 place)
-;      Run detect_video unless already done
+;      detect_video (CGA) unless WAR HERC asked for Hercules ([A9A9]); else, or if no CGA answers, herc_setup
 check_video:
-  ovl1:84B9  086B9  803ea9a900     cmp    byte ptr [0xa9a9], 0
+  ovl1:84B9  086B9  803ea9a900     cmp    byte ptr [0xa9a9], 0         ; [A9A9] WAR HERC: first argument starts with H or h
   ovl1:84BE  086BE  7505           jne    0x84c5
   ovl1:84C0  086C0  e812ff         call   detect_video
   ovl1:84C3  086C3  7305           jae    0x84ca
-  ovl1:84C5  086C5  e879ff         call   ovl1_8441
+  ovl1:84C5  086C5  e879ff         call   herc_setup
   ovl1:84C8  086C8  7204           jb     0x84ce
   ovl1:84CA  086CA  b80100         mov    ax, 1
   ovl1:84CD  086CD  c3             ret
   ovl1:84CE  086CE  33c0           xor    ax, ax
   ovl1:84D0  086D0  c3             ret
 
-; ---- ovl1_84d1   (called from 1 place)
-ovl1_84d1:
+; ---- herc_clear   (called from 1 place)
+;      Clear the Hercules page (4000h words at [0959])
+herc_clear:
   ovl1:84D1  086D1  57             push   di
   ovl1:84D2  086D2  06             push   es
   ovl1:84D3  086D3  8e065909       mov    es, word ptr [0x959]         ; [0959] video segment (B800h)

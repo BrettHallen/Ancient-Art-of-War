@@ -168,7 +168,11 @@ N = {
     ('ovl1', 0x5D5D): ('save_options', 'Write CNF (create, mode 5)'),
     ('ovl1', 0x7816): ('make_data_path', 'Copy file name to DS:0B3E, prefixed with "A:" or "B:" for the data disk'),
     ('ovl1', 0x7EDA): ('init_hardware', 'thunk 19. Hook INT 05h (Print Screen) and INT 1Bh (Ctrl-Break), read equipment list (INT 11h), check video, calibrate delay'),
-    ('ovl1', 0x84B9): ('check_video', 'Run detect_video unless already done'),
+    ('ovl1', 0x84B9): ('check_video', 'detect_video (CGA) unless WAR HERC asked for Hercules ([A9A9]); else, or if no CGA answers, herc_setup'),
+    ('ovl1', 0x8441): ('herc_setup', 'Hercules (WAR HERC): 720x348 graphics, page 1 at B800h; the row table DS:096A points CGA row n at scanline 72 + n, byte 4; [0AFA] = 1'),
+    ('ovl1', 0x84A5): ('herc_crtc', 'Program the 6845 at 3B4h/3B5h with the 12 bytes at DS:095E (720x348 graphics)'),
+    ('ovl1', 0x84D1): ('herc_clear', 'Clear the Hercules page (4000h words at [0959])'),
+    ('ovl1', 0x7FAA): ('center_screen', 'Center the screen: CRTC register 2 (horizontal sync) from [A6DE]; CGA only ([0AFA] = 0)'),
     ('ovl1', 0x84E5): ('calibrate_delay', 'Time a loop against PIT channel 2 and store the delay count in [0948]'),
     ('ovl1', 0x8163): ('load_picture_rle8', 'load_picture_rle8(name, dest): CGA pictures PE-PO. Pairs of [count, byte]; runs alternate between the even-line field (dest+0..1F3Fh) and the odd-line field (dest+3E80h..5DBFh)'),
     ('ovl1', 0x8210): ('rle8_read_chunk', 'Read the next 512 bytes of the picture file into the buffer at [A6CE]'),
@@ -178,7 +182,7 @@ N = {
     ('ovl1', 0x8341): ('key_disk_check', 'COPY PROTECTION (disk): read track 10 sectors 6 and 7, then sector 241 '
                                          '(must fail with CRC error 10h), and compare 16 words. Returns 1 if the original disk is present'),
     ('ovl1', 0x83C0): ('wait_port_change', 'Wait until (port DX & BL) changes; CF=1 on timeout'),
-    ('ovl1', 0x83D5): ('detect_video', 'Probe for Hercules (3BFh) and CGA RAM, force colour mode, set mode 4 (320x200)'),
+    ('ovl1', 0x83D5): ('detect_video', 'CGA: mode 4 (320x200), a test pattern in its RAM (carry if none), the CGA row table at DS:096A; [0AFA] = 0 (2 when [0946] = 1018h)'),
     # --- overlay 2 (resident next to overlay 1)
     ('ovl2', 0x8520): ('copy_protection', 'thunk 20. COPY PROTECTION (manual): loads WarW (encrypted word list) and asks for a word from the manual'),
     ('ovl2', 0x8606): ('show_welcome', '"Welcome to The Ancient Art of War."'),
@@ -388,7 +392,7 @@ OVERLAY_ROLE = {
 }
 
 KNOWN_VARS = {
-    0x0959: 'video segment (B800h)', 0x096A: 'CGA row address table', 0x0944: 'picture decode destination',
+    0x0959: 'video segment (B800h)', 0x096A: 'row address table (CGA, or Hercules: scanline 72 + n)', 0x0AFA: 'video: 0 CGA, 1 Hercules, 2 [0946] = 1018h', 0xA9A9: 'WAR HERC: first argument starts with H or h', 0x0944: 'picture decode destination',
     0x0B3E: 'path buffer for make_data_path', 0x0B68: 'raw file / picture buffer',
     0x8868: 'off-screen picture buffer pointer', 0xA6CE: 'file read buffer pointer',
     0xA6DC: 'data drive mode', 0xA6F5: 'data disk in drive B flag', 0xA9AA: 'current file handle',
@@ -743,7 +747,7 @@ section('COPY PROTECTION', [
     'character +1.',
 ])
 section('HARDWARE', [
-    'Video: CGA 320x200 mode 4 (detect_video also checks for Hercules). Palette set with',
+    'Video: CGA 320x200 mode 4, or Hercules 720x348 with WAR HERC (herc_setup). Palette set with',
     '       INT 10h AH=0Bh; AH=10h palette registers for PCjr/Tandy.',
     'Sound: PC speaker via PIT channel 2 (speaker_freq/on/off) and the Tandy/PCjr SN76489',
     '       chip at port C0h (tandy_sound).',

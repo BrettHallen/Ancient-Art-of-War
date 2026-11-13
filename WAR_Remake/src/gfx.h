@@ -37,4 +37,19 @@ uint8_t screen_nearest(const Screen *s, int ncolors, uint8_t r, uint8_t g, uint8
 /* Convert to 32-bit XRGB8888 pixels (SCREEN_W * SCREEN_H). */
 void screen_to_xrgb(const Screen *s, uint32_t *out);
 
+/* Hercules (WAR HERC; ovl1_8441): the card is set to 720x348 graphics (CRTC
+ * table DS:095E, mode 8Ah: page 1 at B800h, CGA's segment) and the row table
+ * DS:096A points each of the 200 CGA rows at a Hercules scanline, from line
+ * 72 and byte 4 (four banks of 2000h, 90 bytes a row). WAR.EXE draws exactly
+ * as for CGA, so each CGA byte (4 pixels of 2 bits) shows as 8 mono pixels:
+ * colour 0 two dark pixels, 1 dark-lit, 2 lit-dark, 3 two lit; the palette
+ * makes no difference. The CGA screen s (palette indexes 0-3) becomes
+ * HERC_W x HERC_H XRGB8888, lit pixels in DOSBox's grey. */
+#define HERC_W 720
+#define HERC_H 348
+#define HERC_X 32
+#define HERC_Y 72
+#define HERC_LIT 0xAAAAAAu
+void screen_to_herc(const Screen *s, uint32_t *out);
+
 #endif

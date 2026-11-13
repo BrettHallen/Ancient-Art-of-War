@@ -32,7 +32,7 @@ Key functions (all routines are now named in WAR.EXE.asm): load_file 0000:17ED; 
 
 Font: 8x8, 1 bit per pixel, 95 characters (space to '~') at DS:05C9 (8 bytes each). put_char expands each 4-bit nibble to CGA pixels through the table at DS:05B9 (default: set bits = colour 3, clear = colour 0, i.e. white on black); 40 characters per text row.
 
-Findings: two copy-protection checks (INT 13h read of track 10 incl. bad sector 241 on the original floppy; manual word lookup via WarW). Joystick on port 201h. Hercules check. Campaign names from a "T0".."TA" table at DS:08C1.
+Findings: two copy-protection checks (INT 13h read of track 10 incl. bad sector 241 on the original floppy; manual word lookup via WarW). Joystick on port 201h. Hercules: `WAR HERC` (or no CGA found) sets the card to 720x348 graphics (herc_setup ovl1:8441, CRTC table DS:095E) and points the row table DS:096A at Hercules scanlines 72-271, so the CGA picture shows 640x200 in the middle, each 2-bit pixel as two mono pixels. Campaign names from a "T0".."TA" table at DS:08C1.
 
 Sound: PC speaker (timer 2) and the Tandy/PCjr SN76496 (port C0h); the tunes are word tables in O2 and O7 (see the README's Sound section).
 

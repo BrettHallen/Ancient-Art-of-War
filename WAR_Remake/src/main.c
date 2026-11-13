@@ -10,14 +10,15 @@
  *
  * The game starts as the original does: "presented by", the title page, the
  * scrolls (titles, story, rules), the opponents and the quote. Everything is
- * drawn from the player's own copy of the original game, in CGA or VGA colours.
+ * drawn from the player's own copy of the original game, in CGA or VGA colours,
+ * or as WAR.EXE showed it on a Hercules monochrome card (WAR HERC).
  *
  * Menus: -/+ (or the arrows) change, Enter selects, Esc backs up, Space
  *        changes a rule or an option. F12 opens the asset viewer.
- *        Left alone on the title page for 23 seconds, the game plays a demo
+ *        Left alone on the title page for 30 seconds, the game plays a demo
  *        until a key is pressed (as the original does).
  *
- * Viewer keys:  Left/Right  previous/next screen     Tab   CGA / VGA
+ * Viewer keys:  Left/Right  previous/next screen     Tab   CGA / VGA / Hercules
  *        Up/Down, -/+, mouse wheel   scroll a campaign map
  *        Shift+-/+, Home/End         top / bottom of the map
  *        Enter       play the campaign shown
@@ -26,12 +27,12 @@
  *
  * Playing: the original keys (arrows or keypad move the cursor, M Move,
  *        I Info, S Size/Surrender/Speed, T Time, C Clear/Cancel, V View,
- *        E End, Z Zoom, -/+ scroll, Alt+S save, Enter at the end), plus Tab CGA/VGA,
+ *        E End, Z Zoom, -/+ scroll, Alt+S save, Enter at the end), plus Tab CGA/VGA/Hercules,
  *        F2 aspect, Alt/Cmd+Enter full screen, Esc leave the game.
  * Battle (Zoom): A Attack, R Retreat; then A Archers, B Barbarians, K Knights,
  *        S Squad and A Attack, F Forward, B Backoff, S Stop, Backspace back.
  *
- * Usage: AncientArtOfWar [--viewer] [game-folder]
+ * Usage: AncientArtOfWar [HERC] [--viewer] [game-folder]   (HERC: start on a Hercules card, as WAR HERC)
  *        AncientArtOfWar --screenshots OUTDIR [game-folder]   (write BMPs, no window)
  */
 #include <SDL3/SDL.h>
@@ -59,16 +60,18 @@ typedef struct {
     Campaign      campaigns[NUM_CAMPAIGNS];
     int           scroll[NUM_CAMPAIGNS];   /* pixels from the top of each map */
     GfxMode       mode;
+    bool          herc;          /* shown as on a Hercules card (drawn in CGA) */
     int           index;
     bool          aspect_43;     /* true: 4:3 like a CRT, false: square pixels */
     bool          caption;
     Screen        screen;
-    uint32_t      rgb[SCREEN_W * SCREEN_H];
+    uint32_t      rgb[HERC_W * HERC_H];   /* the screen: 320x200, or 720x348 on a Hercules card */
     SDL_Window   *win;
     SDL_Renderer *ren;
     SDL_Texture  *tex;           /* 320x200 game screen */
+    SDL_Texture  *tex_herc;      /* 720x348 on a Hercules card */
     SDL_Texture  *up;            /* integer-upscaled copy for sharp 4:3 scaling */
-    int           up_scale;
+    int           up_scale, up_w;
     bool          playing;
     bool          in_menu;       /* the title pages and menus */
     Menu         *menu;
@@ -112,28 +115,46 @@ static void apply_display(App *app, Screen *s)
     }
 }
 
+/* "CGA", "VGA" or "Hercules" */
+static const char *display_name(const App *app) { return app->herc ? "Hercules" : mode_name(app->mode); }
+
+/* Tab: CGA, then VGA (if WARET.DAT is there), then Hercules, then CGA again */
+static void next_mode(App *app)
+{
+    if (app->herc) { app->herc = false; app->mode = MODE_CGA; }
+    else if (app->mode == MODE_CGA && app->ga.set[MODE_VGA].loaded) app->mode = MODE_VGA;
+    else { app->mode = MODE_CGA; app->herc = true; }
+}
+
+static void to_pixels(App *app, const Screen *s)
+{
+    if (app->herc) screen_to_herc(s, app->rgb);
+    else screen_to_xrgb(s, app->rgb);
+}
+
 static void draw_screen(App *app)
 {
     Screen *s = &app->screen;
-    const AssetSet *set = &app->ga.set[app->mode];
-    int ncolors = app->mode == MODE_VGA ? 16 : 4;
+    GfxMode mode = app->herc ? MODE_CGA : app->mode;   /* a Hercules card shows the CGA screen */
+    const AssetSet *set = &app->ga.set[mode];
+    int ncolors = mode == MODE_VGA ? 16 : 4;
 
     if (app->in_menu && app->menu) {
-        menu_draw(app->menu, s, app->mode);
+        menu_draw(app->menu, s, mode);
         apply_display(app, s);
-        screen_to_xrgb(s, app->rgb);
+        to_pixels(app, s);
         return;
     }
     if (app->playing && app->in_battle) {
-        battle_draw(&app->battle, s, app->mode);
+        battle_draw(&app->battle, s, mode);
         apply_display(app, s);
-        screen_to_xrgb(s, app->rgb);
+        to_pixels(app, s);
         return;
     }
     if (app->playing) {
-        play_draw(&app->play, s, app->mode);
+        play_draw(&app->play, s, mode);
         apply_display(app, s);
-        screen_to_xrgb(s, app->rgb);
+        to_pixels(app, s);
         return;
     }
     if (app->index < PIC_COUNT) {
@@ -142,7 +163,7 @@ static void draw_screen(App *app)
         screen_blit(s, img, 0, 0);
     } else if (app->index >= SCREEN_MAP_FIRST) {
         const Campaign *c = &app->campaigns[app->index - SCREEN_MAP_FIRST];
-        campaign_draw_map(s, &app->ga, app->mode, c, app->scroll[app->index - SCREEN_MAP_FIRST]);
+        campaign_draw_map(s, &app->ga, mode, c, app->scroll[app->index - SCREEN_MAP_FIRST]);
         uint8_t white = screen_nearest(s, ncolors, 255, 255, 255);
         uint8_t black = screen_nearest(s, ncolors, 0, 0, 0);
         screen_fill(s, 0, MAP_VIEW_H, SCREEN_W, SCREEN_H - MAP_VIEW_H, black);
@@ -163,7 +184,7 @@ static void draw_screen(App *app)
         for (int t = 0; t < NUM_TILES; t++)
             screen_blit(s, &set->tiles[t], (t % 10) * TILE_W, (t / 10) * TILE_H);
     } else {
-        if (app->mode == MODE_CGA) {
+        if (mode == MODE_CGA) {
             screen_set_palette(s, CGA_PALETTE, 4);
         } else {
             RGB pal[16] = { { 0, 0, 0 } };
@@ -189,13 +210,13 @@ static void draw_screen(App *app)
         uint8_t white = screen_nearest(s, ncolors, 255, 255, 255);
         uint8_t black = screen_nearest(s, ncolors, 0, 0, 0);
         char cap[64];
-        SDL_snprintf(cap, sizeof cap, "%s %d/%d: %s", mode_name(app->mode), app->index + 1, NUM_SCREENS,
+        SDL_snprintf(cap, sizeof cap, "%s %d/%d: %s", display_name(app), app->index + 1, NUM_SCREENS,
                      screen_title(app, app->index));
         cap[40] = 0;   /* 40 characters per line */
         screen_fill(s, 0, SCREEN_H - 8, SCREEN_W, 8, black);
         screen_text(s, &app->ga, 0, SCREEN_H - 8, cap, white, black);
     }
-    screen_to_xrgb(s, app->rgb);
+    to_pixels(app, s);
 }
 
 static void update_title(App *app)
@@ -206,31 +227,31 @@ static void update_title(App *app)
         return;
     }
     if (app->playing) {
-        SDL_snprintf(t, sizeof t, "The Ancient Art of War - %s - %s", app->play.c->title, mode_name(app->mode));
+        SDL_snprintf(t, sizeof t, "The Ancient Art of War - %s - %s", app->play.c->title, display_name(app));
         SDL_SetWindowTitle(app->win, t);
         return;
     }
-    SDL_snprintf(t, sizeof t, "The Ancient Art of War - %s - %s%s", screen_title(app, app->index), mode_name(app->mode),
+    SDL_snprintf(t, sizeof t, "The Ancient Art of War - %s - %s%s", screen_title(app, app->index), display_name(app),
                  app->aspect_43 ? "" : " (square pixels)");
     SDL_SetWindowTitle(app->win, t);
 }
 
-/* Destination rectangle inside the window, keeping the chosen aspect ratio. */
-static SDL_FRect dest_rect(App *app, bool *integer)
+/* Destination rectangle inside the window for a w x h screen, keeping the chosen aspect ratio. */
+static SDL_FRect dest_rect(App *app, int w, int h, bool *integer)
 {
     int ow, oh;
     SDL_GetRenderOutputSize(app->ren, &ow, &oh);
     SDL_FRect r;
     if (!app->aspect_43) {
-        int k = SDL_min(ow / SCREEN_W, oh / SCREEN_H);
+        int k = SDL_min(ow / w, oh / h);
         if (k >= 1) {
-            r.w = (float)(SCREEN_W * k);
-            r.h = (float)(SCREEN_H * k);
+            r.w = (float)(w * k);
+            r.h = (float)(h * k);
             *integer = true;
         } else {
-            float f = SDL_min((float)ow / SCREEN_W, (float)oh / SCREEN_H);
-            r.w = SCREEN_W * f;
-            r.h = SCREEN_H * f;
+            float f = SDL_min((float)ow / w, (float)oh / h);
+            r.w = w * f;
+            r.h = h * f;
             *integer = false;
         }
     } else {
@@ -249,30 +270,34 @@ static void render(App *app)
     SDL_SetRenderDrawColor(app->ren, 0, 0, 0, 255);
     SDL_RenderClear(app->ren);
     if (app->have_assets) {
+        if (app->herc && !app->tex_herc) app->herc = false;
         draw_screen(app);
-        SDL_UpdateTexture(app->tex, NULL, app->rgb, SCREEN_W * 4);
+        int w = app->herc ? HERC_W : SCREEN_W, h = app->herc ? HERC_H : SCREEN_H;
+        SDL_Texture *tex = app->herc ? app->tex_herc : app->tex;
+        SDL_UpdateTexture(tex, NULL, app->rgb, w * 4);
         bool integer;
-        SDL_FRect dst = dest_rect(app, &integer);
+        SDL_FRect dst = dest_rect(app, w, h, &integer);
         if (integer) {
-            SDL_RenderTexture(app->ren, app->tex, NULL, &dst);
+            SDL_RenderTexture(app->ren, tex, NULL, &dst);
         } else {
             /* Sharp scaling: nearest-neighbour up to a whole multiple, then smooth down to fit. */
-            int k = (int)SDL_ceilf(SDL_max(dst.w / SCREEN_W, dst.h / SCREEN_H));
+            int k = (int)SDL_ceilf(SDL_max(dst.w / w, dst.h / h));
             k = SDL_clamp(k, 1, 8);
-            if (!app->up || app->up_scale != k) {
+            if (!app->up || app->up_scale != k || app->up_w != w) {
                 SDL_DestroyTexture(app->up);
                 app->up = SDL_CreateTexture(app->ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_TARGET,
-                                            SCREEN_W * k, SCREEN_H * k);
+                                            w * k, h * k);
                 app->up_scale = k;
+                app->up_w = w;
                 if (app->up) SDL_SetTextureScaleMode(app->up, SDL_SCALEMODE_LINEAR);
             }
             if (app->up) {
                 SDL_SetRenderTarget(app->ren, app->up);
-                SDL_RenderTexture(app->ren, app->tex, NULL, NULL);
+                SDL_RenderTexture(app->ren, tex, NULL, NULL);
                 SDL_SetRenderTarget(app->ren, NULL);
                 SDL_RenderTexture(app->ren, app->up, NULL, &dst);
             } else {
-                SDL_RenderTexture(app->ren, app->tex, NULL, &dst);
+                SDL_RenderTexture(app->ren, tex, NULL, &dst);
             }
         }
     }
@@ -391,15 +416,18 @@ static bool find_game_dir(const char *arg, char *out, size_t n)
 static int write_screenshots(App *app, const char *outdir)
 {
     int written = 0;
-    for (int m = 0; m < MODE_COUNT; m++) {
-        if (!app->ga.set[m].loaded) continue;
-        app->mode = (GfxMode)m;
+    for (int m = 0; m <= MODE_COUNT; m++) {   /* the last pass: Hercules */
+        bool herc = m == MODE_COUNT;
+        if (!herc && !app->ga.set[m].loaded) continue;
+        app->mode = herc ? MODE_CGA : (GfxMode)m;
+        app->herc = herc;
+        int w = herc ? HERC_W : SCREEN_W, h = herc ? HERC_H : SCREEN_H;
         for (int i = 0; i < NUM_SCREENS; i++) {
             app->index = i;
             draw_screen(app);
-            SDL_Surface *surf = SDL_CreateSurfaceFrom(SCREEN_W, SCREEN_H, SDL_PIXELFORMAT_XRGB8888, app->rgb, SCREEN_W * 4);
+            SDL_Surface *surf = SDL_CreateSurfaceFrom(w, h, SDL_PIXELFORMAT_XRGB8888, app->rgb, w * 4);
             char path[1200];
-            SDL_snprintf(path, sizeof path, "%s/%s_%02d.bmp", outdir, mode_name(app->mode), i + 1);
+            SDL_snprintf(path, sizeof path, "%s/%s_%02d.bmp", outdir, display_name(app), i + 1);
             if (surf && SDL_SaveBMP(surf, path)) written++;
             else SDL_Log("Could not write %s: %s", path, SDL_GetError());
             SDL_DestroySurface(surf);
@@ -620,6 +648,7 @@ int main(int argc, char **argv)
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--screenshots") == 0 && i + 1 < argc) shots = argv[++i];
         else if (SDL_strcmp(argv[i], "--viewer") == 0) viewer = true;
+        else if (SDL_strcasecmp(argv[i], "HERC") == 0 || SDL_strcmp(argv[i], "--herc") == 0) app.herc = true;   /* WAR HERC (rt:000C) */
         else if (argv[i][0] != '-') dir_arg = argv[i];
     }
     app.aspect_43 = true;
@@ -652,6 +681,8 @@ int main(int argc, char **argv)
     SDL_SetRenderVSync(app.ren, 1);
     app.tex = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, SCREEN_W, SCREEN_H);
     SDL_SetTextureScaleMode(app.tex, SDL_SCALEMODE_NEAREST);
+    app.tex_herc = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, HERC_W, HERC_H);
+    if (app.tex_herc) SDL_SetTextureScaleMode(app.tex_herc, SDL_SCALEMODE_NEAREST);
     app.ev_folder = SDL_RegisterEvents(1);
     sound_init();                       /* without an audio device the game runs silent */
 
@@ -711,10 +742,8 @@ int main(int argc, char **argv)
                 if (k == SDLK_Q && (e.key.mod & SDL_KMOD_GUI)) running = false;
                 else if (k == SDLK_RETURN && mod) toggle_fullscreen(&app);
                 else if (app.in_menu) {
-                    if (k == SDLK_TAB) {
-                        GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
-                        if (app.ga.set[next].loaded) app.mode = next;
-                    } else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
+                    if (k == SDLK_TAB) next_mode(&app);
+                    else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
                     else if (k == SDLK_F12) { app.in_menu = false; app.index = 0; }
                     else {
                         int pk = k == SDLK_ESCAPE ? PK_ESC : play_keycode(k);
@@ -729,10 +758,8 @@ int main(int argc, char **argv)
                     if (e.key.repeat) continue;
                     bool own = k == SDLK_TAB || k == SDLK_F2;   /* the remake's own keys */
                     if (app.play.demo && !own) { end_demo(&app); update_title(&app); }   /* a key ends the demo */
-                    else if (k == SDLK_TAB) {
-                        GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
-                        if (app.ga.set[next].loaded) app.mode = next;
-                    } else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
+                    else if (k == SDLK_TAB) next_mode(&app);
+                    else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
                     else if (app.in_battle) {
                         int pk = play_keycode(k);
                         if (pk) battle_key(&app.battle, pk);
@@ -757,10 +784,8 @@ int main(int argc, char **argv)
                     else if (k == SDLK_RIGHT || k == SDLK_DOWN || k == SDLK_SPACE) app.index = (app.index + 1) % NUM_SCREENS;
                     else if (k == SDLK_LEFT || k == SDLK_UP) app.index = (app.index + NUM_SCREENS - 1) % NUM_SCREENS;
                     else if (k == SDLK_HOME) app.index = 0;
-                    else if (k == SDLK_TAB) {
-                        GfxMode next = app.mode == MODE_CGA ? MODE_VGA : MODE_CGA;
-                        if (app.ga.set[next].loaded) app.mode = next;
-                    } else if (k == SDLK_A) app.aspect_43 = !app.aspect_43;
+                    else if (k == SDLK_TAB) next_mode(&app);
+                    else if (k == SDLK_A) app.aspect_43 = !app.aspect_43;
                     else if (k == SDLK_H) app.caption = !app.caption;
                     else if (k == SDLK_O) ask_for_folder(&app);
                 }
@@ -786,6 +811,7 @@ int main(int argc, char **argv)
     if (app.have_assets) assets_free(&app.ga);
     SDL_DestroyTexture(app.up);
     SDL_DestroyTexture(app.tex);
+    SDL_DestroyTexture(app.tex_herc);
     SDL_DestroyRenderer(app.ren);
     SDL_DestroyWindow(app.win);
     SDL_Quit();
