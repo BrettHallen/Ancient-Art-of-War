@@ -3,7 +3,7 @@
 Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/README.md`, `WAS_Analysis/WAS_file_reference.md`). The decisions below are carried over from the WAR remake (`WAR_Remake`, `Remake_plan.md` in the project) unless marked **to agree**.
 
 ## Decisions carried over
-- **Rewrite, not emulate.** C + SDL3, CMake, a macOS app bundle (also builds on Linux and Windows). Logic ported function by function from `WAS_Analysis/WAS.EXE.asm`; each C function names the routine it ports (e.g. `/* ovl4:85D2 */`), and keeps WAS.EXE's units and state so it can be checked against the asm and against the original in DOSBox.
+- **Rewrite, not emulate.** C + SDL3, CMake, a macOS app bundle (also builds on Linux and Windows). Logic ported function by function from `WAS_Analysis/WAS.ASM`; each C function names the routine it ports (e.g. `/* ovl4:85D2 */`), and keeps WAS.EXE's units and state so it can be checked against the asm and against the original in DOSBox.
 - **Assets are read at run time from the player's own copy** (WAS.EXE, SM, SP*, B, AD, SO0-SO8, S0-SA, SITLES/SDITLES, SCNF, WAST.DAT). No original artwork, campaigns or fonts in the remake's code or repo; the app icon is drawn at build time from the player's files.
 - **CGA and 16-colour modes** draw the same 320x200 screen, switched at any time with Tab; F2 changes the aspect (4:3 or square pixels). The 16-colour set is the Tandy 1000 one from WAST.DAT, in the standard 16 colours.
 - **Hercules** (asked for 12 Nov, after step 3): Tab's third mode, or `HERC` on the command line as `WAS HERC`. The CGA screen is shown as WAS.EXE shows it on a Hercules card (ovl1:CE78): each 2-bit pixel as two mono pixels, 640x200 at 32,72 of a 720x348 screen (gfx.c screen_to_herc); the whole 720x348 is shown, lit pixels grey AAAAAAh as in DOSBox. Checked against DOSBox's machine=hercules.
@@ -32,7 +32,7 @@ Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/R
 ## To agree
 - The scope of each step, as it comes up.
 - Step 6 (13 Nov), new small differences: on loading a saved game the ports merchants sail to are worked out again (SS does not hold them; WAS.EXE uses the last game's list, or none after starting); "Saving Game" stays half a second (a floppy's write); when SS can't be written the remake says "Unable to use data disk." (WAS.EXE offers to make a new data disk).
-- The battle and the boarding in 16 colours: WAST.EXE (the Tandy version) may draw them in its own colours (WAST.DAT has a 16-colour deck for boarding); how is not yet known (WAST.EXE is EXEPACKed). Until then the remake shows the CGA battle in the 16-colour mode as well (Hercules shows it as WAS HERC does).
+- The battle and the boarding in 16 colours: WAST.EXE (the Tandy version) shows the sea battle in the CGA 4-colour mode with the palette black, light blue, brown, white, the sea and land filled with plain colours 1 and 2, and its own SO6 and SO7; the boarding in 16 colours on WAST.DAT's deck with the men's colours 0, 3, 12, 15 (14 Nov; `WAS_Analysis/README.md`, "The Tandy version", and `WAS_Analysis/WAST.ASM`). WAST.EXE's land test on the map uses the 16-colour tiles' pixels (green and brown), WAS.EXE's the CGA bytes; the remake keeps WAS.EXE's in both modes. Until that is ported the remake shows the CGA battle in the 16-colour mode as well (Hercules shows it as WAS HERC does).
 
 ## Build order (as for WAR)
 1. Asset loader + viewer - done (12 Nov)
@@ -122,5 +122,5 @@ Each step: tests (scripted walkthroughs with screenshots, fuzzers under ASan), t
 - (The viewer itself is the remake's own, as in WAR.)
 
 ## Tooling still to make
-- The DOSBox harness (`WAS_Analysis/tools/dosbox`): starts the original at 1500 or 300 cycles, reads the screen, moves the marker. Still to add: the Tandy version (WAST.EXE is EXEPACKed, so the key-disk patch needs unpacking first).
-- `WAS_Analysis/tools/disassembly`: `fn`, `fc` and `dec.py` work on WAS.EXE.asm (done 12 Nov); `ds.py` still to copy.
+- The DOSBox harness (`WAS_Analysis/tools/dosbox`): starts the original at 1500 or 300 cycles, reads the screen, moves the marker. The Tandy version runs in DOSBox-X (`setup_wast.sh`: WAST.EXE unpacked and its key-disk check patched; 14 Nov).
+- `WAS_Analysis/tools/disassembly`: `fn`, `fc` and `dec.py` work on WAS.ASM (done 12 Nov); `ds.py` still to copy. `WAS_Analysis/WAST.ASM` (14 Nov): WAST.EXE matched to WAS.EXE's routines by `disassembler/wastdis.py`.

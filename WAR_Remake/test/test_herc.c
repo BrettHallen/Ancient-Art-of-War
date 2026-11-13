@@ -78,16 +78,25 @@ int main(int argc, char **argv)
 
     if (!load_from(&app, argv[1], false)) { SDL_Log("no game files"); return 1; }
 
-    /* Tab: CGA, VGA, Hercules, CGA */
-    app.mode = MODE_CGA; app.herc = false;
-    next_mode(&app); CHECK(app.mode == MODE_VGA && !app.herc, "Tab: VGA");
-    next_mode(&app); CHECK(app.mode == MODE_CGA && app.herc, "Tab twice: Hercules");
+    /* Tab: CGA, EGA, Tandy, VGA, Hercules, CGA */
+    set_card(&app, CARD_CGA);
+    next_mode(&app); CHECK(app.mode == MODE_VGA && !app.herc && SDL_strcmp(display_name(&app), "EGA") == 0, "Tab: EGA");
+    next_mode(&app); CHECK(app.mode == MODE_VGA && SDL_strcmp(display_name(&app), "Tandy") == 0, "Tab twice: Tandy");
+    next_mode(&app); CHECK(app.mode == MODE_VGA && SDL_strcmp(display_name(&app), "VGA") == 0, "Tab three times: VGA");
+    next_mode(&app); CHECK(app.mode == MODE_CGA && app.herc, "Tab four times: Hercules");
     CHECK(SDL_strcmp(display_name(&app), "Hercules") == 0, "its name");
-    next_mode(&app); CHECK(app.mode == MODE_CGA && !app.herc, "Tab three times: CGA");
+    next_mode(&app); CHECK(app.mode == MODE_CGA && !app.herc, "Tab five times: CGA");
     app.ga.set[MODE_VGA].loaded = false;              /* without WARET.DAT: CGA, Hercules */
-    next_mode(&app); CHECK(app.herc, "no VGA: Tab goes to Hercules");
+    next_mode(&app); CHECK(app.herc, "no WARET.DAT: Tab goes to Hercules");
     next_mode(&app); CHECK(!app.herc && app.mode == MODE_CGA, "and back to CGA");
+    set_card(&app, CARD_EGA); CHECK(app.mode == MODE_CGA && !app.herc, "no WARET.DAT: EGA falls back to CGA");
     app.ga.set[MODE_VGA].loaded = true;
+    VideoCard c;
+    CHECK(card_from_name("ega", &c) && c == CARD_EGA && card_from_name("TANDY", &c) && c == CARD_TANDY &&
+          card_from_name("herc", &c) && c == CARD_HERC && card_from_name("Hercules", &c) && c == CARD_HERC &&
+          card_from_name("vga", &c) && c == CARD_VGA && card_from_name("cga", &c) && c == CARD_CGA &&
+          !card_from_name("mda", &c), "video= names");
+    set_card(&app, CARD_CGA);
 
     /* the menus */
     app.menu = menu_create(&app.ga, app.campaigns, argv[2]);

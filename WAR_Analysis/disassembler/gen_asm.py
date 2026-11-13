@@ -1,6 +1,6 @@
-"""Generate the annotated WAR.EXE.asm from the wardis model.
+"""Generate the annotated WAR.ASM from the wardis model.
 
-Usage:  python3 gen_asm.py [output]     (default: ../WAR.EXE.asm)
+Usage:  python3 gen_asm.py [output]     (default: ../WAR.ASM)
 Needs capstone (pip install capstone).
 """
 import os
@@ -13,7 +13,7 @@ sys.path.insert(0, HERE)
 import wardis as W
 from capstone import x86
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', 'WAR.EXE.asm')
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', 'WAR.ASM')
 
 # ------------------------------------------------------------------ names
 # (region, offset): (name, description)

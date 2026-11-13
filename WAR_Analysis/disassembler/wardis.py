@@ -6,7 +6,7 @@ WAR.EXE (The Ancient Art of War, CGA version).
 
 Builds a model of the program: regions with their real load addresses,
 recursive-descent disassembly, call graph, relocations and data-segment
-string references. gen_asm.py turns the model into WAR.EXE.asm.
+string references. gen_asm.py turns the model into WAR.ASM.
 """
 import os
 import re

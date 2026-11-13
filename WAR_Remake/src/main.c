@@ -18,7 +18,7 @@
  *        Left alone on the title page for 30 seconds, the game plays a demo
  *        until a key is pressed (as the original does).
  *
- * Viewer keys:  Left/Right  previous/next screen     Tab   CGA / VGA / Hercules
+ * Viewer keys:  Left/Right  previous/next screen     Tab   CGA / EGA / Tandy / VGA / Hercules
  *        Up/Down, -/+, mouse wheel   scroll a campaign map
  *        Shift+-/+, Home/End         top / bottom of the map
  *        Enter       play the campaign shown
@@ -27,13 +27,13 @@
  *
  * Playing: the original keys (arrows or keypad move the cursor, M Move,
  *        I Info, S Size/Surrender/Speed, T Time, C Clear/Cancel, V View,
- *        E End, Z Zoom, -/+ scroll, Alt+S save, Enter at the end), plus Tab CGA/VGA/Hercules,
+ *        E End, Z Zoom, -/+ scroll, Alt+S save, Enter at the end), plus Tab the video card,
  *        F2 aspect, Alt/Cmd+Enter full screen, Esc leave the game.
  * Battle (Zoom): A Attack, R Retreat; then A Archers, B Barbarians, K Knights,
  *        S Squad and A Attack, F Forward, B Backoff, S Stop, Backspace back.
  *
- * Usage: AncientArtOfWar [HERC] [--viewer] [--log | --log=verbose] [game-folder]
- *          HERC: start on a Hercules card, as WAR HERC
+ * Usage: AncientArtOfWar [video=cga|ega|tandy|vga|herc] [--viewer] [--log | --log=verbose] [game-folder]
+ *          video=: the card to start on (CGA if not given); HERC is video=herc, as WAR HERC
  *          --log: a debug log of each campaign played (gamelog.h), in the
  *          remake's folder under Logs/; --log=verbose (or --log verbose) for more
  *        AncientArtOfWar --screenshots OUTDIR [game-folder]   (write BMPs, no window)
@@ -63,8 +63,9 @@ typedef struct {
     bool          have_assets;
     Campaign      campaigns[NUM_CAMPAIGNS];
     int           scroll[NUM_CAMPAIGNS];   /* pixels from the top of each map */
-    GfxMode       mode;
+    GfxMode       mode;          /* the pictures shown: CGA, or the 16-colour set (EGA, Tandy, VGA) */
     bool          herc;          /* shown as on a Hercules card (drawn in CGA) */
+    VideoCard     card;          /* the card: mode and herc follow it (set_card) */
     int           index;
     bool          aspect_43;     /* true: 4:3 like a CRT, false: square pixels */
     bool          caption;
@@ -109,25 +110,42 @@ static void scroll_map(App *app, int delta)
     *sc = SDL_clamp(*sc + delta, 0, SCROLL_BOTTOM);
 }
 
-/* Options Shoppe: "display is black/white" */
+/* Options Shoppe: "display is black/white" (WAR.EXE's; WARET.EXE has no such line) */
 static void apply_display(App *app, Screen *s)
 {
-    if (!app->menu || menu_options(app->menu)->display != 0) return;
+    if (!app->menu || menu_options(app->menu)->display != 0 || app->mode != MODE_CGA) return;
     for (int i = 0; i < 16; i++) {
         int g = (s->pal[i].r * 30 + s->pal[i].g * 59 + s->pal[i].b * 11) / 100;
         s->pal[i] = (RGB){ (uint8_t)g, (uint8_t)g, (uint8_t)g };
     }
 }
 
-/* "CGA", "VGA" or "Hercules" */
-static const char *display_name(const App *app) { return app->herc ? "Hercules" : mode_name(app->mode); }
+/* the card shown (mode and herc decide; card tells EGA, Tandy and VGA apart) */
+static VideoCard current_card(const App *app)
+{
+    if (app->herc) return CARD_HERC;
+    if (app->mode == MODE_CGA) return CARD_CGA;
+    return app->card == CARD_EGA || app->card == CARD_TANDY ? app->card : CARD_VGA;
+}
 
-/* Tab: CGA, then VGA (if WARET.DAT is there), then Hercules, then CGA again */
+static void set_card(App *app, VideoCard c)
+{
+    if (card_assets(c) == MODE_VGA && !app->ga.set[MODE_VGA].loaded) c = CARD_CGA;   /* no WARET.DAT */
+    app->card = c;
+    app->mode = card_assets(c);
+    app->herc = c == CARD_HERC;
+}
+
+/* "CGA", "EGA", "Tandy", "VGA" or "Hercules" */
+static const char *display_name(const App *app) { return card_name(current_card(app)); }
+
+/* Tab: CGA, EGA, Tandy, VGA (the three if WARET.DAT is there), Hercules, then CGA again */
 static void next_mode(App *app)
 {
-    if (app->herc) { app->herc = false; app->mode = MODE_CGA; }
-    else if (app->mode == MODE_CGA && app->ga.set[MODE_VGA].loaded) app->mode = MODE_VGA;
-    else { app->mode = MODE_CGA; app->herc = true; }
+    VideoCard c = current_card(app);
+    do c = (VideoCard)((c + 1) % CARD_COUNT);
+    while (card_assets(c) == MODE_VGA && !app->ga.set[MODE_VGA].loaded);
+    set_card(app, c);
 }
 
 static void to_pixels(App *app, const Screen *s)
@@ -140,6 +158,7 @@ static void draw_screen(App *app)
 {
     Screen *s = &app->screen;
     GfxMode mode = app->herc ? MODE_CGA : app->mode;   /* a Hercules card shows the CGA screen */
+    gfx_card = current_card(app);
     const AssetSet *set = &app->ga.set[mode];
     int ncolors = mode == MODE_VGA ? 16 : 4;
 
@@ -368,7 +387,7 @@ static bool load_from(App *app, const char *dir, bool remember)
                                      "(WAR.EXE, M, the P files and optionally WARET.DAT).", app->win);
         return false;
     }
-    if (!app->ga.set[app->mode].loaded) app->mode = MODE_CGA;
+    set_card(app, current_card(app));   /* without WARET.DAT: CGA */
     int n = campaigns_load(app->campaigns, dir);
     for (int i = 0; i < NUM_CAMPAIGNS; i++) app->scroll[i] = SCROLL_BOTTOM;   /* start at the bottom, like the game */
     SDL_Log("Loaded %d campaigns", n);
@@ -420,11 +439,10 @@ static bool find_game_dir(const char *arg, char *out, size_t n)
 static int write_screenshots(App *app, const char *outdir)
 {
     int written = 0;
-    for (int m = 0; m <= MODE_COUNT; m++) {   /* the last pass: Hercules */
-        bool herc = m == MODE_COUNT;
-        if (!herc && !app->ga.set[m].loaded) continue;
-        app->mode = herc ? MODE_CGA : (GfxMode)m;
-        app->herc = herc;
+    for (int c = 0; c < CARD_COUNT; c++) {   /* CGA, EGA, Tandy, VGA, Hercules */
+        if (card_assets((VideoCard)c) == MODE_VGA && !app->ga.set[MODE_VGA].loaded) continue;
+        set_card(app, (VideoCard)c);
+        bool herc = app->herc;
         int w = herc ? HERC_W : SCREEN_W, h = herc ? HERC_H : SCREEN_H;
         for (int i = 0; i < NUM_SCREENS; i++) {
             app->index = i;
@@ -670,10 +688,18 @@ int main(int argc, char **argv)
     const char *dir_arg = NULL, *shots = NULL;
     bool viewer = false;
     GameLogLevel log_level = GLOG_OFF;
+    VideoCard card = CARD_CGA;          /* video=: the card to start on */
     for (int i = 1; i < argc; i++) {
         if (SDL_strcmp(argv[i], "--screenshots") == 0 && i + 1 < argc) shots = argv[++i];
         else if (SDL_strcmp(argv[i], "--viewer") == 0) viewer = true;
-        else if (SDL_strcasecmp(argv[i], "HERC") == 0 || SDL_strcmp(argv[i], "--herc") == 0) app.herc = true;   /* WAR HERC (rt:000C) */
+        else if (SDL_strcasecmp(argv[i], "HERC") == 0 || SDL_strcmp(argv[i], "--herc") == 0) card = CARD_HERC;   /* WAR HERC (rt:000C) */
+        else if (SDL_strncasecmp(argv[i], "video=", 6) == 0 || SDL_strncasecmp(argv[i], "--video=", 8) == 0) {
+            const char *v = SDL_strchr(argv[i], '=') + 1;
+            if (!card_from_name(v, &card)) SDL_Log("video=%s: use cga, ega, tandy, vga or herc", v);
+        }
+        else if (SDL_strcmp(argv[i], "--video") == 0 && i + 1 < argc) {
+            if (!card_from_name(argv[++i], &card)) SDL_Log("--video %s: use cga, ega, tandy, vga or herc", argv[i]);
+        }
         else if (SDL_strcmp(argv[i], "--log=verbose") == 0) log_level = GLOG_VERBOSE;
         else if (SDL_strcmp(argv[i], "--log") == 0 || SDL_strcmp(argv[i], "--log=normal") == 0) {
             log_level = GLOG_NORMAL;
@@ -684,6 +710,9 @@ int main(int argc, char **argv)
     }
     app.aspect_43 = true;
     app.caption = true;
+    app.card = card;
+    app.mode = card_assets(card);
+    app.herc = card == CARD_HERC;
 
     char dir[1024];
     bool found = find_game_dir(dir_arg, dir, sizeof dir);

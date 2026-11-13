@@ -176,7 +176,7 @@ void mapedit_draw(const MapEdit *e, Screen *s, GfxMode mode)
     for (int i = 0; i < 4; i++) c.col[i] = screen_nearest(s, ncolors, CGA_PALETTE[i].r, CGA_PALETTE[i].g, CGA_PALETTE[i].b);
     for (int i = 0; i < 16; i++) {
         if (ncolors <= 4) c.inv[i] = (uint8_t)(i ^ 3);
-        else c.inv[i] = screen_nearest(s, ncolors, (uint8_t)(255 - s->pal[i].r), (uint8_t)(255 - s->pal[i].g), (uint8_t)(255 - s->pal[i].b));
+        else c.inv[i] = (uint8_t)(i ^ 15);   /* WARET.EXE XORs the 4-bit pixels */
     }
     screen_clear(s, c.col[0]);
 

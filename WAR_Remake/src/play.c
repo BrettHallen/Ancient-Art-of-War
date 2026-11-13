@@ -8,7 +8,7 @@
  * play.c: step 3, the strategic game (campaign play, WAR.EXE overlay 6).
  *
  * Each function names the WAR.EXE routine it follows (see
- * WAR_Analysis/WAR.EXE.asm). Encounters stop squads but battles, the enemy's
+ * WAR_Analysis/WAR.ASM). Encounters stop squads but battles, the enemy's
  * moves and Formation/Detach/Join/Zoom come in later steps.
  */
 #include "play.h"
@@ -2601,7 +2601,11 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
         const PFlag *f = &p->flag[i];
         if (f->present) screen_sprite(s, p->ga->flag_sprite, f->x * 4, f->y * 2 - v.top, f->white, white, black, 0, map_h);
     }
-    if (p->mode != PM_PROMPT) draw_cursor(&v, p->cx, p->cy, p->mode == PM_TRACE);
+    if (p->mode != PM_PROMPT) {
+        View cv = v;
+        if (gfx_card == CARD_TANDY) cv.col[3] = 14;   /* WARET.EXE on a Tandy 1000: a yellow cursor (DOSBox-X) */
+        draw_cursor(&cv, p->cx, p->cy, p->mode == PM_TRACE);
+    }
 
     /* rt:1CE8: a white line under the map, then the text rows */
     screen_fill(s, 0, map_h, SCREEN_W, 1, white);

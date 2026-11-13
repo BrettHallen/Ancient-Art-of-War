@@ -17,6 +17,27 @@ typedef struct {
     RGB     pal[16];
 } Screen;
 
+/* The video card the game is shown on, as the original chose its program and
+ * colours: WAR.EXE on a CGA (or a Hercules card with WAR HERC), WARET.EXE on
+ * an EGA, a Tandy 1000 or a VGA. WARET.EXE draws the same 16-colour pictures
+ * (WARET.DAT) on all three, but only on a VGA does it load each picture's own
+ * palette into the DAC (INT 10h AX=1012h, the loader at WARET 0133:01B2 when a
+ * VGA was found, [277E]); an EGA or a Tandy 1000 shows them in the standard 16
+ * colours. The Tandy version also draws a few things differently (the
+ * pointer, the map cursor, the outline of squads and flags); see gfx_card. */
+typedef enum { CARD_CGA, CARD_EGA, CARD_TANDY, CARD_VGA, CARD_HERC, CARD_COUNT } VideoCard;
+
+/* The card the screen is being drawn for (main sets it). The drawing code asks
+ * it only where WARET.EXE's EGA/VGA and Tandy versions differ. */
+extern VideoCard gfx_card;
+
+const char *card_name(VideoCard c);                    /* "CGA", "EGA", "Tandy", "VGA", "Hercules" */
+bool card_from_name(const char *s, VideoCard *c);      /* cga, ega, tandy, vga, herc or hercules (any case) */
+GfxMode card_assets(VideoCard c);                      /* the pictures it shows: MODE_VGA for the 16-colour cards */
+
+/* The standard 16 colours (an EGA's or a Tandy 1000's defaults) */
+extern const RGB STD16[16];
+
 void screen_clear(Screen *s, uint8_t color);
 void screen_set_palette(Screen *s, const RGB *pal, int n);
 void screen_blit(Screen *s, const Image *img, int x, int y);

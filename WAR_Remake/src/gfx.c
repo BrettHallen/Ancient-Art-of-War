@@ -11,6 +11,30 @@
 
 #include <SDL3/SDL.h>
 
+VideoCard gfx_card = CARD_CGA;
+
+const RGB STD16[16] = {
+    { 0x00, 0x00, 0x00 }, { 0x00, 0x00, 0xAA }, { 0x00, 0xAA, 0x00 }, { 0x00, 0xAA, 0xAA },
+    { 0xAA, 0x00, 0x00 }, { 0xAA, 0x00, 0xAA }, { 0xAA, 0x55, 0x00 }, { 0xAA, 0xAA, 0xAA },
+    { 0x55, 0x55, 0x55 }, { 0x55, 0x55, 0xFF }, { 0x55, 0xFF, 0x55 }, { 0x55, 0xFF, 0xFF },
+    { 0xFF, 0x55, 0x55 }, { 0xFF, 0x55, 0xFF }, { 0xFF, 0xFF, 0x55 }, { 0xFF, 0xFF, 0xFF },
+};
+
+static const char *const CARD_NAMES[CARD_COUNT] = { "CGA", "EGA", "Tandy", "VGA", "Hercules" };
+
+const char *card_name(VideoCard c) { return c >= 0 && c < CARD_COUNT ? CARD_NAMES[c] : "?"; }
+
+bool card_from_name(const char *s, VideoCard *c)
+{
+    if (!s) return false;
+    for (int k = 0; k < CARD_COUNT; k++)
+        if (SDL_strcasecmp(s, CARD_NAMES[k]) == 0) { *c = (VideoCard)k; return true; }
+    if (SDL_strcasecmp(s, "herc") == 0) { *c = CARD_HERC; return true; }
+    return false;
+}
+
+GfxMode card_assets(VideoCard c) { return c == CARD_EGA || c == CARD_TANDY || c == CARD_VGA ? MODE_VGA : MODE_CGA; }
+
 void screen_clear(Screen *s, uint8_t color)
 {
     SDL_memset(s->px, color, sizeof s->px);
@@ -73,7 +97,11 @@ void screen_sprite(Screen *s, const uint8_t spr[SPRITE_H][SPRITE_W], int x, int 
             int sx = x + i;
             if (sx < 0 || sx >= SCREEN_W) continue;
             bool here = spr[j][i] != 0;
-            bool next = (i > 0 && spr[j][i - 1]) || (i < SPRITE_W - 1 && spr[j][i + 1]);
+            /* the outline reaches only within the word the figure is in: 8 pixels on a
+             * CGA; on a Tandy 1000 (4 bits a pixel) a word holds 4 (DOSBox-X) */
+            int g = gfx_card == CARD_TANDY ? 4 : SPRITE_W;
+            bool next = (i > 0 && (i - 1) / g == i / g && spr[j][i - 1]) ||
+                        (i < SPRITE_W - 1 && (i + 1) / g == i / g && spr[j][i + 1]);
             if (here)      s->px[sy * SCREEN_W + sx] = figure;
             else if (next) s->px[sy * SCREEN_W + sx] = outline;
         }
@@ -92,11 +120,19 @@ uint8_t screen_nearest(const Screen *s, int ncolors, uint8_t r, uint8_t g, uint8
     return (uint8_t)best;
 }
 
+/* a VGA's DAC holds 6 bits a channel: WARET.EXE shifts the palette right by 2
+ * (0133:0167) before INT 10h AX=1012h */
+static uint8_t dac6(uint8_t v) { return (uint8_t)(((v >> 2) * 255 + 31) / 63); }
+
 void screen_to_xrgb(const Screen *s, uint32_t *out)
 {
     uint32_t lut[16];
-    for (int i = 0; i < 16; i++)
-        lut[i] = 0xFF000000u | ((uint32_t)s->pal[i].r << 16) | ((uint32_t)s->pal[i].g << 8) | s->pal[i].b;
+    for (int i = 0; i < 16; i++) {
+        RGB c = s->pal[i];
+        if (gfx_card == CARD_EGA || gfx_card == CARD_TANDY) c = STD16[i];   /* the palette isn't loaded */
+        else if (gfx_card == CARD_VGA) { c.r = dac6(c.r); c.g = dac6(c.g); c.b = dac6(c.b); }
+        lut[i] = 0xFF000000u | ((uint32_t)c.r << 16) | ((uint32_t)c.g << 8) | c.b;
+    }
     for (int i = 0; i < SCREEN_W * SCREEN_H; i++) out[i] = lut[s->px[i] & 15];
 }
 

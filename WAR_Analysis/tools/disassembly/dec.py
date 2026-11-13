@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
-"""Mini decompiler for WAR.EXE.asm functions (compiled C, simple idioms).
+"""Mini decompiler for WAR.ASM functions (compiled C, simple idioms).
 Usage: dec.py NAME|region_ADDR  -> C-like pseudocode with gotos."""
 import re, sys
 
 import os
-ASM = os.environ.get('WAR_ASM', os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../WAR.EXE.asm'))
+ASM = os.environ.get('WAR_ASM', os.path.join(os.path.dirname(os.path.abspath(__file__)), '../../WAR.ASM'))
 lines = open(ASM).read().split('\n')
 
 NAMES = {

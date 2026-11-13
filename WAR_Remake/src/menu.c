@@ -96,6 +96,8 @@ struct Menu {
     int         shoppe_disk;      /* the Options Shoppe's choice (ndisks: a new one) */
     bool        disk_list;        /* the scroll lists the data disks */
     GfxMode     mode;
+    VideoCard   card;             /* the card it was drawn for (gfx_card) */
+    uint8_t     tfg;              /* the text rows' colour: colour 3 on a CGA, 15 in WARET.EXE */
     bool        drawn;            /* canvas holds the current page in this mode */
     Screen      cv;               /* the canvas */
     int         npal;
@@ -194,9 +196,10 @@ static void set_palette(Menu *m, const RGB *pal, int n, bool pal0)
     m->pal0 = pal0;
     const RGB *cga = pal0 ? CGA_PALETTE_0 : CGA_PALETTE;
     for (int i = 0; i < 4; i++) m->c4[i] = m->mode == MODE_CGA ? (uint8_t)i : nearest(pal, n, cga[i]);
+    m->tfg = m->mode == MODE_CGA ? m->c4[3] : 15;   /* WARET.EXE: white text rows, on the scrolls too (DOSBox-X) */
     for (int i = 0; i < 16; i++) {
         if (m->mode == MODE_CGA) m->inv[i] = (uint8_t)(i ^ 3);
-        else { RGB c = m->cv.pal[i]; RGB x = { (uint8_t)(255 - c.r), (uint8_t)(255 - c.g), (uint8_t)(255 - c.b) }; m->inv[i] = nearest(pal, n, x); }
+        else m->inv[i] = (uint8_t)(i ^ 15);   /* WARET.EXE XORs the 4-bit pixels (DOSBox-X: the campaign menu's frame) */
     }
 }
 
@@ -230,7 +233,7 @@ static void clear_row(Menu *m, int row) { screen_fill(&m->cv, 0, row * 8, SCREEN
 static void text_border(Menu *m, int rows)
 {
     int y = 198 - 8 * rows;
-    screen_fill(&m->cv, 0, y, SCREEN_W, 1, m->c4[3]);
+    screen_fill(&m->cv, 0, y, SCREEN_W, 1, m->tfg);
     screen_fill(&m->cv, 0, y + 1, SCREEN_W, 1, m->c4[0]);
 }
 
@@ -245,7 +248,7 @@ static void print_at(Menu *m, int col, int row, const char *s)
         if (col >= 40) { col = 0; row++; }
         if (row > 24) break;
         one[0] = *s;
-        screen_text(&m->cv, m->ga, col * 8, row * 8, one, m->c4[3], m->c4[0]);
+        screen_text(&m->cv, m->ga, col * 8, row * 8, one, m->tfg, m->c4[0]);
         col++;
     }
 }
@@ -263,8 +266,10 @@ static void icon(Menu *m, bool ds, unsigned off, int xb, int y)
     size_t size = ds ? DS_SIZE : sizeof m->ga->o3;
     assets_bitmap_px(buf, size, off, 0, 0, &w, &h);
     for (int yy = 0; yy < h; yy++)
-        for (int xx = 0; xx < w; xx++)
-            put(m, xb * 4 + xx, y + yy, m->c4[assets_bitmap_px(buf, size, off, xx, yy, NULL, NULL)]);
+        for (int xx = 0; xx < w; xx++) {
+            int v = assets_bitmap_px(buf, size, off, xx, yy, NULL, NULL);
+            put(m, xb * 4 + xx, y + yy, v == 3 && y + yy >= VIEW_LINES ? m->tfg : m->c4[v]);   /* in the text rows: their colour */
+        }
 }
 
 /* ovl1_7ffc: an O3 glyph copied into the canvas or the scroll (x in pixels) */
@@ -294,7 +299,11 @@ static void and_bitmap(Menu *m, unsigned off, int xb, int y)
             if (px < 0 || py < 0 || px >= SCREEN_W || py >= VIEW_LINES) continue;
             uint8_t *d = &m->cv.px[py * SCREEN_W + px];
             if (m->mode == MODE_CGA) *d = (uint8_t)(*d & v);
-            else if (v != 3) *d = m->c4[v];
+            /* WARET.EXE (DOSBox-X): a Tandy 1000 ANDs each 2-bit pixel as a 4-bit one
+             * (01 -> 0011, 10 -> 1100); an EGA or a VGA draws the pixels with bit 0
+             * clear in colour 1 (a blue pointer) and leaves the others */
+            else if (gfx_card == CARD_TANDY) *d = (uint8_t)(*d & (((v & 2) ? 12 : 0) | ((v & 1) ? 3 : 0)));
+            else if (!(v & 1)) *d = 1;
         }
 }
 
@@ -578,7 +587,7 @@ static void title_box(Menu *m)
 {
     if (m->box_inverted) xor_box(m, 17, 54, 25, 5);   /* the buffer is blitted again: back to normal */
     m->box_inverted = false;
-    small_caps(m, 19, 58, O3S(m, TITLE_ITEMS[m->title_item]));
+    small_caps(m, 19 - (m->mode != MODE_CGA), 58, O3S(m, TITLE_ITEMS[m->title_item]));   /* WARET.EXE: 4 pixels left */
     m->frame = 0;
     m->idle = 0;
 }
@@ -593,8 +602,8 @@ static void demo_start(Menu *m)
     for (int c = 0; c < NUM_CAMPAIGNS; c++)
         if (m->camps[c].loaded && SDL_strcasecmp(m->camps[c].file, name) == 0) idx = c;
     if (idx < 0 || !m->ga->have_battle) { m->idle = 0; return; }   /* not on this WAR disk: keep waiting */
-    small_caps(m, 19, 58, O3S(m, 0x96B));       /* "    quit    " */
-    small_caps(m, 27, 58, O3S(m, 0xE54));       /* "demo " over "quit" */
+    small_caps(m, 19 - (m->mode != MODE_CGA), 58, O3S(m, 0x96B));   /* "    quit    " */
+    small_caps(m, 27 - (m->mode != MODE_CGA), 58, O3S(m, 0xE54));   /* "demo " over "quit" */
     clear_row(m, 24);
     m->game = m->camps[idx];
     m->game.opponent = 0;                       /* A67C = 0, its values from O2 */
@@ -822,7 +831,11 @@ static void shoppe_line(Menu *m, int k)
     char s[48];
     const MenuOptions *o = &m->opt;
     switch (k) {
-    case 0: SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x1375), O2S(m, o->display == 0 ? 0x1381 : o->display == 1 ? 0x138E : 0x139B)); break;
+    case 0:
+        if (m->mode != MODE_CGA)    /* WARET.EXE (ovl 0x9404): "ega", "vga" or "tandy", ": sixteen colors" */
+            SDL_snprintf(s, sizeof s, "%s: sixteen colors", gfx_card == CARD_TANDY ? "tandy" : gfx_card == CARD_EGA ? "ega" : "vga");
+        else SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x1375), O2S(m, o->display == 0 ? 0x1381 : o->display == 1 ? 0x138E : 0x139B));
+        break;
     case 1: SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13DE), O3S(m, o->fight_delay == 200 ? 0xAA0 : o->fight_delay == 400 ? 0xAA6 : 0xAAD)); break;
     case 2:                     /* the remake: which data disk folder is in the drive, not A: or B: */
         if (m->shoppe_disk >= m->ndisks) SDL_strlcpy(s, "a new data disk", sizeof s);
@@ -835,7 +848,11 @@ static void shoppe_line(Menu *m, int k)
         else if (o->sounds == 2) SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x10EB));   /* internal speaker */
         else                     SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x10D9));   /* external speaker */
         break;
-    case 4: SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x1363)); break;
+    case 4:                     /* WARET.EXE: an EGA or a VGA can't centre the screen */
+        if (m->mode != MODE_CGA && gfx_card != CARD_TANDY)
+            SDL_snprintf(s, sizeof s, "%s: no centering", gfx_card == CARD_EGA ? "ega" : "vga");
+        else SDL_snprintf(s, sizeof s, "%s", O2S(m, 0x1363));
+        break;
     default:
         if (o->joystick) SDL_snprintf(s, sizeof s, "%s%s", O2S(m, 0x13EE), O2S(m, 0xEB4));
         else             SDL_snprintf(s, sizeof s, "%s%s", O3S(m, 0xE5E), O2S(m, 0x13EE));
@@ -1944,7 +1961,7 @@ void menu_key(Menu *m, int k)
             case 1: snd_beep(); edit_begin(m, EDIT_CHANGE); break;   /* Change a campaign */
             case 2: snd_beep(); edit_begin(m, EDIT_REMOVE); break;   /* Remove a campaign */
             case 3: menu_title(m); break;                     /* Return to title page */
-            case 5: m->shoppe_item = 0; m->opt_changed = false; m->shoppe_disk = m->disk; go(m, MS_SHOPPE); break;
+            case 5: m->shoppe_item = m->mode != MODE_CGA; m->opt_changed = false; m->shoppe_disk = m->disk; go(m, MS_SHOPPE); break;
             default:                                           /* Teach squads new formations (thunk 12) */
                 snd_beep();
                 formed_start(&m->formed, m->ga, m->ga->formations);
@@ -1989,7 +2006,7 @@ void menu_key(Menu *m, int k)
             menu_title(m);
             break;
         }
-        if (key_up(k) && m->shoppe_item > 0) {
+        if (key_up(k) && m->shoppe_item > (m->mode != MODE_CGA)) {   /* WARET.EXE: no display line to change */
             snd_beep();
             m->shoppe_item--;
             if (m->shoppe_item == 4) m->shoppe_item--;        /* "center the screen" does nothing here */
@@ -2005,7 +2022,7 @@ void menu_key(Menu *m, int k)
             MenuOptions *o = &m->opt;
             snd_beep();
             switch (m->shoppe_item) {
-            case 0: o->display = o->display >= 2 ? 0 : o->display + 1; break;
+            case 0: if (m->mode == MODE_CGA) o->display = o->display >= 2 ? 0 : o->display + 1; break;
             case 1: o->fight_delay = o->fight_delay >= 800 ? 200 : o->fight_delay << 1; break;
             case 2: m->shoppe_disk = (m->shoppe_disk + 1) % (m->ndisks + 1); break;   /* the next disk, or a new one */
             case 3: o->sounds = o->sounds >= 3 ? 0 : o->sounds + 1; sound_setting(o->sounds); break;
@@ -2177,7 +2194,7 @@ static void draw_disk_error(const Menu *m, Screen *s, GfxMode mode)
     uint8_t fg = 3, bg = 0;
     if (mode != MODE_CGA) {
         const RGB *cga = m->pal0 ? CGA_PALETTE_0 : CGA_PALETTE;
-        fg = nearest(s->pal, 16, cga[3]);
+        fg = 15;                                    /* WARET.EXE's text rows */
         bg = nearest(s->pal, 16, cga[0]);
     }
     screen_fill(s, 0, 23 * 8, SCREEN_W, 16, bg);
@@ -2197,25 +2214,27 @@ static void menu_draw_page(Menu *m, Screen *s, GfxMode mode)
 {
     if (m->state == MS_MAPEDIT || m->state == MS_SQEDIT || m->state == MS_FORMED) {   /* the editors draw the whole screen */
         m->mode = mode;
+        m->card = gfx_card;
         m->drawn = true;
         if (m->state == MS_MAPEDIT) mapedit_draw(&m->mapedit, s, mode);
         else if (m->state == MS_SQEDIT) sqedit_draw(&m->sqedit, s, mode);
         else formed_draw(&m->formed, s, mode);
         return;
     }
-    if (!m->drawn && m->state == MS_NOTE && mode == m->mode) {   /* on what the screen shows */
+    if (!m->drawn && m->state == MS_NOTE && (mode == m->mode && gfx_card == m->card)) {   /* on what the screen shows */
         clear_row(m, 23); clear_row(m, 24);                        /* ovl1:3CFC */
         print_at(m, m->note_col, m->note_row, m->note);
         m->drawn = true;
         m->step = (int)(2.5 * MENU_HZ);
     }
-    if (!m->drawn && m->state == MS_EDIT_TEXT && mode == m->mode) {
+    if (!m->drawn && m->state == MS_EDIT_TEXT && (mode == m->mode && gfx_card == m->card)) {
         page_edit_text(m, true);
         m->drawn = true;
     }
-    if (mode != m->mode || !m->drawn) {
+    if ((mode != m->mode || gfx_card != m->card) || !m->drawn) {
         bool first = !m->drawn;
         m->mode = mode;
+        m->card = gfx_card;
         if (first && (m->state == MS_TITLES || m->state == MS_STORY || m->state == MS_RULES) && m->step == 1) {
             /* a scroll page opening from the last page */
             if (m->state == MS_TITLES) page_titles(m, true);

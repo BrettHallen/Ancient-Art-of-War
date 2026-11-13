@@ -4,7 +4,7 @@ The helpers used to study WAR.EXE and to check the remake against the original, 
 
 ## disassembly/
 
-Work on `../WAR.EXE.asm`, which `../disassembler/gen_asm.py` writes (its name table gives each routine and data address a name; add names there as routines are understood, then run it again).
+Work on `../WAR.ASM`, which `../disassembler/gen_asm.py` writes (its name table gives each routine and data address a name; add names there as routines are understood, then run it again).
 
 | File | Use |
 |---|---|
@@ -15,7 +15,7 @@ Work on `../WAR.EXE.asm`, which `../disassembler/gen_asm.py` writes (its name ta
 | `ds.py OFF...` | the C strings at those DS offsets of WAR.EXE |
 | `analyze.py` | helpers on top of `wardis.py` (string starts, the routine an address belongs to) |
 
-Paths: `fn` and `fc` look in `WAR_Analysis/` (or `$ASM_DIR`), `dec.py` reads `WAR_Analysis/WAR.EXE.asm` (or `$WAR_ASM`), `ds.py` reads `WAR_Original_Files_3.5/WAR.EXE` at the top of the repo (or `$WAR_EXE`). `dec.py` and `analyze.py` need Python 3; `wardis.py` needs `capstone`.
+Paths: `fn` and `fc` look in `WAR_Analysis/` (or `$ASM_DIR`), `dec.py` reads `WAR_Analysis/WAR.ASM` (or `$WAR_ASM`), `ds.py` reads `WAR_Original_Files_3.5/WAR.EXE` at the top of the repo (or `$WAR_EXE`). `dec.py` and `analyze.py` need Python 3; `wardis.py` needs `capstone`.
 
 ## dosbox/
 
@@ -51,6 +51,24 @@ Notes:
 - Alt+S saves in WAR.EXE. A saved game `S` is DS:8868-A9E5 (see `../README.md`, Saved games); patching one is the quickest way to set up a test case.
 - `dosbox_tandy.conf` / `dosbox_pcjr.conf`: for Tandy sound WAR.EXE was patched at 8132h to `90 90`.
 - `dosbox_herc.conf` / `dosbox_ed_herc.conf`: `machine=hercules` and `WAR.EXE HERC` (the second with the data disk as B:, for `dosloads.sh`). Screenshots are then 720x348; `dosanswer.sh` and `doswait.sh` work as before. Checked this way (Nov 13): the title page, the titles, story and rules scrolls, the campaign menu and the Options Shoppe matched the remake's Hercules screens (`WAR_Remake/test/test_herc`) pixel for pixel; the opponents, the map and a battle apart from what moves or blinks.
+
+### WARET.EXE in DOSBox-X (the 16-colour version)
+
+DOSBox 0.74 shows WARET.EXE's EGA, Tandy and VGA screens too, but DOSBox-X is the more faithful (the At Sea work found that 0.74 ignores a Tandy's palette registers), so these use `dosbox-x` (Ubuntu: `apt install dosbox-x`).
+
+Set-up: `$DOS/war_et/` a copy of the game disk with `CNFET`; `$DOS/data_bx/` a data disk mounted as B: (CNFET's last word set to 1 so the data disk is B:). WARET.EXE's saved game is `SET`.
+
+| Script | Use |
+|---|---|
+| `dosrunx.sh` | start DOSBox-X with `$CONF` on display :99. Its log goes to /dev/null: DOSBox-X writes gigabytes of it |
+| `dosboxx_et_ega.conf`, `dosboxx_et_tandy.conf`, `dosboxx_et_vgaonly.conf` | WARET.EXE on an EGA, a Tandy 1000 and a VGA |
+| `wseq.sh MACHINE` | the opening, title page, the three scrolls, the opponents and the map (`x_MACHINE_sNN.png`) |
+| `wmenus.sh MACHINE` | the title page, the campaign menu and the Options Shoppe (`x_MACHINE_mNN.png`) |
+| `wdemo.sh MACHINE` | record the demo (2 frames a second) into `$DOS/xdemo_MACHINE/` |
+| `egacmp.py REMAKE.idx SHOT.png` | an EGA or Tandy screen (standard colours, so each is one index) against the remake's indexes from `WAR_Remake/test/dump_cards`: the differing pixels grouped by (remake index -> original index) |
+| `vgacmp.py REMAKE.idx SHOT.png` | the same for a VGA screen, by colour |
+
+Checked this way (Nov 14): the opening and title pages, the scrolls, the opponents, the campaign menu, the Options Shoppe and the map matched pixel for pixel on all three cards, apart from what moves or blinks; the battle screen's soldiers and text rows by their colours.
 
 ## The remake's tests
 
