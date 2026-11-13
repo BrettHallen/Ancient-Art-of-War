@@ -7,6 +7,16 @@ I played two of the games in the series in CGA so this is how I remember them:
 
 I never played The Ancient Art of War in the Skies (1992).<br>
 
+## Versions
+There is no clear versioning between the different binaries (i.e. WAR.EXE on a 5¼" floppy vs WAR.EXE on a 3½" floppy).  They all hide the text "COPYRIGHT 1983 DAVE MURRY" as "DPQZSJHIU 2:94 EBWF NVSSZ" (every character shifted by one).
+
+| File      | Size   | Source Disk | MD5 Hash                         | Text in file                                                       |
+|-----------|--------|-------------|----------------------------------|--------------------------------------------------------------------|
+| WAR.EXE   | 98304  | 3½"         | f893d23aff311a7f9ee83fe1c2b3fde2 | "THE ANCIENT ART OF WAR COPYRIGHT 1987 BRODERBUND SOFTWARE"        |
+| WARET.EXE | 110382 | 3½"         | 0858fe45fabe318b99f5cb07fef94192 | "THE ANCIENT ART OF WAR COPYRIGHT 1987 BRODERBUND SOFTWARE"        |
+| WAS.EXE   | 162304 | 3½"         | 0db2d76d826967a67e26a42bac3a578d | "The Ancient Art of War at Sea Copyright 1987 Broderbund Software" |
+| WAST.EXE  | 161792 | 3½"         | 0047bace032ec55be44efcb8f1af4707 | "The Ancient Art of War at Sea Copyright 1987 Broderbund Software" |
+
 ## Documentation
 Scans of the original documentation:
 - [The Ancient Art of War](/WAR_Documentation)
