@@ -16,7 +16,7 @@ add_executable(AncientArtOfWarAtSea MACOSX_BUNDLE
     src/fiber.c
     src/battle.c
     src/battle_ships.c
-    src/battle_gfx.c src/boarding.c
+    src/battle_gfx.c src/boarding.c src/enemy.c src/dsmap.c src/menu.c
     src/icon.c
 )
 target_link_libraries(AncientArtOfWarAtSea PRIVATE SDL3::SDL3)

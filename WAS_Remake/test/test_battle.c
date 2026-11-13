@@ -60,7 +60,7 @@ static void save_battle(const Battle *b, const char *name)
     SDL_DestroySurface(surf);
 }
 
-static void settle(Play *p) { for (int n = 0; n < 1000 && p->stall; n++) play_frame(p, 0); }
+static void settle(Play *p) { for (int n = 0; n < 1000 && play_busy(p); n++) play_frame(p, 0); }
 static void press(Play *p, int key) { settle(p); play_key(p, key, false); play_frame(p, 0); settle(p); }
 static void hold(Play *p, int key, int n) { for (int i = 0; i < n; i++) { settle(p); play_frame(p, key); } }
 
@@ -85,6 +85,7 @@ int main(int argc, char **argv)
 {
     if (argc < 3) { SDL_Log("usage: test_battle GAME-FOLDER OUT-FOLDER"); return 2; }
     outdir = argv[2];
+    unsigned zseed = argc > 3 ? (unsigned)SDL_atoi(argv[3]) : 78;   /* the Zoom game's random numbers */
     static GameAssets ga;
     static Campaign cs[NUM_CAMPAIGNS];
     static Play p;
@@ -116,7 +117,7 @@ int main(int argc, char **argv)
     c0 = cs[0];
     c0.squadrons[16].x = 44; c0.squadrons[16].y = 145;
     c0.squadrons[7].x = 44; c0.squadrons[7].y = 141;
-    play_start(&p, &c0, &ga, 77);
+    play_start(&p, &c0, &ga, zseed);
     move_to(&p, 44, 145);
     for (int f = 0; f < 400 && !(p.sq[16].partner && p.sq[16].ctrl > 0); f++) play_frame(&p, 0);
     CHECK(p.sq[16].partner == 8 && p.sq[16].ctrl > 0, "the encounter");

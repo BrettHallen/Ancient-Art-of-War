@@ -27,9 +27,12 @@ static void maybe_yield(Battle *b)
     if (b->clock_us >= b->target_us) fiber_yield(&b->fiber);
 }
 
-void b_delay(Battle *b, int units)   /* delay() rt:2F6E */
+void b_delay(Battle *b, int units)   /* delay() rt:2F6E: it calls random() units / 2 times on an XT */
 {
     if (units > 0) b->clock_us += units * DELAY_UNIT_US;
+    unsigned n = (unsigned)(units & 0xFFFF) >> 1;
+    if (n == 0) n = 1;
+    while (n--) play_random(b->p);
     maybe_yield(b);
 }
 
@@ -55,7 +58,7 @@ int b_getkey(Battle *b)
 }
 
 int b_random(Battle *b) { return play_random(b->p); }   /* random() rt:2F0D */
-void b_beep(Battle *b) { b->beeps++; b_delay(b, 0); }  /* beep_low (sound: step 8) */
+void b_beep(Battle *b) { b->beeps++; maybe_yield(b); }  /* beep_low (sound, with its delay: step 8) */
 void b_sound(Battle *b, int divisor) { (void)divisor; b->beeps++; }
 void b_sound_off(Battle *b) { (void)b; }
 void b_click(Battle *b) { (void)b; }
@@ -1396,6 +1399,7 @@ bool battle_start(Battle *b, Play *p, bool practice)
     b->p = p;
     b->ga = p->ga;
     b->practice = practice;
+    b->demo = p->demo != 0;              /* [6493] */
     memcpy(b->m, p->ga->ds, DS_SIZE);
     for (int i = 0; i < MAX_SHIPS; i++)   /* the ship names, at DS:609F as WAS.EXE loads them */
         memcpy(&b->m[0x609F + i * 15], p->c->ships[i].name, 15);

@@ -5,12 +5,16 @@
  * Original game by Dave Murry & Barry Murry
  * Published by Brøderbund Software Inc.
  *
- * main.c: the window, the asset viewer (step 1) and campaign play (steps 2
- * and 3).
+ * main.c: the window, the menus (step 6), campaign play (steps 2-5) and
+ * the asset viewer (step 1, behind F12 on the title page).
  *
  * Everything is drawn from the player's own copy of the original game, in
  * the CGA colours (WAS.EXE) or the 16 colours of the Tandy 1000 version
  * (WAST.DAT).
+ *
+ * The menus: the original keys (-/+ or the arrows, Enter, Esc, Space, Y/N, S/N,
+ *        C/Q), plus Tab CGA/16 colours/Hercules, F2 aspect, F12 (title page)
+ *        the asset viewer, Alt/Cmd+Enter full screen.
  *
  * Viewer keys:  Left/Right, Space  previous/next screen    Tab   CGA / 16 colours / Hercules
  *        Up/Down, -/+, mouse wheel   scroll a campaign map
@@ -19,12 +23,12 @@
  *        I           on a map: its story, then its ships, then the map again
  *        F2 or A     4:3 or square pixels    H     show/hide the caption
  *        F, Alt+Enter, Cmd+Enter  full screen  O   choose the game folder
- *        Esc         quit
+ *        Esc         back to the title page
  *
  * Playing: the original keys (arrows or keypad move the marker, -/+ scroll,
  *        M Move (trace, M marks, C cancels), I Info (S speed), D Detach,
  *        J Join (-/+ mark, S switch, E end), E End, T Time, F Fleet,
- *        P Pause, S Surrender, C Clear, Y/N answers, Enter at the end), plus
+ *        P Pause, S Surrender, C Clear, Alt+S save, Y/N answers, Enter at the end), plus
  *        Tab CGA/16 colours/Hercules, F2 aspect, Alt/Cmd+Enter full screen,
  *        Esc leave the game.
  *
@@ -39,6 +43,7 @@
 #include "campaign.h"
 #include "gfx.h"
 #include "icon.h"
+#include "menu.h"
 #include "play.h"
 #include "viewer.h"
 
@@ -51,6 +56,10 @@ typedef struct {
     bool          have_assets;
     Campaign      campaigns[NUM_CAMPAIGNS];
     Viewer        viewer;
+    Menu         *menu;          /* overlay 1 (step 6), NULL without the menus' files */
+    bool          in_menu;
+    bool          from_menu;     /* the game came from the menus (their last page shows while it loads) */
+    Uint64        menu_ns;       /* the menus' last run */
     bool          playing;
     Campaign      game;          /* the campaign being played */
     Play          play;
@@ -81,6 +90,11 @@ static void update_title(App *app)
         return;
     }
     const Viewer *v = &app->viewer;
+    if (app->in_menu) {
+        SDL_snprintf(t, sizeof t, APP_TITLE " - %s", viewer_mode_name(v));
+        SDL_SetWindowTitle(app->win, t);
+        return;
+    }
     if (app->playing) {
         SDL_snprintf(t, sizeof t, APP_TITLE " - %s - %s", app->game.title, viewer_mode_name(v));
         SDL_SetWindowTitle(app->win, t);
@@ -120,14 +134,35 @@ static SDL_FRect dest_rect(App *app, int w, int h, bool *integer)
     return r;
 }
 
+/* Options Shoppe: "display is black/white" (on a plain CGA the setting does nothing) */
+static void apply_display(App *app, Screen *s)
+{
+    if (!app->menu || assets_scnf_word(&app->ga, 0x684D) != 0) return;
+    for (int i = 0; i < 16; i++) {
+        int g = (s->pal[i].r * 30 + s->pal[i].g * 59 + s->pal[i].b * 11) / 100;
+        s->pal[i] = (RGB){ (uint8_t)g, (uint8_t)g, (uint8_t)g };
+    }
+}
+
 static void render(App *app)
 {
     SDL_SetRenderDrawColor(app->ren, 0, 0, 0, 255);
     SDL_RenderClear(app->ren);
     if (app->have_assets) {
-        if (app->playing && app->battle) battle_draw(app->battle, &app->screen, app->viewer.mode);
-        else if (app->playing) play_draw(&app->play, &app->screen, app->viewer.mode);
+        GfxMode mode = app->viewer.herc ? MODE_CGA : app->viewer.mode;
+        if (app->in_menu && app->menu) menu_draw(app->menu, &app->screen, mode);
+        else if (app->playing && app->battle) battle_draw(app->battle, &app->screen, mode);
+        else if (app->playing && app->play.hidden) {
+            /* campaign_play is loading: the menus' last page stays (after a battle, its last screen) */
+            if (app->from_menu && app->menu) menu_draw(app->menu, &app->screen, mode);
+        }
+        else if (app->playing && app->play.offer_at_start && app->from_menu && app->menu) {
+            menu_draw(app->menu, &app->screen, mode);    /* the offer over the last page (campaign_play ovl4:7815) */
+            play_draw_offer(&app->play, &app->screen, mode);
+        }
+        else if (app->playing) play_draw(&app->play, &app->screen, mode);
         else viewer_draw(&app->viewer, &app->screen);
+        if (app->in_menu || app->playing) apply_display(app, &app->screen);
         bool herc = app->viewer.herc && app->tex_herc;
         int w = herc ? HERC_W : SCREEN_W, h = herc ? HERC_H : SCREEN_H;
         SDL_Texture *tex = herc ? app->tex_herc : app->tex;
@@ -230,6 +265,15 @@ static bool load_from(App *app, const char *dir, bool remember)
     if (app->ga.set[mode].loaded) app->viewer.mode = mode;
     app->viewer.herc = herc;
     if (remember) save_game_dir(dir);
+    menu_destroy(app->menu);
+    app->menu = NULL;
+    app->in_menu = app->playing = false;
+    if (app->ga.have_menus) {
+        char *pref = SDL_GetPrefPath(APP_ORG, APP_NAME);
+        app->menu = menu_create(&app->ga, app->campaigns, pref);
+        SDL_free(pref);
+        if (app->menu) { menu_start(app->menu); app->in_menu = true; app->menu_ns = SDL_GetTicksNS(); }
+    }
     SDL_Log("Loaded game files from %s (%d campaigns; 16 colours: %s)", dir, n,
             app->ga.set[MODE_16].loaded ? "yes" : "no");
     set_window_icon(app);
@@ -352,6 +396,7 @@ static int held_cursor_key(void)
     return PK_NONE;
 }
 
+/* the viewer's Enter: play the campaign shown, straight from its map */
 static void start_play(App *app)
 {
     const Campaign *c = &app->campaigns[app->viewer.index - SCREEN_MAP_FIRST];
@@ -359,7 +404,61 @@ static void start_play(App *app)
     app->game = *c;
     play_start(&app->play, &app->game, &app->ga, (unsigned)SDL_GetTicks());
     app->playing = true;
+    app->in_menu = false;
+    app->from_menu = false;
     app->tapped = 0;
+}
+
+/* back to the menus (rt:0000's loop): the title page, the battle report or saving */
+static void to_menu(App *app)
+{
+    app->playing = false;
+    app->in_menu = app->menu != NULL;
+    app->menu_ns = SDL_GetTicksNS();
+}
+
+/* What the menus asked for */
+static bool menu_step(App *app)
+{
+    Uint64 now = SDL_GetTicksNS();
+    menu_run(app->menu, (double)(now - app->menu_ns) / 1000.0);
+    app->menu_ns = now;
+    uint16_t r, ptr;
+    menu_random(app->menu, &r, &ptr);
+    switch (menu_action(app->menu)) {
+    case MENU_START_GAME:
+        app->game = *menu_game(app->menu);
+        play_start_rnd(&app->play, &app->game, &app->ga, r, ptr);
+        break;
+    case MENU_DEMO:
+        app->game = *menu_game(app->menu);
+        play_start_demo(&app->play, &app->game, &app->ga, r, ptr);
+        break;
+    case MENU_RESUME_GAME:
+        if (!menu_resume(app->menu, &app->play, &app->game)) { menu_title(app->menu); return true; }
+        break;
+    case MENU_CONTINUE:
+        play_resume(&app->play);
+        break;
+    case MENU_QUIT:
+        return false;
+    default:
+        return true;
+    }
+    app->in_menu = false;
+    app->playing = true;
+    app->from_menu = true;
+    app->tapped = 0;
+    return true;
+}
+
+/* The demo is over (a key, a battle, the end of its game): the title page,
+ * as game_init shows it again (rt:00BC; battle_report returns at once) */
+static void end_demo(App *app)
+{
+    if (app->battle) { fiber_stop(&app->battle->fiber); SDL_free(app->battle); app->battle = NULL; }
+    to_menu(app);
+    if (app->menu) menu_title(app->menu);
 }
 
 /* One iteration of campaign play */
@@ -368,8 +467,17 @@ static void play_step(App *app)
     int held = held_cursor_key();
     if (!held && app->tapped) held = app->tapped;
     app->tapped = 0;
-    play_frame(&app->play, held);
-    if (app->play.result != PLAY_RUNNING) app->playing = false;   /* back to the viewer (the title page: step 6) */
+    play_frame(&app->play, app->play.demo ? 0 : held);
+    if (app->play.result != PLAY_RUNNING) {
+        PlayResult res = app->play.result;
+        if (!app->menu) { app->playing = false; return; }   /* no menus: back to the viewer */
+        if (app->play.demo) { end_demo(app); return; }
+        to_menu(app);
+        if (res == PLAY_SAVE) menu_save(app->menu, &app->play);                         /* thunk 4 */
+        else if (res == PLAY_WON || res == PLAY_LOST) menu_report(app->menu, &app->play);   /* thunk 5 */
+        else menu_title(app->menu);
+        return;
+    }
     if (app->playing && app->play.battle_req) {                  /* Zoom or Practice: the sea battle */
         app->battle = SDL_malloc(sizeof *app->battle);
         if (!app->battle || !battle_start(app->battle, &app->play, app->play.battle_req == 2)) {
@@ -387,6 +495,8 @@ static void end_battle(App *app)
     battle_finish(app->battle);
     SDL_free(app->battle);
     app->battle = NULL;
+    app->from_menu = false;
+    if (app->play.demo) end_demo(app);       /* rt:0146: after the demo's battle, the title page */
 }
 
 /* The sea battle runs on its own clock; the screen is shown 60 times a second. */
@@ -507,7 +617,18 @@ int main(int argc, char **argv)
     const Uint64 frame_ns = SDL_NS_PER_SECOND / PLAY_HZ;
     while (running) {
         SDL_Event e;
-        if (app.playing && app.battle) {
+        if (app.in_menu && app.menu) {                 /* overlay 1 runs on its own clock, shown 60 times a second */
+            Uint64 now = SDL_GetTicksNS();
+            if (now >= next_frame) {
+                next_frame = now + SDL_NS_PER_SECOND / 60;
+                bool was = app.in_menu;
+                if (!menu_step(&app)) running = false;
+                if (was != app.in_menu) update_title(&app);
+                render(&app);
+                continue;
+            }
+            if (!SDL_WaitEventTimeout(&e, (Sint32)((next_frame - now) / SDL_NS_PER_MS) + 1)) continue;
+        } else if (app.playing && app.battle) {
             Uint64 now = SDL_GetTicksNS();
             if (now >= next_frame) {
                 next_frame = now + SDL_NS_PER_SECOND / 60;
@@ -521,7 +642,7 @@ int main(int argc, char **argv)
             if (now >= next_frame) {
                 next_frame = (now - next_frame > frame_ns * 4) ? now + frame_ns : next_frame + frame_ns;
                 play_step(&app);
-                if (!app.playing) update_title(&app);
+                if (!app.playing || app.in_menu) update_title(&app);
                 render(&app);
                 continue;
             }
@@ -542,6 +663,20 @@ int main(int argc, char **argv)
                 bool mod = (e.key.mod & (SDL_KMOD_ALT | SDL_KMOD_GUI)) != 0;
                 if (k == SDLK_Q && (e.key.mod & SDL_KMOD_GUI)) running = false;
                 else if (k == SDLK_RETURN && mod) toggle_fullscreen(&app);
+                else if (app.in_menu && app.menu) {
+                    if (k == SDLK_TAB) viewer_key(&app.viewer, VK_MODE);
+                    else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
+                    else if (k == SDLK_F12 && menu_on_title(app.menu)) { app.in_menu = false; update_title(&app); }
+                    else {
+                        int pk = k == SDLK_ESCAPE ? PK_ESC : k == SDLK_Q ? 0x10 : play_keycode(k);
+                        if (pk) menu_key(app.menu, pk);
+                    }
+                }
+                else if (app.playing && app.play.demo) {   /* any key ends the demo (ovl4:790D) */
+                    if (k == SDLK_TAB) viewer_key(&app.viewer, VK_MODE);
+                    else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
+                    else if (!e.key.repeat) { end_demo(&app); update_title(&app); }
+                }
                 else if (app.playing && app.battle) {
                     if (k == SDLK_TAB) viewer_key(&app.viewer, VK_MODE);
                     else if (k == SDLK_F2) app.aspect_43 = !app.aspect_43;
@@ -558,7 +693,10 @@ int main(int argc, char **argv)
                         else if (pk) play_key(&app.play, pk, (e.key.mod & SDL_KMOD_SHIFT) != 0);
                     }
                 }
-                else if (k == SDLK_ESCAPE) running = false;
+                else if (k == SDLK_ESCAPE) {             /* the viewer: back to the title page */
+                    if (app.menu) { app.in_menu = true; app.menu_ns = SDL_GetTicksNS(); menu_title(app.menu); }
+                    else running = false;
+                }
                 else if ((k == SDLK_RETURN || k == SDLK_KP_ENTER) && app.have_assets && viewer_is_map(&app.viewer) &&
                          app.viewer.page == 0) start_play(&app);
                 else if (k == SDLK_F) toggle_fullscreen(&app);
@@ -566,7 +704,9 @@ int main(int argc, char **argv)
                 else if (k == SDLK_F2 || k == SDLK_A) app.aspect_43 = !app.aspect_43;
                 else if (app.have_assets) viewer_key(&app.viewer, viewer_keycode(k, (e.key.mod & SDL_KMOD_SHIFT) != 0));
                 dirty = true;
-            } else if (e.type == SDL_EVENT_MOUSE_WHEEL && app.have_assets && !app.playing) {
+            } else if (e.type == SDL_EVENT_KEY_UP && app.in_menu && app.menu) {
+                menu_key_up(app.menu);
+            } else if (e.type == SDL_EVENT_MOUSE_WHEEL && app.have_assets && !app.playing && !app.in_menu) {
                 viewer_scroll(&app.viewer, (int)SDL_roundf(-e.wheel.y * TILE_H / 2));
                 dirty = true;
             } else if (e.type == SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED || e.type == SDL_EVENT_WINDOW_EXPOSED) {
@@ -580,6 +720,7 @@ int main(int argc, char **argv)
     }
 
     if (app.battle) { fiber_stop(&app.battle->fiber); SDL_free(app.battle); }
+    menu_destroy(app.menu);
     if (app.have_assets) assets_free(&app.ga);
     SDL_DestroyTexture(app.up);
     SDL_DestroyTexture(app.tex);

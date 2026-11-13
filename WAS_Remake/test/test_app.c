@@ -7,9 +7,10 @@
  *
  * test/test_app.c: the whole app (main.c) with SDL's offscreen video driver,
  * driven by key events from a thread-free script in the event watch: the
- * viewer to the first campaign map, Enter to play, the marker, Info, End,
- * Fleet, Esc and Y back to the viewer, then quit. Saves the window's last
- * frame of each step as a BMP.
+ * menus ("presented by", the title page), F12 to the viewer, the first
+ * campaign map, Enter to play, the marker, Fleet, Time, Tab, Esc and Y back
+ * to the title page, then quit from it. Saves the window's last frame of each
+ * step as a BMP.
  *
  * Usage: SDL_VIDEODRIVER=offscreen test_app GAME-FOLDER OUT-FOLDER
  */
@@ -17,26 +18,36 @@
 
 static const char *OUT;
 static int frame_no = 0, step = 0;
-static SDL_Keycode SCRIPT[] = {
-    SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT,
-    SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT, SDLK_RIGHT,   /* map 1 */
-    SDLK_RETURN,                                   /* play */
-    SDLK_LEFT, SDLK_LEFT, SDLK_LEFT, SDLK_DOWN,    /* the marker */
-    SDLK_F, SDLK_SPACE, SDLK_T, SDLK_TAB, SDLK_TAB, /* Fleet, Time, 16 colours, Hercules */
-    SDLK_ESCAPE, SDLK_Y,                           /* back to the viewer */
-    SDLK_ESCAPE,                                   /* quit */
+static const struct { int wait_ms; SDL_Keycode key; } SCRIPT[] = {
+    { 9000, SDLK_F12 },                             /* the title page (after "presented by"): the viewer */
+    { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT },
+    { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT },
+    { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT },
+    { 400, SDLK_RIGHT }, { 400, SDLK_RIGHT },       /* map 1 */
+    { 400, SDLK_RETURN },                           /* play */
+    { 9000, SDLK_LEFT }, { 400, SDLK_LEFT }, { 400, SDLK_LEFT }, { 400, SDLK_DOWN },   /* the marker, once the map shows */
+    { 400, SDLK_F }, { 400, SDLK_SPACE }, { 400, SDLK_T }, { 400, SDLK_TAB }, { 400, SDLK_TAB }, { 400, SDLK_TAB },
+    { 400, SDLK_ESCAPE }, { 400, SDLK_Y },          /* to the title page */
+    { 2000, SDLK_MINUS }, { 1500, SDLK_RETURN },    /* quit */
 };
 #define NSCRIPT ((int)(sizeof SCRIPT / sizeof SCRIPT[0]))
 
 static bool test_present(SDL_Renderer *r)
 {
     frame_no++;
-    if (frame_no % 3 == 0 && step < NSCRIPT) {     /* a key every third frame */
+    static Uint64 last = 0;
+    Uint64 now = SDL_GetTicks();
+    if (last == 0) last = now;
+    if (step < NSCRIPT && now - last >= (Uint64)SCRIPT[step].wait_ms) {   /* time for WAS.EXE's work and delays */
+        last = now;
         SDL_Event e;
         SDL_zero(e);
         e.type = SDL_EVENT_KEY_DOWN;
-        e.key.key = SCRIPT[step];
+        e.key.key = SCRIPT[step].key;
         e.key.down = true;
+        SDL_PushEvent(&e);
+        e.type = SDL_EVENT_KEY_UP;
+        e.key.down = false;
         SDL_PushEvent(&e);
         SDL_Surface *s = SDL_RenderReadPixels(r, NULL);
         if (s) {

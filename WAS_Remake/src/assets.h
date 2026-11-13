@@ -97,6 +97,12 @@ typedef struct {
     int16_t  opp[6][OPP_WORDS];               /* SO2: the six opponents' values */
     bool     have_so2;
     uint8_t  scnf[SCNF_SIZE];                 /* SCNF, or WAS.EXE's defaults (ovl1_startup) */
+    /* the menus (step 6, overlay 1): SO2 (the opponents, the quotes, the
+       report, the Options Shoppe, the opening), SO3 (the scrolls' letters and
+       words), SO4 (the campaign menu), the WAS disk's SITLES and SDITLES */
+    uint8_t  so2[0x1600], so3[0x1000], so4[0x200];
+    uint8_t  sitles[876], sditles[876];
+    bool     have_menus;
     AssetSet set[MODE_COUNT];
 } GameAssets;
 
@@ -123,6 +129,9 @@ int  assets_scnf_word(const GameAssets *ga, unsigned ds_offset);
 /* A zero-terminated string from WAS.EXE's data segment or SO5 ("" if out of range). */
 const char *assets_ds_string(const GameAssets *ga, unsigned offset);
 const char *assets_so5_string(const GameAssets *ga, unsigned offset);
+
+/* A zero-terminated string from a menu file ("" if out of range) */
+const char *assets_buf_string(const uint8_t *buf, size_t size, unsigned offset);
 
 /* True if dir looks like it holds the original game (has WAS.EXE). */
 bool assets_dir_ok(const char *dir);

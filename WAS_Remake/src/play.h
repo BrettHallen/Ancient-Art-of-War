@@ -31,6 +31,7 @@
 #define ROUTE_SIZE     600     /* DS:542F: the routes (the enemy and the merchants, step 5) */
 #define PATH_END       99      /* the step that ends a path */
 #define NO_DEST        0x270F  /* 9999 */
+#define AREA_WORDS     1300    /* DS:3F3D-4964 */
 #define MAX_PORTS      75      /* DS:689C: ports a merchant can sail to */
 #define DELAY_UNIT_US  50.0    /* one unit of WAS.EXE's delay() on an IBM PC/XT (as WAR's) */
 
@@ -72,7 +73,7 @@ typedef struct {
     int  partner;            /* 56FF: the other squadron of an encounter + 1 (the crossed swords; Zoom) */
     bool seen;               /* 574F */
     bool has_path;           /* 583F: on a traced path (Info's S changes the speed) */
-    bool has_route;          /* 588F: on a route (the enemy, step 5) */
+    int  has_route;          /* 588F: on a route (1; 2 a route to attack, set by ovl4_cfef) */
     int  port_speed;         /* 6581: the speed before an encounter (Info's S sets it too) */
     int  path_pos;           /* 579F: its next step in the path ring */
     int  route_pos;          /* 57EF */
@@ -80,7 +81,7 @@ typedef struct {
     int  move_delay;         /* 64E1: ticks a step takes */
     int  dest;               /* 6316: where its traced path ends (the little cross), or NO_DEST */
     int  merchant_dest;      /* 5F35: the port a merchant sails for */
-    bool routed;             /* 5687 */
+    int  routed;             /* 5687: a route was found (1; 2 to a cell where your squadrons are) */
 } PSquad;
 
 typedef struct {
@@ -113,7 +114,22 @@ typedef struct {
 
     /* the map */
     uint8_t  map[NUM_CELLS];        /* DS:5BFF */
-    uint16_t coast[NUM_CELLS];      /* 425D: the shape of each cell's shore (rt_2523) */
+    /* DS:3F3D-4964, kept in WAS.EXE's order: the route searches' work arrays
+       run on into each other when they overflow, as in WAS.EXE */
+    union {
+        int16_t area[AREA_WORDS];
+        struct {
+            int16_t  came[NUM_CELLS];      /* 3F3D: the step a search came into each cell by (9 the start) */
+            int16_t  cost[NUM_CELLS];      /* 40CD: its cost so far */
+            uint16_t coast[NUM_CELLS];     /* 425D: the shape of each cell's shore (rt_2523) */
+            int16_t  danger[NUM_CELLS];    /* 43ED: the extra cost of a cell near your strength */
+            int16_t  queue[100];           /* 457D: the search's cells */
+            int16_t  strength[NUM_CELLS];  /* 4645: the strength map (ovl4_e805): theirs +, yours -,
+                                              -7 your flagship */
+            int16_t  pvalue[NUM_CELLS];    /* 47D5: what the cells beside ports and crowns are worth
+                                              to the enemy (ovl4_ea51) */
+        };
+    };
     int      port_sup[NUM_CELLS];   /* 4965: what a port or crown has left */
     bool     inverted[NUM_CELLS];   /* the tile is drawn inverted (rt_2e61): a port with nothing left */
     int      port_cell[MAX_PORTS];  /* 689C: ports merchants can reach, -1 after the last */
@@ -147,7 +163,15 @@ typedef struct {
     int      battle_a, battle_b;   /* 6301, 6303: the last Zoom's squadrons (step 4) */
     int      crown_threat;   /* 6309 */
     int      merchant_lost;  /* 6898 */
-    int      ai_done;        /* 64DD: a squadron that finished its path (step 5) */
+    /* the enemy (step 5) */
+    int      ai_done;        /* 64DD: the last squadron the enemy gave orders to (move_squadrons sets it
+                                back to look again at one that finished its path) */
+    int      ai_sq;          /* 62FF: the squadron being given orders */
+    int      ai_range;       /* 64D7: the distance to the squadron chosen to attack, the path's limit */
+    int      ai_target;      /* 64DF: the cell a route is looked for to */
+    int      qn;             /* 6495: cells in the search queue */
+    int      ai_reverse;     /* 69CB: the routes to the target set out the other way round */
+    int      ai_dropped;     /* 69CD: the target given up, not to be taken again at once */
     int      water_value[2]; /* 65B2, 65B4 (rt_2523, for step 5) */
     bool     in_encounters;  /* inside ovl4_8BCD: an accepted surrender does not end the game */
     bool     no_flags[2];    /* 65BA, 65BB: you, they began with no flagship but have a crown:
@@ -169,10 +193,16 @@ typedef struct {
     bool     end_quit;       /* the game ends straight after the key (ovl4:C51A) */
 
     uint16_t rnd, rnd_ptr;   /* random() (rt:2F0D): DS:0808 and 080A */
-    int      stall;          /* iterations WAS.EXE spends in delay() */
+    int      stall;          /* iterations WAS.EXE spends in delay() or working (play_frame) */
+    double   work_us;        /* the work's XT time not yet turned into stalled iterations */
+    int      tick_stage;     /* a tick under way (play_frame): its next part, 0 none */
+    double   idle_left;      /* the idle iteration's work not yet set against this frame's */
 
     int      key;            /* the key for this iteration (DS:6896) */
     bool     jump;           /* Shift held: -/+ jump to the top / bottom (DS:081A) */
+    int      keybuf[15];     /* keys pressed while WAS.EXE was busy, as in the BIOS's buffer */
+    bool     keybuf_shift[15];
+    int      keybuf_n;
 
     bool     prompt_surrender, prompt_quit;
     bool     ended;          /* the game is over: waiting for Enter */
@@ -180,19 +210,36 @@ typedef struct {
     PlayResult result;       /* not PLAY_RUNNING once play is over */
     int      result_code;    /* 649F: 0, 2, 3, 4 won; 10, 12, 13, 14 lost; 1 their surrender accepted; 11 yours */
     int      beeps;          /* sounds asked for (step 8 plays them): counted for the tests */
+
+    /* the demo (step 6): [6493] 1, 2 once an encounter is announced (Zoom next);
+       the key it plays ([6896], keypad - or +: the map scrolls) */
+    int      demo;
+    int      demo_key;
+    int      demo_end;       /* iterations the end of a demo game stays */
+    bool     hidden;         /* campaign_play is still loading: the last screen stays (main.c) */
 } Play;
 
 /* Start a new game of campaign c. seed: the random number state (WAS.EXE
  * takes it from the clock). */
 void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed);
+/* The same with random()'s state carried over from the menus (DS:0808, 080A) */
+void play_start_rnd(Play *p, const Campaign *c, const GameAssets *ga, uint16_t rnd, uint16_t ptr);
+/* The demo (ovl1:87FF): opponent 2's values with 604F 3 and 6057 128, the
+ * fastest time, every squadron seen; the computer scrolls and zooms */
+void play_start_demo(Play *p, const Campaign *c, const GameAssets *ga, uint16_t rnd, uint16_t ptr);
+/* campaign_play starts again after the game was saved or loaded (ovl4:7650
+ * with [6465] = 0) */
+void play_resume(Play *p);
 
 /* A key was pressed (PK_ code); Shift held selects jump scrolling. */
 void play_key(Play *p, int key, bool shift);
 
 /* One main-loop iteration. held is the cursor key held down (PK_ code) or 0. */
 void play_frame(Play *p, int held);
+bool play_busy(const Play *p);      /* WAS.EXE working: a stall, or a tick under way */
 
 void play_draw(const Play *p, Screen *s, GfxMode mode);
+void play_draw_offer(const Play *p, Screen *s, GfxMode mode);   /* over the menus' last page */
 
 /* The height of the map on screen: 200 - 8 x text rows - 2 (182 with two rows) */
 int  play_map_h(const Play *p);

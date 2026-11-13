@@ -55,6 +55,7 @@ int main(int argc, char **argv)
     }
     /* the rules: no Esc or Y (the game goes on), the clock at its fastest */
     int paths = 0, ends = 0, lost = 0, msgs = 0;
+    long merchant_frames = 0, route_frames = 0, enemy_sailing = 0;
     for (int c = 0; c < NUM_CAMPAIGNS; c++) {
         play_start(&p, &cs[c], &ga, 99 + c);
         for (int f = 0; f < frames; f++) {
@@ -66,7 +67,7 @@ int main(int argc, char **argv)
             if (f == frames - 1) lost += p.losses[0] + p.losses[1];
             if (p.msg_rows && p.text[25 - p.text_rows][0] != ' ' && p.stall == 1) msgs++;
             if (p.time_div != 1 && (p.mode == PM_NORMAL)) play_key(&p, PK_T, false);
-            if (f % 150 == 0 && (p.mode == PM_NORMAL || p.mode == PM_SQUAD) && !p.stall) {   /* a squadron, M, a path, M */
+            if (f % 150 == 0 && (p.mode == PM_NORMAL || p.mode == PM_SQUAD) && !play_busy(&p)) {   /* a squadron, M, a path, M */
                 int i = (int)(rnd() % MAX_SHIPS);
                 if (p.sq[i].used && p.sq[i].side == -1 && p.sq[i].x > 2) {
                     p.cx = p.sq[i].x - 1;
@@ -100,9 +101,21 @@ int main(int argc, char **argv)
             }
             for (int i = 0; i < MAX_SHIPS; i++)
                 if (p.sq[i].used && (p.sq[i].supplies < 0 || p.sq[i].supplies > 20) && bad++ < 10) SDL_Log("S%d: supplies %d", c, p.sq[i].supplies);
+            for (int k2 = 0; k2 < ROUTE_SIZE; k2++) {   /* the route ring: directions 1-8 and 99 */
+                int v = p.path[PATH_SIZE + k2];
+                if (v != 0 && v != PATH_END && (v < 1 || v > 8) && bad++ < 10) SDL_Log("S%d frame %d: route ring %d = %d", c, f, k2, v);
+            }
+            for (int i = 0; i < MAX_SHIPS; i++) {
+                const PSquad *q = &p.sq[i];
+                if (q->used && q->mark == 2) merchant_frames++;
+                if (q->used && q->has_route) route_frames++;
+                if (q->used && q->side == 0 && q->mark != 2 && q->speed) enemy_sailing++;
+            }
         }
     }
     SDL_Log("fuzz_play rules: %d games ended, %d path checks, %d ships lost, %d messages", ends, paths, lost, msgs);
+    SDL_Log("fuzz_play enemy: %ld squadron-frames sailing, %ld on routes, %ld merchant-frames",
+            enemy_sailing, route_frames, merchant_frames);
     assets_free(&ga);
     SDL_Log("fuzz_play: %d frames a campaign, %d games ended, %d problems", frames, ended, bad);
     return bad ? 1 : 0;

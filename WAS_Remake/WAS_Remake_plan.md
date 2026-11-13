@@ -1,4 +1,4 @@
-# The Ancient Art of War at Sea remake: plan
+﻿# The Ancient Art of War at Sea remake: plan
 
 Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/README.md`, `WAS_Analysis/WAS_file_reference.md`). The decisions below are carried over from the WAR remake (`WAR_Remake`, `Remake_plan.md` in the project) unless marked **to agree**.
 
@@ -29,6 +29,7 @@ Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/R
 
 ## To agree
 - The scope of each step, as it comes up.
+- Step 6 (13 Nov), new small differences: on loading a saved game the ports merchants sail to are worked out again (SS does not hold them; WAS.EXE uses the last game's list, or none after starting); "Saving Game" stays half a second (a floppy's write); when SS can't be written the remake says "Unable to use data disk." (WAS.EXE offers to make a new data disk).
 - The battle and the boarding in 16 colours: WAST.EXE (the Tandy version) may draw them in its own colours (WAST.DAT has a 16-colour deck for boarding); how is not yet known (WAST.EXE is EXEPACKed). Until then the remake shows the CGA battle in the 16-colour mode as well (Hercules shows it as WAS HERC does).
 
 ## Build order (as for WAR)
@@ -73,10 +74,19 @@ Drafted 12 Nov 2026 after the first analysis of the At Sea disk (`WAS_Analysis/R
    - enemy.c: enemy_orders (ovl4:C79A, four times a tick), new_orders (C88A: stay in port, guard the crown), choose_target (CAEA: supplies, repairs, your crown, your flagship, the weak spots on the strength map), follow_route (CFEF: to the cell's middle, attack a squadron near enough (pick_victim D5C2, way_barred D799), the next leg (sail_to D99E, path_steps B03E), arrival: a merchant unloads, a warship joins others (ED83) and calls on the port), find_route (DB21) and port_search (E103) with WAS.EXE's work arrays DS:3F3D-4964 in its order (Play.area, so an overflowing queue runs on as it does there), the strength map (E805), the port values (EA51), port_side (BD3C); the merchants that restock ports get their routes the same way (ovl4:BEE3)
    - dsmap.c: campaign play's state in WAS.EXE's data-segment layout and back (for the tests now; the saved game SS in step 6)
    - checked against WAS.EXE's own code under the unicorn emulator (test/diff_ovl4: the remake's state written out, the routine run in both, the data segments compared): the enemy's orders, the strength map, the port values, encounters, sailing, eating, map battles and restocking matched in every sample (about 180 each over the 11 campaigns). delay() now calls random() as WAS.EXE's does (units / 2 times), which the comparison needed
-   - timing: the enemy's work makes a tick slow on an XT (a route search up to 400,000 instructions, 1.3 s). The routines count events (play_int.h EV: random(), list_ships, the searches' cells and queue, the map loops ...), weighed in 8086 instructions by a fit to WAS.EXE's own counts under the emulator (calib.py, fit.py: within about 10% on average), plus erase_squadrons and redraw_squadrons (3,350 + 500 a squadron shown); what an iteration does beyond the idle one is stalled at 300 instructions a millisecond, as delay() is. In DOSBox at 300 cycles The Bane of Oldain left alone ends with your crown taken after 127 s at the fastest time and 157 s at fast; the remake 113-130 s and 132-150 s over three seeds. Keys pressed meanwhile wait in a 15-key buffer, as in the BIOS's
+   - timing: the enemy's work makes a tick slow on an XT (a route search up to 400,000 instructions, 1.3 s). The routines count events (play_int.h EV: random(), list_ships, the searches' cells and queue, the map loops ...), weighed in 8086 instructions by a fit to WAS.EXE's own counts under the emulator (calib.py, fit.py: within about 10% on average), plus erase_squadrons and redraw_squadrons (3,350 + 500 a squadron shown); what an iteration does beyond the idle one is stalled at 300 instructions a millisecond, as delay() is. In DOSBox at 300 cycles The Bane of Oldain left alone ends with your crown taken after 127 s at the fastest time and 157 s at fast; the remake 113-130 s and 132-150 s over three seeds. Keys pressed meanwhile wait in a 15-key buffer, as in the BIOS's (13 Nov, after step 6: the tick is run in its parts, play.c tick_go: before each part after the encounters key_waiting (ovl4:85F8, a key held or pressed meanwhile) leaves the rest of the tick undone, as WAS.EXE does; before this the remake ran the whole tick and the map stood still for it, up to 7 s. With a key held 6 s up, 6 s down: the remake still 9% of the time, 11 pauses over 0.5 s in 100 s, the longest 1.0 s; DOSBox 10%, 9, 1.3 s. Left alone, The Bane of Oldain's crown is now taken after 142-148 s at the fastest time (149-156 s counting the 7.5 s before the map appears), DOSBox 129 s: since step 6 (sea_way as WAS.EXE's) the remake is about 12% slower here; to look into)
    - tests: test_enemy.c (every campaign left to the enemy at the fastest time), test/diff_ovl4 (Python, unicorn), the other tests let the stalled iterations go by before a key
-   - left for step 6: the saved game; step 8: the sounds
-6. Menus, options, saved games, battle report, the opening and the demo.
+   - left for step 6: the saved game (done); step 8: the sounds
+6. Menus, options, saved games, battle report, the opening and the demo - done (13 Nov)
+   - menu.c (overlay 1): ovl1_startup (SPM, the tune's length: SO2's DS:0C1A/0C86 tune, 6.75 s at an XT's tempo, or delay(60000) without music), show_title_ship (SPI: go to war / make changes / quit in small capitals; 5000 looks at the keyboard, each a delay(D19 / 10), then the demo: 7.3 s, as in DOSBox), show_scroll for the titles (titles_load ovl1:C617, titles_choose AB0A with ( war disk ) / ( data disk )), the story (story_view) and the rules (rules_write 9428, rules_choose AE72: Space changes a rule; no wind: wind changes never), choose_opponent (8BED: the frame blinks, the box sweeps), the quote and PREPARE FOR WAR!, campaign_menu (82AF, A5F5: SPG / SO4), options_shoppe (9BCB: the nine lines of SCNF), opening (A7DA: AD, Sun Tzu's lines on SO2's tune), battle_report (9704: SPN, or SPQ / SPP / SPO by opponent; Sunk, Captured, Flags; the result code's line), save_game (7B29) and load_saved_game (7D39)
+   - overlay 1 runs on a thread of its own (fiber.c, as the battle) with WAS.EXE's memories: BUF (two fields, the scroll 400 lines) and the CGA screen, and a 16-colour copy of each that every drawing routine writes too; the clock counts delay() at 50 us a unit and the drawing in instructions at 300 a millisecond (calibrated in DOSBox at 300 cycles: picture loading 0.2 s, scroll_clear 0.75 s, the unroll 0.4 s, the roll-up 0.4 s; go to war's pages within 0.2 s of the original's)
+   - the pause while campaign_play loads (play.c load_pause): the counted work of the new game (port_sources is most of it), 2.05 s of loading and drawing, and play_end_sound twice; the menus' last page (the quote, "One moment, please") stays meanwhile, as does the battle's last screen after a battle. DOSBox: The Bane of Oldain 7.2 s, The Race for the Crown 4.9 s; the remake 7.5 s and 5.4 s (play_end_sound at an XT's tempo)
+   - saved games: SS in WAS.EXE's own format (dsmap.c play_save_ds / play_load_ds: DS:3F39-6804); the campaign's title and story are found by its ship names; the paths' ends are forgotten on loading, as WAS.EXE does. The original's SS (saved in DOSBox) plays on in the remake, the remake's in the original
+   - the demo: play.c (poll_input ovl4:8645: the key it plays, now and then the other way; print_map_region BC2D: toward the news; msg_encounter B68C: [6493] 2 and Zoom; scroll limits stop it; no sighting or wind messages; "Press any key to end demo."), opponent 2's values with 604F 3 and 6057 128, every squadron seen, the fastest time; after its battle, the title page
+   - found on the way: sea_way (ovl4:E5BF) put cells back in its queue at the wrong place (WAS.EXE's queue[l6++]), so port_sources found only the ports beside the map's edge; now as WAS.EXE (diff_ovl4 `ports`, every sample); it uses WAS.EXE's work arrays (came, the queue running on into the strength map). Its cost fitted to WAS.EXE's (EV_SEAPOP, EV_SEAQ, EV_SEAB)
+   - checked in DOSBox: the title page, the titles, the story, the rules, the opponents, the opening, the campaign menu, the Options Shoppe (all but the data disk line), the battle report (a surrender to Thor Foote), the save pages pixel for pixel; a data disk as B: needs WAS.EXE patched at 7AC2h and A2A3h (75 -> EB) in the DOSBox copy
+   - tests: test_menu.c, test_saved.c, test_app.c (now through the menus)
+   - not ported: the joystick (as in WAR); the disk prompts (no floppies)
 7. The editors (map maker, ships, rules, story, title).
 8. Sound.
 
@@ -84,11 +94,16 @@ Each step: tests (scripted walkthroughs with screenshots, fuzzers under ASan), t
 
 ## Deliberate differences
 - Tab switches CGA / 16 colours (in WAS.EXE Tab scrolls up, as - does); F2 changes the aspect.
-- Esc in play asks "Quit to the title page? (Y or N)" (no Esc in WAS.EXE); until step 6 it goes back to the viewer, as does Enter after a surrender.
+- Esc in play asks "Quit to the title page? (Y or N)" (no Esc in WAS.EXE). After saving, Q returns to the title page (WAS.EXE quits to DOS). (As in WAR.)
+- No copy protection, no disk prompts; a data disk is a folder (Data Disks/<name>/ with SITLES, the S files, SS), chosen in the Options Shoppe (the "data disk uses a:/b:" line becomes "disk <name>" / "a new data disk") or, with more than one, from a list that ( data disk ) shows. A new data disk gets SITLES from SDITLES. (As in WAR.)
+- "presented by" stays for the tune's length (6.75 s) or 3 s without music; a key skips it. (As in WAR.)
+- The end of a demo game stays 3 s (WAS.EXE blinks "You Won" / "You Lost" until a key). (As in WAR.)
+- Options Shoppe: display "black/white" turns the whole picture grey (on a plain CGA the setting does nothing); "center the screen" is skipped by the pointer; the joystick setting is stored but not used. (As in WAR.)
+- Tunes and beeps are counted, not heard, until step 8; the time a tune took is kept (the report's "Press any key" comes after it, the opening's lines with it).
 - Info, Fleet and Pause are screens of the main loop rather than loops of their own (WAS.EXE waits in them); time is stopped in them as in the original.
 - Keys other than the marker's act once per press (WAS.EXE reads a held key again every iteration, so a held T steps the time on more than once).
 - Detach / Join, the opponent's offer and "You Won" / "You Lost" are screens of the main loop too; WAS.EXE's delays (after a message, a command) skip iterations rather than stop the program, and a key pressed meanwhile waits, as in the keyboard buffer.
-- Until step 6 the opponent's offer to surrender at the start of a game is shown over the map (WAS.EXE shows it over the opponent's page, before the map).
+- (Since step 6 the opponent's offer at the start of a game is shown over the quote's page, as in WAS.EXE.)
 - (The viewer itself is the remake's own, as in WAR.)
 
 ## Tooling still to make

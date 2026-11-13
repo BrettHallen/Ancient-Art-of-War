@@ -70,7 +70,7 @@ static const char *row(const Play *p, int r)
     return b;
 }
 
-static void settle(Play *p) { for (int n = 0; n < 1000 && p->stall; n++) play_frame(p, 0); }
+static void settle(Play *p) { for (int n = 0; n < 1000 && play_busy(p); n++) play_frame(p, 0); }
 static void press(Play *p, int key) { settle(p); play_key(p, key, false); play_frame(p, 0); settle(p); }
 static void hold(Play *p, int key, int n) { for (int i = 0; i < n; i++) { settle(p); play_frame(p, key); } }
 
@@ -111,7 +111,8 @@ int main(int argc, char **argv)
 
     /* r1-r4: tracing a path and sailing it */
     play_start(&p, &cs[0], &ga, 77);
-    CHECK(p.port_cell[0] == 90 && p.port_source[0] == 90, "S0's port on the edge: no merchants needed");
+    CHECK(p.port_cell[0] == 17 && p.port_source[0] == 90, "S0's first port %d, its merchants from %d",   /* as WAS.EXE's ovl4:C07C (diff_ovl4 ports) */
+          p.port_cell[0], p.port_source[0]);
     move_to(&p, 3, 186);
     CHECK(p.mode == PM_SQUAD && p.sel == 21, "F.D.Roosevelt selected");
     press(&p, PK_M);
@@ -189,8 +190,11 @@ int main(int argc, char **argv)
     c.squadrons[0].x = 48;
     c.squadrons[0].y = 8;
     play_start(&p, &c, &ga, 77);
-    int f = 0;
-    for (; f < 5000 && p.mode != PM_END; f++) play_frame(&p, 0);
+    int f = 0;   /* iterations, not counting those WAS.EXE spends working */
+    for (int g = 0; g < 8000 && p.mode != PM_END; g++) {
+        if (!play_busy(&p)) f++;
+        play_frame(&p, 0);
+    }
     CHECK(f == 1280 && p.result_code == 3 && p.end_quit, "taken on tick 20 (iteration %d), code %d", f, p.result_code);
     CHECK(SDL_strcmp(row(&p, 22), "BLACK CROWN CAPTURED IN THE NORTH") == 0, "crown message '%s'", row(&p, 22));
     for (int g = 0; g < 400 && p.end_frame < 14; g++) play_frame(&p, 0);
@@ -219,7 +223,7 @@ int main(int argc, char **argv)
 
     /* r12: the wind */
     ga.scnf[0x6865 - 0x684C] = 1;
-    play_start(&p, &cs[0], &ga, 4);
+    play_start(&p, &cs[0], &ga, 7);
     CHECK(p.wind_on && p.wind == 0 && SDL_strcmp(row(&p, 22), "Wind is from the North") == 0, "wind '%s'", row(&p, 22));
     save(&p, "r12_wind");
     ga.scnf[0x6865 - 0x684C] = 0;

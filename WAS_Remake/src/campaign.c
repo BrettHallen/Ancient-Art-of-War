@@ -114,12 +114,19 @@ static void load_titles(Campaign *c, const char *dir)
 /* ovl1:C388 load_campaign */
 bool campaign_load_file(Campaign *c, const char *dir, const char *name)
 {
+    size_t size = 0;
+    uint8_t *d = assets_load_file(dir, name, &size);
+    bool ok = campaign_parse(c, name, d, size);
+    SDL_free(d);
+    return ok;
+}
+
+bool campaign_parse(Campaign *c, const char *name, const uint8_t *d, size_t size)
+{
     SDL_memset(c, 0, sizeof *c);
     SDL_strlcpy(c->file, name, sizeof c->file);
     SDL_snprintf(c->title, sizeof c->title, "Campaign %s", name);
-    size_t size = 0;
-    uint8_t *d = assets_load_file(dir, name, &size);
-    if (!d || size < S_FILE_MIN) { SDL_free(d); return false; }
+    if (!d || size < S_FILE_MIN) return false;
     clean_text(c->story, sizeof c->story, d, 840);
     SDL_memcpy(c->story_raw, d, 840);
     SDL_memcpy(c->map, d + 0x348, sizeof c->map);
@@ -130,7 +137,6 @@ bool campaign_load_file(Campaign *c, const char *dir, const char *name)
     if (size >= S_FILE_MIN + MAX_SHIPS) SDL_memcpy(c->hull_raw, d + S_FILE_MIN, MAX_SHIPS);
     decode_ships(c, d + 0x604);
     c->loaded = true;
-    SDL_free(d);
     return true;
 }
 

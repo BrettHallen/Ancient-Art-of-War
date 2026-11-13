@@ -80,6 +80,8 @@ extern const char *const OPPONENT_NAMES[NUM_OPPONENTS];
 /* Load S0-SA and their titles (SITLES). Returns the number of campaigns loaded. */
 int  campaigns_load(Campaign out[NUM_CAMPAIGNS], const char *dir);
 bool campaign_load_file(Campaign *c, const char *dir, const char *name);
+/* The same from an S file's bytes (2180 or 2220; the saved game builds one from SS) */
+bool campaign_parse(Campaign *c, const char *name, const uint8_t *d, size_t size);
 
 /* Draw the map tiles: view_h lines from scroll_px down the map. */
 void campaign_draw_tiles(Screen *s, const GameAssets *ga, GfxMode mode, const Campaign *c, int scroll_px, int view_h);

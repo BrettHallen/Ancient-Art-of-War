@@ -61,13 +61,16 @@ static const char *row(const Play *p, int r)
     return b;
 }
 
-static void press(Play *p, int key) { play_key(p, key, false); play_frame(p, 0); }
+/* the iterations WAS.EXE spends working or waiting go by first (a key waits meanwhile) */
+static void settle(Play *p) { for (int n = 0; n < 1000 && play_busy(p); n++) play_frame(p, 0); }
+static void press(Play *p, int key) { settle(p); play_key(p, key, false); play_frame(p, 0); settle(p); }
 
 /* hold the keypad key toward (x, y) until the marker is there */
 static void move_to(Play *p, int x, int y)
 {
     for (int n = 0; n < 500 && (p->cx != x || p->cy != y); n++) {
         int dx = (x > p->cx) - (x < p->cx), dy = (y > p->cy) - (y < p->cy);
+        settle(p);
         play_frame(p, PK_HOME + (dy + 1) * 4 + (dx + 1));
     }
     CHECK(p->cx == x && p->cy == y, "marker at %d,%d not %d,%d", p->cx, p->cy, x, y);

@@ -380,6 +380,14 @@ const char *assets_ds_string(const GameAssets *ga, unsigned offset)
     return "";
 }
 
+const char *assets_buf_string(const uint8_t *buf, size_t size, unsigned offset)
+{
+    if (!buf || offset >= size) return "";
+    for (size_t i = offset; i < size; i++)
+        if (buf[i] == 0) return (const char *)buf + offset;
+    return "";
+}
+
 const char *assets_so5_string(const GameAssets *ga, unsigned offset)
 {
     if (offset >= sizeof ga->so5 - 1) return "";
@@ -415,6 +423,19 @@ bool assets_load(GameAssets *ga, const char *dir, char *err, size_t errlen)
         [0x6868 - 0x684C] = 1,                      /* the wind 6865 off */
     };
     SDL_memcpy(ga->scnf, SCNF_DEFAULT, sizeof ga->scnf);
+    /* the menus' files (ovl1: load_so2, load_o3, SO4 in ovl1_82af, SITLES) */
+    struct { const char *name; uint8_t *to; size_t size, min; } mf[5] = {
+        { "SO2", ga->so2, sizeof ga->so2, 0x14D3 }, { "SO3", ga->so3, sizeof ga->so3, 0xEEE },
+        { "SO4", ga->so4, sizeof ga->so4, 0x1FB }, { "SITLES", ga->sitles, sizeof ga->sitles, 876 },
+        { "SDITLES", ga->sditles, sizeof ga->sditles, 876 },
+    };
+    ga->have_menus = true;
+    for (int k = 0; k < 5; k++) {
+        uint8_t *d = assets_load_file(dir, mf[k].name, &n);
+        if (!d || n < mf[k].min) ga->have_menus = false;
+        if (d) SDL_memcpy(mf[k].to, d, SDL_min(n, mf[k].size));
+        SDL_free(d);
+    }
     uint8_t *scnf = assets_load_file(dir, "SCNF", &n);
     if (scnf && n >= SCNF_SIZE) SDL_memcpy(ga->scnf, scnf, SCNF_SIZE);
     SDL_free(scnf);

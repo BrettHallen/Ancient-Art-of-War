@@ -1,12 +1,24 @@
-# The Ancient Art of War at Sea - Remake
+﻿# The Ancient Art of War at Sea - Remake
 A modern version of The Ancient Art of War at Sea (Brøderbund, 1987) for macOS, written in C with [SDL3](https://www.libsdl.org/). It also builds on Windows and Linux. It is built the same way as the [WAR remake](../WAR_Remake): the original program is ported routine by routine from its disassembly (`../WAS_Analysis/WAS.EXE.asm`) and checked against the original.
 
 The remake uses the original pictures, map tiles, sprites and font, in either the **CGA** (4-colour) version or the **16-colour** version made for the Tandy 1000, or shown as on a **Hercules** monochrome card (the original's `WAS HERC`).
 
-**No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `AD`, `B`, the `S` files and `SITLES`, plus `WAST.DAT` for the 16-colour graphics.
+**No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `SO0`-`SO8`, `AD`, `B`, the `S` files, `SITLES` and `SDITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
 ## Status
-Steps 1 to 4 of the plan (`WAS_Remake_plan.md`) are done.
+Steps 1 to 6 of the plan (`WAS_Remake_plan.md`) are done.
+
+**The menus** (step 6, overlay 1 of WAS.EXE): the remake now starts as the original does.
+- *presented by* (the opening tune's length; a key skips it), then the title page: **go to war**, **make changes** or **quit**, chosen with - and + and Enter
+- **go to war**: the scroll unrolls with the titles (**Esc** goes back), then the campaign's story (- and + scroll it), then its rules (**Space** changes the rule under the sword), then the six opponents (+ goes through them; their portraits blink while you choose), then a quote and *PREPARE FOR WAR!* while the campaign loads
+- **make changes**: the campaign menu (- and + move the frame, Enter): *The Ancient Art of War.* plays the opening (Sun Tzu's lines in time with its tune), *Ye Olde Options Shoppe.* sets the fight delay, the wind, the reload time, the cannon aim, the display, the data disk, the sounds and the joystick (Space changes the line under the sword, Enter keeps them, in `SCNF`). Making, changing and removing campaigns come with step 7
+- **saving**: **Alt+S** during play saves the game on the data disk (*<C>ontinue with game or <Q>uit?*); a saved game there is asked about when you open *( data disk )* on the titles scroll: *Saved game* or *New campaigns*
+- the **battle report** at the end of a game, won or lost, with the picture for your opponent, the ships sunk and captured and the flags taken
+- the **demo**: left alone on the title page for about 7 seconds, the game plays one of the campaigns by itself, scrolling to the news and zooming into a battle; any key ends it
+
+The pages are drawn as WAS.EXE draws them and take the time they took on an IBM PC/XT (the scroll unrolling, the pause while a campaign loads); they match the original in DOSBox pixel for pixel. Saved games are in the original's format (`SS`, the 10,444 bytes of WAS.EXE's data it saves): the original's saved games load in the remake, and the remake's in the original. Data disks are folders in `~/Library/Application Support/AncientArtOfWarAtSea/Remake/Data Disks/`, with the original's files (`SITLES`, the `S` files, `SS`); the Options Shoppe's data disk line chooses one, or makes a new one. In 16 colours the pages are the Tandy 1000 version's pictures.
+
+**The enemy commander** (step 5, overlay 4 of WAS.EXE): the enemy's squadrons now sail. Each in turn is given orders as in the original: stay in port to take on supplies or repairs, guard its crown, go for yours or for your flagship, or for wherever your squadrons look weak on its strength map, finding a route that keeps clear of your strength and of water its ships should avoid, and attacking any squadron it can beat on the way. Merchants sail to the ports that call for them and fill them up, and can be taken. How bold and how careful the enemy is comes from the opponent you chose. Its routines were checked against WAS.EXE's own code, run in an emulator from the same game state, and matched byte for byte. The time this thinking took on an IBM PC/XT is kept: at the fastest time a game goes at about two ticks a second, as the original does.
 
 **Sea battles and boarding** (step 4, overlays 5 to 7 of WAS.EXE):
 - **Zoom** (**Z** over your squadron while an encounter counts down) fights the encounter as a sea battle; **Practice** (**P** over a squadron that has no enemy near) sails it on its own, with the guns loading at their fastest
@@ -26,9 +38,9 @@ The battle runs at the speed it had on an IBM PC/XT, as the rest of the game doe
 - **Detach** (**D**) and **Join** (**J**): move ships between a squadron and a new one, or one beside it (**-** / **+** mark a ship, **S** switches it, **E** ends)
 - the end: the last ship or the last flagship of a side lost, or a crown taken (*BLACK CROWN CAPTURED*), shows *You Won* or *You Lost*; the opponent may offer to surrender (Y or N)
 
-The tracing box, the path's mark, sailing to the end of a path, Join, Detach, the messages, "In Port", the wind's face, a crown taken with *You Won*, and the opponent's offer match the original pixel for pixel (checked in DOSBox). The enemy does not move yet (step 5), and neither do the merchants that bring supplies to ports (step 5, as they use the enemy's routes).
+The tracing box, the path's mark, sailing to the end of a path, Join, Detach, the messages, "In Port", the wind's face, a crown taken with *You Won*, and the opponent's offer match the original pixel for pixel (checked in DOSBox).
 
-**Campaign play, the map** (step 2): press **Enter** on a campaign's map in the viewer to play it. The game starts as the original does, at the bottom of the map with the marker in the middle:
+**Campaign play, the map** (step 2): **go to war** from the title page (or press **Enter** on a campaign's map in the viewer to play it straight away). The game starts as the original does, at the bottom of the map with the marker in the middle:
 - the marker (the arrows or the keypad, held down to keep moving; it moves 27 times a second, as the original on an IBM PC/XT) and scrolling (- and +; with Shift, to the top or bottom)
 - the command line: *Time (slow) Fleet Pause Surrender*; over a squadron *Move Info Detach Join Zoom Practice*, as the original shows them
 - **Info**: the squadron's ships in a panel over the map: name, type, sails and hull, supplies, speed. **E** ends
@@ -43,7 +55,7 @@ The tracing box, the path's mark, sailing to the end of a path, Join, Detach, th
 - the map sprites: the anchor, the crossed swords of an encounter, a ship under sail in 16 headings, the flagship's pennant and the merchant's cargo, each as the player's (white with a black outline) and the enemy's (black with a white outline)
 - the eleven campaigns: the map with every squadron where it starts (at anchor, with the pennant over a squadron that has a flagship), the opponent and the number of ships on each side; **I** shows the campaign's story, then its squadrons and ships; **Enter** plays it
 
-The rest follows the build order in the plan: the enemy, the menus, the editors and sound.
+The rest follows the build order in the plan: the editors and sound.
 
 ## Building on macOS
 Install the tools with [Homebrew](https://brew.sh):
@@ -92,9 +104,12 @@ WAS.EXE drew the same picture for Hercules as for CGA, with each 4-colour pixel 
 | H | Show or hide the caption |
 | F, Cmd+Enter, Alt+Enter | Full screen |
 | O | Choose the game folder |
-| Esc | Quit |
+| Esc | Back to the title page |
 
-`--screenshots OUTDIR [game-folder]` writes every screen in both colour sets as BMP files, without opening a window.
+The viewer opens with **F12** on the title page. `--screenshots OUTDIR [game-folder]` writes every screen in both colour sets as BMP files, without opening a window.
+
+### The menus
+The original keys: **-** and **+** (on the keypad, or - and = on the main keyboard) to choose, **Enter** to select, **Esc** to go back a page, **Space** to change a rule or an option, and the letters the pages ask for (S or N, C or Q). Any key ends the demo.
 
 ### Playing
 The original keys:
@@ -113,8 +128,9 @@ The original keys:
 | P | Pause; any key goes on |
 | C | Clear the messages |
 | S | Surrender (Y or N) |
+| Alt+S | Save the game on the data disk |
 | Y, N | Answer the opponent's offer to surrender |
-| Enter | After the game is over: back to the viewer |
+| Enter | After the game is over: the battle report |
 
 In the sea battle:
 
@@ -135,7 +151,7 @@ In the sea battle:
 | A, L | On deck: Attack, or Leave |
 | F, Q, P, R, C, A | On deck: FROM / TO Flag, Quarterdeck, Poopdeck, Railing, Cross to the enemy's flag; Again sends another man; Esc starts over |
 
-And the remake's own: **Tab** switches between CGA, 16 colours and Hercules (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)* (for now it goes back to the viewer).
+And the remake's own: **Tab** switches between CGA, 16 colours and Hercules (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)*.
 
 ## Tests
 See `test/README.md`.

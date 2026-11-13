@@ -26,7 +26,7 @@ static uint32_t rnd(void) { seed = seed * 1103515245u + 12345u; return seed >> 8
 /* the battle's keys, and the boarding's (A F Q P R C, Esc, Backspace, L) */
 static const char KEYS[] = "gcsoafvtpl +=-_123456789\r" "AFQPRCzZ\x1b\x08";
 
-static void settle(Play *p) { for (int n = 0; n < 1000 && p->stall; n++) play_frame(p, 0); }
+static void settle(Play *p) { for (int n = 0; n < 1000 && play_busy(p); n++) play_frame(p, 0); }
 
 int main(int argc, char **argv)
 {

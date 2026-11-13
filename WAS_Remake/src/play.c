@@ -13,7 +13,7 @@
  * 16000 bytes, odd lines in the next) and some rules look at its bytes:
  * buf_byte() works them out from the CGA tiles, in both colour modes.
  */
-#include "play.h"
+#include "play_int.h"
 
 #include <SDL3/SDL.h>
 
@@ -27,17 +27,26 @@ static int ds_sbyte(const Play *p, unsigned off) { return (int8_t)p->ga->ds[off]
 
 #define OPP(p, addr) ((p)->opp[((addr) - 0x604D) / 2])
 
-static void beep(Play *p) { p->beeps++; }   /* beep_low, rt_30e2 and friends: sound is step 8 */
+uint32_t play_ev[EV_COUNT];
 
-/* delay() (rt:2F6E): WAS.EXE waits; the remake skips that many iterations */
-static void delay(Play *p, int units)
+static void beep(Play *p) { p->beeps++; }   /* beep_low and friends: the sounds (and their delays) are step 8 */
+/* beep_message (rt:30E2): a beep for 1350 delay units (the delay calls random(), so it is kept) */
+static void beep_message(Play *p) { p->beeps++; delay(p, 0x546); }
+
+/* delay() (rt:2F6E): WAS.EXE waits, calling random() all the while (units / 2
+ * times on an XT); the remake skips that many iterations */
+void delay(Play *p, int units)
 {
     p->stall += (int)(units * DELAY_UNIT_US * 1e-6 * PLAY_HZ + 0.5);
+    unsigned n = (unsigned)(units & 0xFFFF) >> 1;
+    if (n == 0) n = 1;
+    while (n--) rnd(p);
 }
 
 /* random() (rt:2F0D): adds successive words of WAS.EXE's own code, 0-127 */
-static int rnd(Play *p)
+int rnd(Play *p)
 {
+    EV(EV_RND, 1);
     if (++p->rnd_ptr == 0x2328) p->rnd_ptr = 0xBB8;
     unsigned w = p->ga->code[p->rnd_ptr] | (p->ga->code[p->rnd_ptr + 1] << 8);
     p->rnd = (uint16_t)((w + p->rnd) & 0x7F);
@@ -49,45 +58,51 @@ static int sar1(int v) { return v >= 0 ? v >> 1 : -((-v - 1) >> 1) - 1; }   /* 8
 static int vis(const Play *p) { return p->rules[5]; }   /* DS:64B7 */
 
 /* rt_0b3d: does the player command this squadron? */
-static bool commandable(const Play *p, int i)
+bool commandable(const Play *p, int i)
 {
+    EV(EV_SMALL, 1);
     const PSquad *q = &p->sq[i];
     if (q->ctrl == -1) return true;
     return q->ctrl != 0 && q->side == -1;
 }
 
 /* rt_0630: the ships of squadron i into list[] (DS:6456), -1 after the last */
-static void list_ships(Play *p, int i)
+void list_ships(Play *p, int i)
 {
     for (int k = 0; k < 3; k++) p->list[k] = -1;
     int n = 0;
-    for (int s = 0; s < MAX_SHIPS && n < 3; s++)
+    int s = 0;
+    for (; s < MAX_SHIPS && n < 3; s++)
         if (p->ship[s].sq == i) p->list[n++] = s;
+    EV(EV_LIST, s);
 }
 
 int play_cell(const Play *p, int i)   /* squadron_cell (rt:1985) */
 {
+    EV(EV_SMALL, 1);
     return ((p->sq[i].y + 2) / 10) * 10 + (p->sq[i].x >> 3);
 }
 
 static int sq_addr(const Play *p, int i) { return (p->sq[i].y + 1) * 80 + p->sq[i].x; }   /* DS:5F85 */
 
-static int next_slot(int i) { return i + 1 > PATH_SIZE - 1 ? 0 : i + 1; }   /* path_next_slot (rt:19BC) */
+int next_slot(int i) { return i + 1 > PATH_SIZE - 1 ? 0 : i + 1; }   /* path_next_slot (rt:19BC) */
 
 static int path_at(const Play *p, int i) { return i >= 0 && i < PATH_SIZE + ROUTE_SIZE ? p->path[i] : 0; }
 
 /* ------------------------------------------------------------------ tiles (rt) */
 
-static int map_at(const Play *p, int cell) { return cell >= 0 && cell < NUM_CELLS ? p->map[cell] : 0; }
+int map_at(const Play *p, int cell) { return cell >= 0 && cell < NUM_CELLS ? p->map[cell] : 0; }
 
-static bool tile_land(int t)     /* tile_is_land (rt:14A6) */
+bool tile_land(int t)     /* tile_is_land (rt:14A6) */
 {
+    EV(EV_TILE, 1);
     return (t >= 3 && t <= 6) || t == 40 || t == 41 || t == 46 || t == 47 || (t >= 51 && t <= 77);
 }
-static bool tile_rough(int t)    { return (t >= 10 && t <= 12) || (t >= 16 && t <= 18); }   /* rt:15C4 */
-static bool tile_shallow(int t)  { return (t >= 7 && t <= 9) || (t >= 13 && t <= 15); }     /* rt:1656 */
-static bool tile_sea(int t)      /* rt:12BD */
+bool tile_rough(int t)    { EV(EV_TILE, 1); return (t >= 10 && t <= 12) || (t >= 16 && t <= 18); }   /* rt:15C4 */
+bool tile_shallow(int t)  { EV(EV_TILE, 1); return (t >= 7 && t <= 9) || (t >= 13 && t <= 15); }     /* rt:1656 */
+bool tile_sea(int t)      /* rt:12BD */
 {
+    EV(EV_TILE, 1);
     return t <= 2 || t == 7 || t == 12 || t == 13 || t == 19 || (t >= 37 && t <= 39) ||
            (t >= 42 && t <= 45) || (t >= 48 && t <= 50) || (t >= 78 && t <= 81) || t >= 83;
 }
@@ -122,20 +137,22 @@ static void coast_init(Play *p)
     if (p->water_value[1] < 5) p->water_value[1] = 5;
 }
 
-static int dir_off(const Play *p, int d) { return ds_word(p, 0x784 + 2 * d); }   /* 1 E, 2 SE, 3 S ... 8 NE */
+int dir_off(const Play *p, int d) { return ds_word(p, 0x784 + 2 * d); }   /* 1 E, 2 SE, 3 S ... 8 NE */
 
 /* rt_1c52: is the neighbour in direction d off the map? */
-static bool off_map(int cell, int col, int d)
+bool off_map(int cell, int col, int d)
 {
     static const int8_t DX[9] = { 0, 1, 1, 0, -1, -1, -1, 0, 1 };
     static const int8_t DY[9] = { 0, 0, 1, 1, 1, 0, -1, -1, -1 };
+    EV(EV_HELP, 1);
     int row = cell / 10;
     return col + DX[d] < 0 || col + DX[d] > 9 || row + DY[d] < 0 || row + DY[d] > 19;
 }
 
 /* rt_1c0c: the shore of this cell does not face direction d all along (DS:0796) */
-static int coast_block(const Play *p, int cell, int d)
+int coast_block(const Play *p, int cell, int d)
 {
+    EV(EV_HELP, 1);
     if (cell < 0 || cell >= NUM_CELLS) return 0;
     int v = p->coast[cell];
     if (v < 0x371 || v > 0x374) return 0;
@@ -143,16 +160,19 @@ static int coast_block(const Play *p, int cell, int d)
 }
 
 /* rt_1ef4: may a ship enter this cell from direction d? (0 yes) */
-static int coast_pass(const Play *p, int d, int cell)
+int coast_pass(const Play *p, int d, int cell)
 {
-    int v = p->coast[cell];
+    EV(EV_HELP, 1);
+    int v = cell >= 0 && cell < NUM_CELLS ? p->coast[cell] : 0;
     if (v == 0) v = 0x370;
+    if (v < 0x370 || v > 0x379 || d < 1 || d > 8) return 0;   /* only a damaged saved game has others */
     return p->ga->ds[0x796 + ((v - 0x370) << 3) + d - 1];
 }
 
 /* rt_1e10: no way from this cell in direction d */
-static bool way_blocked(const Play *p, int d, int cell, int col)
+bool way_blocked(const Play *p, int d, int cell, int col)
 {
+    EV(EV_HELP, 1);
     bool b = false;
     if (col == 9 && (d == 2 || d == 8)) b = true;
     if (col == 0 && (d == 4 || d == 6)) b = true;
@@ -169,6 +189,7 @@ static bool way_blocked(const Play *p, int d, int cell, int col)
 static int port_beside(const Play *p, int cell, int tile, bool most)
 {
     int col = cell % 10, best = -1, have = most ? -1 : 99;
+    EV(EV_PORT, 1);
     for (int d = 1; d <= 8; d += 2) {
         if (off_map(cell, col, d) || coast_block(p, cell, d)) continue;
         int n = dir_off(p, d) + cell;
@@ -177,14 +198,15 @@ static int port_beside(const Play *p, int cell, int tile, bool most)
     }
     return best;
 }
-static int repair_port(const Play *p, int cell, bool most) { return port_beside(p, cell, 74, most); }
-static int supply_port(const Play *p, int cell, bool most) { return port_beside(p, cell, 75, most); }
+int repair_port(const Play *p, int cell, bool most) { return port_beside(p, cell, 74, most); }
+int supply_port(const Play *p, int cell, bool most) { return port_beside(p, cell, 75, most); }
 
 /* rt_1b7d: the crown beside the cell: side -1 looks for tile 76 (the enemy's
  * crown), side 0 for 77 (the player's) */
-static int crown_beside(const Play *p, int cell, int side)
+int crown_beside(const Play *p, int cell, int side)
 {
     int tile = side ? 76 : 77, col = cell % 10;
+    EV(EV_PORT, 1);
     for (int d = 1; d <= 8; d += 2) {
         if (off_map(cell, col, d) || coast_block(p, cell, d)) continue;
         int n = dir_off(p, d) + cell;
@@ -207,7 +229,7 @@ static int port_of_cell(const Play *p, int cell)
 }
 
 /* ovl4_c35c: invert a tile (rt_2e61), a port with nothing left */
-static void invert(Play *p, int cell)
+void invert(Play *p, int cell)
 {
     if (cell >= 0 && cell < NUM_CELLS) p->inverted[cell] = !p->inverted[cell];
 }
@@ -244,14 +266,14 @@ static int buf_byte(const Play *p, int addr)
 static bool land_byte(int b) { return b == 0x44 || b == 0x11; }   /* rt_2e48(addr, 68 or 17) */
 
 /* ovl4_aeae, af08: the middle of a cell, with the shore's slant */
-static int cell_mid_x(const Play *p, int cell)
+int cell_mid_x(const Play *p, int cell)
 {
     int v = p->coast[cell], a = 0;
     if (v == 0x371 || v == 0x373) a = 1;
     else if (v == 0x372 || v == 0x374) a = -1;
     return (cell % 10) * 8 + 3 + a;
 }
-static int cell_mid_y(const Play *p, int cell)
+int cell_mid_y(const Play *p, int cell)
 {
     int v = p->coast[cell], a = 0;
     if (v == 0x374 || v == 0x373) a = -1;
@@ -260,7 +282,7 @@ static int cell_mid_y(const Play *p, int cell)
 }
 
 /* ovl4_9a3c: the heading (0-15, N clockwise) of a step; another value is returned as it is */
-static int heading_of(int step)
+int heading_of(int step)
 {
     switch (step) {
     case -80: return 0;   case -79: return 3;   case 1: return 4;    case 81: return 5;
@@ -355,7 +377,7 @@ static void show_time(Play *p)
 /* ovl4:AB00: "Clear" when there are messages, else "Pause" */
 static void show_clear(Play *p)
 {
-    if (p->mode != PM_NORMAL) return;
+    if (p->mode != PM_NORMAL || p->demo) return;
     tpos(p, 24, 22);
     print(p, DS(p, p->msg_rows ? 0x230 : 0x236));
 }
@@ -367,6 +389,12 @@ static void cmd_normal(Play *p)
     text_reset(p);
     clear_row(p, 24);
     p->mode = PM_NORMAL;
+    if (p->demo) {                           /* ovl4:AA3C */
+        print(p, DS(p, 0x1EC));             /* Press any key to end demo. */
+        tpos(p, 23, 5);
+        print(p, DS(p, 0xEE4));             /* THE ANCIENT ART OF WAR AT SEA */
+        return;
+    }
     print(p, DS(p, 0x207));                 /* "Time (" */
     show_time(p);
     tpos(p, 24, 15);
@@ -378,7 +406,7 @@ static void cmd_normal(Play *p)
 
 /* ovl4:B252: a squadron of the same side close enough to join (index + 1, or 0).
  * A squadron of three ships cannot join another. */
-static int join_partner(Play *p, int a)
+int join_partner(Play *p, int a)
 {
     list_ships(p, a);
     if (p->sq[a].partner || p->list[2] != -1) return 0;
@@ -426,7 +454,7 @@ static void cmd_squad(Play *p)
 }
 
 /* rt_0f55: forget a squadron's path and route */
-static void clear_paths(Play *p, int i)
+void clear_paths(Play *p, int i)
 {
     PSquad *q = &p->sq[i];
     if (q->has_path) {
@@ -476,6 +504,16 @@ static bool visible(const Play *p, int i)
 {
     const PSquad *q = &p->sq[i];
     return q->used && (q->side != 0 || vis(p) == 80 || q->seen);
+}
+
+/* the work of erase_squadrons (rt:104A) and redraw_squadrons (rt:1084):
+ * every squadron shown is put back and drawn again (the remake draws the
+ * whole screen every frame; this is for the timing: about 3,350 + 500 a
+ * squadron instructions, measured under the emulator) */
+void redraw_work(const Play *p)
+{
+    EV(EV_BASE, 3350);
+    for (int i = 0; i < MAX_SHIPS; i++) if (visible(p, i)) EV(EV_BASE, 500);
 }
 
 static bool waiting(const Play *p)   /* time stands still in these */
@@ -537,11 +575,11 @@ static int region_code(int x, int y)        /* map_region_code (ovl4:BBEB) */
 static void print_region(Play *p, int i)
 {
     int x = p->sq[i].x, y = p->sq[i].y;
-    beep(p);
+    beep_message(p);
     print(p, SO5(p, 0x29D));
     bool ns = false;
-    if (y < 60) { print(p, DS(p, 0x2BC)); ns = true; }
-    else if (y > 140) { print(p, DS(p, 0x2C2)); ns = true; }
+    if (y < 60) { print(p, DS(p, 0x2BC)); ns = true; if (p->demo) p->demo_key = PK_KP_MINUS; }   /* ovl4:BC5B */
+    else if (y > 140) { print(p, DS(p, 0x2C2)); ns = true; if (p->demo) p->demo_key = PK_KP_PLUS; }
     if (x < 30) print(p, DS(p, 0x2C8));
     else if (x > 50) print(p, DS(p, 0x2CD));
     else if (!ns) print(p, SO5(p, 0x2A6));   /* INTERIOR */
@@ -552,7 +590,7 @@ static void print_region(Play *p, int i)
 static void msg_sighted(Play *p, int i)     /* ovl4_b612: ALERT - ENEMY SIGHTED */
 {
     int code = region_code(p->sq[i].x, p->sq[i].y) + 5;
-    if (p->msg_last == code) return;
+    if (p->msg_last == code || p->demo) return;   /* ovl4:B644: not in the demo */
     p->msg_last = code;
     p->msg_timer = 20;
     msg_row(p);
@@ -567,6 +605,7 @@ static void msg_encounter(Play *p, int i)   /* ovl4:B68C: WARNING - ENCOUNTER */
     print(p, SO5(p, 0x100));
     print_region(p, i);
     if (p->mode == PM_SQUAD) cmd_squad_line(p);
+    if (p->demo) { p->demo = 2; p->sel = i; }   /* ovl4:B6CB: the demo zooms in next */
 }
 
 static void msg_merchant(Play *p, int i)    /* ovl4_b6e5: a merchant taken */
@@ -629,7 +668,7 @@ static void msg_flag(Play *p, int i, bool yours)   /* ovl4_b88b, b8f6: URGENT - 
 static void msg_sunk(Play *p, int ship, int tile, int i)
 {
     p->msg_last = 0;
-    beep(p);
+    beep_message(p);
     msg_row(p);
     if (p->sq[i].side == -1) print(p, p->c->ships[ship].name);
     else print(p, DS(p, tile_rough(tile) ? 0x266 : 0x274));   /* ENEMY FRIGATE / ENEMY SHIP */
@@ -666,9 +705,10 @@ static void wind_change(Play *p, bool start)
         do p->wind = rnd(p) & 7; while (p->wind > 3);
         if (p->wind == old) return;
         p->msg_last = 0;
+        if (p->demo) return;                 /* ovl4:C69A: no message in the demo */
         msg_row(p);
         print(p, DS(p, 0x2D2));              /* Wind is from the */
-        beep(p);
+        beep_message(p);
         static const unsigned NAME[4] = { 0x2E4, 0x2F0, 0x2EA, 0x2F5 };   /* North, East, South, West */
         print(p, DS(p, NAME[p->wind]));
         show_clear(p);
@@ -709,9 +749,10 @@ static int flags_check(Play *p)
 }
 
 /* ovl4_d549: squadrons of a side at a cell (anchored ones only, unless any) */
-static int count_at(const Play *p, int cell, int side, bool any)
+int count_at(const Play *p, int cell, int side, bool any)
 {
     int n = 0;
+    EV(EV_S40, MAX_SHIPS);
     for (int i = 0; i < MAX_SHIPS; i++) {
         const PSquad *q = &p->sq[i];
         if (!q->used || q->mark == 2) continue;
@@ -771,7 +812,7 @@ static int end_check(Play *p, int a0, int a1)
     p->zoomed = false;
     if (yours / theirs >= OPP(p, 0x605B) && yours > 6 && p->mode != PM_END && p->mode != PM_OFFER) {
         OPP(p, 0x6057) = 110; OPP(p, 0x605B) = 500; OPP(p, 0x6073) = 1;
-        beep(p);                             /* rt_30e2 */
+        beep_message(p);
         clear_row_over(p, 3);
         clear_row_over(p, 6);
         clear_row_over(p, 4);
@@ -821,6 +862,7 @@ static bool hit(Play *p, int a0, int way)
 static int enemy_count(const Play *p)
 {
     int n = 0;
+    EV(EV_S40, MAX_SHIPS);
     for (int i = 0; i < MAX_SHIPS; i++) if (p->sq[i].used && p->sq[i].side == 0) n++;
     return n;
 }
@@ -834,6 +876,7 @@ static int map_battles(Play *p)
     if (p->mode == PM_PROMPT) return 0;
     for (int i = 0; i < MAX_SHIPS; i++) {
         PSquad *q = &p->sq[i];
+        EV(EV_S40, 1);
         if (!q->used || q->ctrl == -2) continue;
         int other = q->partner - 1;
         if (q->ctrl > 0 && q->ctrl < p->fight_delay) {
@@ -877,9 +920,10 @@ static int map_battles(Play *p)
 /* ------------------------------------------------------------------ meeting at sea */
 
 /* ovl4_c5b9: close enough for an encounter? Sets the distance (DS:689A). */
-static bool close_to(Play *p, int a, int b)
+bool close_to(Play *p, int a, int b)
 {
     int dx = SDL_abs(p->sq[a].x - p->sq[b].x), dy = SDL_abs(p->sq[a].y - p->sq[b].y);
+    EV(EV_SMALL, 1);
     p->dist = dx * 2 + dy;
     return dx < 3 && dy < 5;
 }
@@ -916,13 +960,16 @@ static void meet_merchant(Play *p, int a, int b)
 static void encounters(Play *p)
 {
     bool flag[MAX_SHIPS] = { false };
+    EV(EV_BASE, 2212);
     p->in_encounters = true;
     for (int a = 0; a < MAX_SHIPS; a++) {
         PSquad *A = &p->sq[a];
         bool a_war = A->mark != 2;
+        EV(EV_S40, 1);
         if (!A->used || (A->side == 0 && a_war) || A->partner) continue;
         if (!a_war && play_cell(p, a) == A->merchant_dest) continue;
         for (int b = 0; b < MAX_SHIPS; b++) {
+            EV(EV_S40, 1);
             if (b == a) continue;
             PSquad *B = &p->sq[b];
             bool b_war = B->mark != 2;
@@ -930,6 +977,7 @@ static void encounters(Play *p)
             if (!a_war && !b_war) continue;
             if (!b_war && play_cell(p, b) == B->merchant_dest) continue;
             if (close_to(p, a, b)) {
+                redraw_work(p);
                 if (A->side == B->side) meet_merchant(p, a, b);
                 else if (!a_war && b_war) take_merchant(p, a, b);
                 else if (!b_war && a_war) take_merchant(p, b, a);
@@ -970,7 +1018,7 @@ static bool merchant_bound(const Play *p, int cell)
 }
 
 /* ovl4_ee4e: the worst damage among a squadron's ships */
-static int worst_damage(Play *p, int i)
+int worst_damage(Play *p, int i)
 {
     int w = 0;
     list_ships(p, i);
@@ -993,9 +1041,8 @@ static int port_source_of(const Play *p, int cell)
  * at once if it is beside a crown or no merchant can reach it; otherwise a
  * merchant sets out from the edge of the map (ovl4:BEE3, with the enemy's
  * routes: step 5). */
-static void port_call(Play *p, int cell, int side)
+void port_call(Play *p, int cell, int side)
 {
-    (void)side;
     bool crown = crown_beside(p, cell, -1) != -1 || crown_beside(p, cell, 0) != -1;
     int port = port_of_cell(p, cell);
     if (port == -1) return;
@@ -1015,14 +1062,32 @@ static void port_call(Play *p, int cell, int side)
         p->port_sup[port] = 20;
         return;
     }
-    /* step 5: the merchant (ovl4:BEE3) */
-}
-
-/* ovl4_bd3c: the side of a port's merchants, from the strength around it (step 5) */
-static int port_side(const Play *p, int cell)
-{
-    (void)p; (void)cell;
-    return 0;
+    /* ovl4:BEE3: a merchant sets out from the edge of the map, in the last free squadron slot */
+    int k = MAX_SHIPS - 1;
+    while (k > -1 && (k == p->free_slot || p->sq[k].used)) k--;
+    if (k == -1) return;
+    PSquad *m = &p->sq[k];
+    m->has_route = 0;
+    m->has_path = false;
+    m->ctrl = -2;
+    m->port_speed = 0;
+    m->seen = false;
+    m->used = true;
+    m->speed = 0;
+    m->partner = 0;
+    m->x = cell_mid_x(p, src);
+    m->y = cell_mid_y(p, src);
+    m->supplies = 20;
+    m->side = side;
+    m->mark = 2;
+    m->heading = 0;
+    if (m->x > 70) m->heading = 12;
+    if (m->x < 10) m->heading = 4;
+    if (m->y < 10) m->heading = 8;
+    p->ai_target = cell;
+    m->merchant_dest = cell;
+    p->ai_sq = k;
+    if (enemy_route(p)) m->routed = 1;
 }
 
 /* ovl4_bcd2 (tick 10): ports with 2 or less left call for a merchant */
@@ -1030,7 +1095,10 @@ static void restock(Play *p)
 {
     for (int k = 0; k < MAX_PORTS && p->port_cell[k] != -1; k++) {
         int cell = p->port_cell[k], port = port_of_cell(p, cell);
-        if (port != -1 && p->port_sup[port] <= 2) port_call(p, cell, port_side(p, cell));
+        if (port != -1 && p->port_sup[port] <= 2) {
+            redraw_work(p);
+            port_call(p, cell, enemy_port_side(p, cell));
+        }
     }
 }
 
@@ -1041,35 +1109,42 @@ static int sea_way(Play *p, int c)
 {
     int col = c % 10;
     if (c < 10 || c > 189 || col == 0 || col == 9) return c;
-    int parent[NUM_CELLS] = { 0 }, queue[512];
-    parent[c] = 9;
-    queue[0] = c;
+    /* WAS.EXE's work arrays: came[] (DS:3F3D) and the queue (DS:457D), which
+       runs on into the strength map when it holds more than 100 cells */
+    int16_t *came = p->came, *queue = p->queue;
+    const int qmax = AREA_WORDS - (int)(p->queue - p->area);
+    SDL_memset(came, 0, NUM_CELLS * sizeof came[0]);
+    came[c] = 9;
+    queue[0] = (int16_t)c;
     int n = 1;
     for (;;) {
         if (--n < 0) return -1;
         int cur = queue[0];
+        EV(EV_SEAPOP, 1);
+        EV(EV_SEAQ, n);
         for (int k = 0; k < n; k++) queue[k] = queue[k + 1];
         col = cur % 10;
         int d = 1, base = 1;
         if (rnd(p) < 64) { d = 5; base = 5; }
         for (int k = 1; k <= 8; k++) {
             if (!way_blocked(p, d, cur, col)) {
-                if (off_map(cur, col, d)) {
+                if (off_map(cur, col, d)) {           /* ovl4:E6D6: the way back fills the queue */
                     int res = cur, m = 0;
                     for (;;) {
-                        queue[0] = cur;
+                        queue[0] = (int16_t)cur;
                         if (cur == c) return res;
-                        cur -= dir_off(p, parent[cur]);
                         if (cur < 0 || cur >= NUM_CELLS) return -1;
+                        cur -= dir_off(p, came[cur]);
                         if (++m > 99) return -1;
+                        EV(EV_SEAB, m);
                         for (int j = m; j > 0; j--) queue[j] = queue[j - 1];
                     }
                 }
                 int nb = cur + dir_off(p, d);
-                if (nb >= 0 && nb < NUM_CELLS && p->coast[nb] != 0x379 && !coast_pass(p, d, nb) && parent[nb] == 0) {
-                    parent[nb] = d;
-                    if (++n >= (int)SDL_arraysize(queue)) return -1;
-                    queue[n] = nb;
+                if (nb >= 0 && nb < NUM_CELLS && p->coast[nb] != 0x379 && !coast_pass(p, d, nb) && came[nb] == 0) {
+                    came[nb] = (int16_t)d;
+                    if (n >= qmax) return -1;
+                    queue[n++] = (int16_t)nb;      /* ovl4:E7BB: queue[l6++] */
                 }
             }
             if (k < 8) {                     /* SO5+12h: 1, -1, 2, -2, 3, -3, 4 */
@@ -1083,7 +1158,7 @@ static int sea_way(Play *p, int c)
 }
 
 /* ovl4_c07c: the ports merchants can reach, and from where */
-static void port_sources(Play *p)
+void port_sources(Play *p)   /* ovl4:C07C */
 {
     for (int k = 0; k < MAX_PORTS; k++) p->port_cell[k] = p->port_source[k] = -1;
     int n = 0;
@@ -1112,6 +1187,7 @@ static void port_supplies(Play *p)
  * taking supplies and repairs from a port or crown beside it */
 static void eat(Play *p, int i)
 {
+    EV(EV_BASE, 201);
     PSquad *q = &p->sq[i];
     if (!q->used || q->mark == 2 || q->partner) return;
     int chance = commandable(p, i) ? (p->rules[4] << 5) - 10 : OPP(p, 0x6059);
@@ -1128,6 +1204,7 @@ static void eat(Play *p, int i)
     if (q->speed != 0) return;
     int cell = play_cell(p, i), other = q->side == -1 ? 0 : -1;
     if (count_at(p, cell, other, true)) return;   /* the enemy is here */
+    redraw_work(p);
     if (q->supplies < 20) {
         int port = supply_port(p, cell, true);
         if (port == -1) port = crown_beside(p, cell, -1);
@@ -1206,6 +1283,7 @@ static int set_delays(Play *p)
 {
     for (int i = 0; i < MAX_SHIPS; i++) {
         PSquad *q = &p->sq[i];
+        EV(EV_S40, 1);
         if (!q->used || q->speed == 0 || q->partner) continue;
         if (q->mark == 2) q->move_delay = 3;
         else {
@@ -1252,11 +1330,14 @@ static int set_delays(Play *p)
  * the squadron selected. */
 static int move_squadrons(Play *p)
 {
+    EV(EV_BASE, 1100);
+    redraw_work(p);
     bool moved = false;
     int r = set_delays(p);
     if (r) return r;
     for (int i = 0; i < MAX_SHIPS; i++) {
         PSquad *q = &p->sq[i];
+        EV(EV_S40, 1);
         if (!q->has_path || !q->used || q->speed == 0 || q->partner) continue;
         bool friend_war = q->side == -1 && q->mark != 2;
         if (--q->countdown > 0) continue;
@@ -1307,18 +1388,33 @@ static int move_squadrons(Play *p)
 
 /* ------------------------------------------------------------------ the clock */
 
-/* campaign_play ovl4:7959: one tick. True when the game ends at once. */
-static bool tick(Play *p)
+/* campaign_play ovl4:7959-7A80, a tick, in its parts: 1 the counters and
+ * encounters, 2-5 the enemy's orders, 6 move_squadrons, 7 eating, 8 the rest.
+ * WAS.EXE asks key_waiting (ovl4:85F8: a key held down or in the buffer)
+ * before parts 2-8 and goes straight to campaign_input if so (play_frame).
+ * True when the game ends at once. */
+enum { TS_START = 1, TS_ENEMY = 2, TS_MOVE = 6, TS_EAT = 7, TS_REST = 8 };
+
+static bool tick_part(Play *p, int s)
 {
-    p->tick_count = 0;
-    p->ticks++;
-    if (++p->sq_turn >= MAX_SHIPS) p->sq_turn = 0;
-    encounters(p);
-    /* 4 x ovl4_c79a: the enemy (step 5) */
-    move_squadrons(p);
-    eat(p, p->sq_turn);
-    if (++p->sq_turn >= MAX_SHIPS) p->sq_turn = 0;
-    eat(p, p->sq_turn);
+    if (s == TS_START) {
+        p->tick_count = 0;
+        p->ticks++;
+        if (++p->sq_turn >= MAX_SHIPS) p->sq_turn = 0;
+        encounters(p);
+        return false;
+    }
+    if (s < TS_MOVE) {                       /* the enemy, four times */
+        if (p->mode != PM_TRACE) enemy_turn(p);
+        return false;
+    }
+    if (s == TS_MOVE) { move_squadrons(p); return false; }
+    if (s == TS_EAT) {
+        eat(p, p->sq_turn);
+        if (++p->sq_turn >= MAX_SHIPS) p->sq_turn = 0;
+        eat(p, p->sq_turn);
+        return false;
+    }
     if (p->ticks == 10 && rnd(p) < 75) restock(p);
     if (p->ticks == 20) {                    /* ovl4_c51a: a crown taken ends the game after the key */
         for (int i = 0; i < MAX_SHIPS; i++) {
@@ -1334,7 +1430,19 @@ static bool tick(Play *p)
     if (p->ticks > 30) {
         if (--p->msg_timer < 0) p->msg_last = 0;
         p->ticks = 0;
-        /* ovl4_e805: the enemy's map of strength (step 5) */
+        enemy_strength_map(p);
+    }
+    return false;
+}
+
+static bool tick_over(const Play *p) { return p->mode == PM_END || p->mode == PM_OFFER; }
+
+/* a whole tick with no key waiting (play_debug_call) */
+static bool tick(Play *p)
+{
+    for (int s = TS_START; s <= TS_REST; s++) {
+        if (tick_part(p, s)) return true;
+        if (tick_over(p)) return false;
     }
     return false;
 }
@@ -1411,7 +1519,7 @@ static void cursor_input(Play *p, int key)
     if (!up && !down && !(key > 70 && key < 82)) return;
     int delta = 0;
     if (up) {
-        if (p->view_top < 2) return;
+        if (p->view_top < 2) { if (p->demo) p->demo_key = 0; return; }   /* ovl4:824A */
         if (p->jump && !trace) {             /* [081A]: to the top */
             p->view_top = 0; p->cx = 38; p->cy = 45; delta = 1;
         } else {
@@ -1426,7 +1534,7 @@ static void cursor_input(Play *p, int key)
             if (p->view_top + VIEW_MARGIN < p->cy) { p->cy -= 2; delta = -160; }
         }
     } else if (down) {
-        if (p->view_top >= VIEW_TOP_MAX - 1) return;
+        if (p->view_top >= VIEW_TOP_MAX - 1) { if (p->demo) p->demo_key = 0; return; }   /* ovl4:8334 */
         if (p->jump && !trace) {             /* to the bottom */
             p->view_top = VIEW_TOP_MAX; p->cx = 38; p->cy = 145; delta = 1;
         } else {
@@ -1463,15 +1571,15 @@ static void cursor_input(Play *p, int key)
 
 /* ovl4_ecd1: the longest free run in the path ring (from just after the
  * writing position), -1 if shorter than 15 */
-static int find_free_run(const Play *p)
+int find_free_run(const Play *p)
 {
     int run = 0, best = 0;
     int start = next_slot(p->path_w + 1), k = start, at = start;
     for (;;) {
-        while (p->path[k] == 0 && k != p->path_w) { run++; k = next_slot(k); }
+        while (p->path[k] == 0 && k != p->path_w) { run++; k = next_slot(k); EV(EV_PRING, 1); }
         if (run > best) { best = run; at = start; }
         run = 0;
-        while (p->path[k] != 0 && k != p->path_w) k = next_slot(k);
+        while (p->path[k] != 0 && k != p->path_w) { k = next_slot(k); EV(EV_PRING, 1); }
         start = k;
         if (k == p->path_w) break;
     }
@@ -1559,7 +1667,7 @@ void play_place_detached(Play *p, int from, int to, int steps, int at)
     bool north = row == 0 || coast_a(t) || coast_b(t) || (t >= 43 && t <= 45) ||
                  !tile_sea(map_at(p, cell - 10)) || tile_land(map_at(p, cell - 10));
     int n = steps * 3 + 1;
-    b->has_route = b->has_path = b->routed = false;
+    b->has_route = 0; b->has_path = false; b->routed = 0;
     b->port_speed = 0;
     b->speed = 0;
     b->used = true;
@@ -1892,6 +2000,14 @@ static void handle_key(Play *p, int key)     /* campaign_input (ovl4:7B65) */
         return;
     }
     if (p->mode == PM_NORMAL) {
+        if (key == PK_ALT_S) {                  /* Save: campaign_input ovl4:7BB8 returns 100 */
+            beep(p);
+            clear_row(p, 24);
+            tpos(p, 24, 10);
+            print(p, DS(p, 0x6A));              /* One moment, please */
+            p->result = PLAY_SAVE;
+            return;
+        }
         if (key == PK_S) {                      /* Surrender: campaign_play ovl4:7A83 asks */
             beep(p);
             clear_row(p, 23);
@@ -2041,13 +2157,18 @@ static bool map_has(const Play *p, int tile)   /* rt_1953 */
 }
 
 /* game_init (ovl1:77AD) and campaign_play's start (ovl4:7650) */
-void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
+static void load_pause(Play *p, const uint32_t *before, int end_sounds);
+
+static void start(Play *p, const Campaign *c, const GameAssets *ga, uint16_t seed, uint16_t ptr, bool demo)
 {
+    uint32_t before[EV_COUNT];
+    SDL_memcpy(before, play_ev, sizeof before);
     SDL_memset(p, 0, sizeof *p);
     p->c = c;
     p->ga = ga;
-    p->rnd = (uint16_t)(seed & 0xFF);        /* seed_random (rt:2EF9): the BIOS clock */
-    p->rnd_ptr = 0xBB8;
+    p->rnd = seed;
+    p->rnd_ptr = ptr >= 0xBB8 && ptr < 0x2328 ? ptr : 0xBB8;
+    p->demo = demo;
     for (int i = 0; i < MAX_SHIPS; i++) {
         const Squadron *s = &c->squadrons[i];
         PSquad *q = &p->sq[i];
@@ -2068,6 +2189,7 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
         for (int col = 0; col < MAP_W; col++) p->map[r * 10 + col] = c->map[r][col];
     for (int k = 0; k < NUM_RULES; k++) p->rules[k] = (int16_t)c->rules[k];
     if (ga->have_so2) SDL_memcpy(p->opp, ga->opp[SDL_clamp(c->opponent, 0, 5)], sizeof p->opp);
+    if (demo) { OPP(p, 0x604F) = 3; OPP(p, 0x6057) = 128; p->rules[5] = 80; }   /* ovl1:8894 */
     p->fight_delay = assets_scnf_word(ga, 0x6851);
     if (p->fight_delay <= 6) p->fight_delay = 500;
     p->wind_on = assets_scnf_word(ga, 0x6865) != 0;
@@ -2086,7 +2208,7 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
         if (q->side == 0 && q->used) enemies++;
     }
     if (OPP(p, 0x6073) > enemies >> 1) OPP(p, 0x6073) = (int16_t)(enemies >> 1);
-    p->time_div = 64;
+    p->time_div = demo ? 1 : 64;             /* the demo: the fastest time */
     p->crown_threat = -1;
     int yours = 0, theirs = 0;
     for (int s = 0; s < MAX_SHIPS; s++) {
@@ -2117,11 +2239,12 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
     mark_flagships(p);
     wind_change(p, true);
     coast_init(p);
-    /* ovl4_e805, ovl4_ea51: the enemy's maps (step 5) */
+    enemy_strength_map(p);
+    enemy_port_values(p);
     p->battle_a = p->battle_b = -1;
     flags_check(p);
     port_sources(p);
-    /* ovl4_c79a: the enemy (step 5) */
+    enemy_turn(p);
     for (int i = 0; i < MAX_SHIPS; i++) {    /* squadrons put on land are lost */
         PSquad *q = &p->sq[i];
         if (!q->used) continue;
@@ -2135,12 +2258,29 @@ void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
         list_ships(p, i);
         for (int k = 0; k < 3 && p->list[k] != -1; k++) p->ship[p->list[k]].sq = -1;
     }
+    if (demo) p->demo_key = PK_KP_MINUS;     /* ovl4:7803: it scrolls up */
     port_supplies(p);
     p->sel = -1;
     p->free_slot = -1;
     end_check(p, p->battle_b, p->battle_a);
     if (p->mode == PM_OFFER) p->offer_at_start = true;   /* the rest comes after the answer */
     else start_rest(p);
+    load_pause(p, before, 2);                /* play_end_sound twice (ovl4:76EC, 7800) */
+}
+
+void play_start(Play *p, const Campaign *c, const GameAssets *ga, unsigned seed)
+{
+    start(p, c, ga, (uint16_t)(seed & 0xFF), 0xBB8, false);   /* seed_random (rt:2EF9): the BIOS clock */
+}
+
+void play_start_rnd(Play *p, const Campaign *c, const GameAssets *ga, uint16_t rnd_, uint16_t ptr)
+{
+    start(p, c, ga, rnd_, ptr, false);
+}
+
+void play_start_demo(Play *p, const Campaign *c, const GameAssets *ga, uint16_t rnd_, uint16_t ptr)
+{
+    start(p, c, ga, rnd_, ptr, true);
 }
 
 int  play_random(Play *p) { return rnd(p); }
@@ -2149,21 +2289,30 @@ void play_clear_paths(Play *p, int sq) { clear_paths(p, sq); }
 
 /* campaign_play (ovl4:7650) entered again after a sea battle: the counts, the end of
  * the game (end_check with the battle's squadrons, unless you left it), and the map's
- * command line. ovl4_ed83 (the enemy after a battle) comes with step 5. */
+ * command line; the enemy's squadron in the battle takes on ships beside it (ovl4_ed83). */
 void play_after_battle(Play *p, bool practice, bool left)
 {
+    uint32_t before[EV_COUNT];
+    SDL_memcpy(before, play_ev, sizeof before);
     (void)practice;
     p->battle_req = 0;
     mark_flagships(p);
     p->mode = PM_NORMAL;
     p->key = 0;
+    p->keybuf_n = 0;
     p->msg_last = 0;
     p->msg_rows = 0;
     p->text_rows = 2;
     for (int r = 0; r < 25; r++) clear_row(p, r);
     clear_panel(p);
     coast_init(p);
+    enemy_strength_map(p);
+    enemy_port_values(p);
     if (!left) end_check(p, p->battle_b, p->battle_a);
+    if (p->mode != PM_END && p->battle_a >= 0 && p->sq[p->battle_a].used && p->sq[p->battle_a].side == 0 && !left) {
+        p->ai_sq = p->battle_a;              /* ovl4_ed83: the enemy's squadron takes on ships beside it */
+        enemy_join(p);
+    }
     p->over_squad = false;
     if (p->mode != PM_END && p->mode != PM_OFFER) {
         cmd_normal(p);
@@ -2172,20 +2321,178 @@ void play_after_battle(Play *p, bool practice, bool left)
     for (int cl = 0; cl < NUM_CELLS; cl++)   /* the map buffer is drawn again, then ovl4_c21c */
         p->inverted[cl] = p->map[cl] >= 74 && p->map[cl] <= 76 && p->port_sup[cl] == 0;
     text_rows_add(p, 0);
+    load_pause(p, before, 0);
+}
+
+void play_resume(Play *p)
+{
+    p->result = PLAY_RUNNING;
+    p->ended = p->prompt_quit = p->prompt_surrender = false;
+    p->stall = 0;
+    p->work_us = 0;
+    p->tick_stage = 0;
+    p->battle_req = 0;
+    play_after_battle(p, false, false);
 }
 
 void play_key(Play *p, int key, bool shift)
 {
-    p->jump = shift;
-    p->key = key;
+    if (p->key == 0 && p->keybuf_n == 0) {
+        p->jump = shift;
+        p->key = key;
+    } else if (p->keybuf_n < 15) {          /* a full buffer drops the key (the BIOS beeps) */
+        p->keybuf[p->keybuf_n] = key;
+        p->keybuf_shift[p->keybuf_n++] = shift;
+    }
 }
+
+/* the next key from the buffer, once this iteration has read its own */
+static void next_key(Play *p)
+{
+    if (p->key != 0 || p->keybuf_n == 0) return;
+    p->key = p->keybuf[0];
+    p->jump = p->keybuf_shift[0];
+    p->keybuf_n--;
+    SDL_memmove(p->keybuf, p->keybuf + 1, (size_t)p->keybuf_n * sizeof p->keybuf[0]);
+    SDL_memmove(p->keybuf_shift, p->keybuf_shift + 1, (size_t)p->keybuf_n * sizeof p->keybuf_shift[0]);
+}
+
+/* What the counted events cost in 8086 instructions: fitted to WAS.EXE's own
+ * routines run under an emulator (WAS_Remake/test/diff_ovl4, calib.py: the
+ * enemy's orders, encounters, sailing, eating, map battles, restocking and the
+ * strength map, about 2,200 calls over the 11 campaigns; the fit is within
+ * about 10% on average, the route searches included). EV_BASE carries each
+ * routine's own fixed part. */
+static const double EV_WEIGHT[EV_COUNT] = {
+    [EV_RND] = 14.9, [EV_LIST] = 10.7, [EV_SMALL] = 81.9, [EV_HELP] = 0, [EV_PORT] = 593.1, [EV_S40] = 21.7,
+    [EV_C200] = 8.6, [EV_QUEUE] = 16.0, [EV_NEIGH] = 137.6, [EV_STEP] = 20.3, [EV_RING] = 4.0,
+    [EV_PRING] = 27.2, [EV_TILE] = 117.0, [EV_BASE] = 1,
+    /* sea_way (ovl4:E5BF), fitted the same way to port_sources (ovl4:C07C) */
+    [EV_SEAQ] = 48.4, [EV_SEAPOP] = 947.7, [EV_SEAB] = 321.3,
+};
+/* what an iteration with no tick and no fight counts already: the 27
+ * iterations a second measured in DOSBox include it */
+#define WORK_IDLE 868
+
+/* campaign_play's start (ovl4:7650): loading SM and SO5 and drawing the map
+ * took this long besides the counted work (DOSBox at 300 cycles: The Bane of
+ * Oldain 7.2 s from the quote to the map, The Race for the Crown 4.9 s) */
+#define LOAD_US 2050000.0
+
+/* The pause before the map appears: the counted work since before, the
+ * loading, and play_end_sound's 7500 delay units each time it plays. The last
+ * page of the menus (or of the battle) stays meanwhile (main.c: hidden). */
+static void load_pause(Play *p, const uint32_t *before, int end_sounds)
+{
+    double n = 0;
+    for (int k = 0; k < EV_COUNT; k++) n += EV_WEIGHT[k] * (double)(play_ev[k] - before[k]);
+    double us = LOAD_US + n * (1000.0 / 300.0);
+    if (assets_scnf_word(p->ga, 0x684F) > 1) us += end_sounds * 7500 * DELAY_UNIT_US;
+    p->stall += (int)(us / (1e6 / PLAY_HZ) + 0.5);
+    p->hidden = true;
+}
+
+/* the work counted since before, on an XT at 300 instructions a millisecond,
+ * as iterations stalled (as WAS.EXE's delay(): keys wait). The frame's own
+ * time (idle_left) is set against it first: an iteration's idle work (the 27
+ * iterations a second measured include it), or the whole frame when a tick
+ * goes on (tick_go). */
+static void work_time(Play *p, uint32_t *before)
+{
+    double n = 0;
+    for (int k = 0; k < EV_COUNT; k++) n += EV_WEIGHT[k] * (double)(play_ev[k] - before[k]);
+    SDL_memcpy(before, play_ev, sizeof play_ev);
+    if (n <= p->idle_left) { p->idle_left -= n; return; }
+    n -= p->idle_left;
+    p->idle_left = 0;
+    p->work_us += n * (1000.0 / 300.0);
+    const double iter = 1e6 / PLAY_HZ;
+    int it = (int)(p->work_us / iter);
+    p->stall += it;
+    p->work_us -= it * iter;
+}
+
+static void iteration(Play *p, int held, uint32_t *before);
+static void tick_go(Play *p, int held, uint32_t *before);
 
 void play_frame(Play *p, int held)
 {
     if (p->result != PLAY_RUNNING) return;
     if (p->stall > 0) { p->stall--; return; }   /* the key waits, as in the keyboard buffer */
-    int key = p->key ? p->key : held;
+    p->hidden = false;
+    uint32_t before[EV_COUNT];
+    SDL_memcpy(before, play_ev, sizeof before);
+    bool going_on = p->tick_stage != 0;
+    if (going_on) {                          /* the tick goes on: this frame is its time */
+        p->idle_left = 1e6 / PLAY_HZ * 0.3;
+        tick_go(p, held, before);
+    } else {
+        p->idle_left = WORK_IDLE;
+        iteration(p, held, before);
+    }
+    next_key(p);
+    work_time(p, before);
+    if (going_on && p->tick_stage == 0 && p->idle_left > 0) {   /* the tick ended within this frame: */
+        p->work_us -= p->idle_left * (1000.0 / 300.0);        /* the rest of it goes to the next work */
+        if (p->work_us < -1e6 / PLAY_HZ) p->work_us = -1e6 / PLAY_HZ;
+    }
+}
+
+bool play_busy(const Play *p) { return p->stall > 0 || p->tick_stage != 0; }
+
+/* poll_input (ovl4:8645) in the demo: the key it plays goes on, and now
+ * and then (random() <= 4) it scrolls the other way */
+static int demo_poll(Play *p)
+{
+    int k = rnd(p) > 4 ? p->demo_key : p->rnd > 1 ? PK_KP_MINUS : PK_KP_PLUS;
+    p->demo_key = k;
+    return k;
+}
+
+/* campaign_input (ovl4:7A83) */
+static void input_part(Play *p, int key)
+{
+    if (p->demo == 2 && (p->mode == PM_NORMAL || p->mode == PM_SQUAD)) {   /* campaign_input ovl4:7B76: Zoom */
+        if (p->sel >= 0 && p->sel < MAX_SHIPS) {
+            p->demo_key = key = PK_Z;
+            p->mode = PM_SQUAD;
+        } else p->mode = PM_NORMAL;          /* the squadron has gone (its fight is over) */
+    }
+    handle_key(p, key);
+}
+
+/* The tick's parts from p->tick_stage on. A part that leaves work to wait
+ * for stops it here (play_frame goes on with the next part after the stall);
+ * before each part after the first, key_waiting (ovl4:85F8: a key held down,
+ * or one pressed meanwhile) goes straight to campaign_input, leaving the rest
+ * of the tick undone, as WAS.EXE does (ovl4:7984-79F4). */
+static void tick_go(Play *p, int held, uint32_t *before)
+{
+    while (p->tick_stage) {
+        int s = p->tick_stage;
+        if (s > TS_START && (held || p->key || p->keybuf_n)) break;
+        p->tick_stage = s == TS_REST ? 0 : s + 1;
+        if (tick_part(p, s) || tick_over(p)) { p->tick_stage = 0; return; }
+        work_time(p, before);
+        if (p->stall > 0 && p->tick_stage) return;
+    }
+    p->tick_stage = 0;
+    input_part(p, 0);
+}
+
+static void iteration(Play *p, int held, uint32_t *before)
+{
+    int real = p->key ? p->key : held;
+    int key = real;
     p->key = 0;
+    if (p->demo) {
+        if (p->mode == PM_END || p->ended) {     /* the remake: the end of a demo game stays 3 s */
+            if (++p->demo_end > 3 * PLAY_HZ) p->result = PLAY_QUIT;
+            if (p->mode == PM_END) end_frame(p, 0);
+            return;
+        }
+        key = demo_poll(p);
+    }
     switch (p->mode) {
     case PM_END:    end_frame(p, key); return;
     case PM_OFFER:  offer_key(p, key); return;
@@ -2193,16 +2500,18 @@ void play_frame(Play *p, int held)
     case PM_INFO: case PM_FLEET: case PM_PAUSE: handle_key(p, key); return;
     default: break;
     }
-    if (!key) {                              /* key_waiting, then ovl4_8ede */
+    if (!real) {                             /* key_waiting, then ovl4_8ede */
         map_battles(p);
         if (p->mode == PM_END || p->mode == PM_OFFER) return;
     }
     p->tick_count++;
+    /* a key read by poll_input (DS:6896) skips the tick (ovl4:792B) */
     if (key == 0 && (p->mode == PM_NORMAL || p->mode == PM_SQUAD) && p->tick_count >= p->time_div) {
-        if (tick(p)) return;
-        if (p->mode == PM_END || p->mode == PM_OFFER) return;
+        p->tick_stage = TS_START;
+        tick_go(p, held, before);
+        return;
     }
-    handle_key(p, key);
+    input_part(p, key);
 }
 
 /* ------------------------------------------------------------------ drawing */
@@ -2437,5 +2746,40 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
         vline(s, 24, 79, 17, v.col);
         hline(s, 24, 1, 79, v.col);
         hline(s, 56, 1, 79, v.col);
+    }
+}
+
+/* the tests run single routines against WAS.EXE's (test/diff_ovl4) */
+/* The offer to surrender as a game begins: WAS.EXE asks before it draws the
+ * map, so the question shows over the last page of the menus */
+void play_draw_offer(const Play *p, Screen *s, GfxMode mode)
+{
+    View v = { s, 0, SCREEN_H, { 0, 1, 2, 3 } };
+    int ncolors = mode == MODE_CGA ? 4 : 16;
+    for (int i = 0; i < 4; i++)
+        v.col[i] = screen_nearest(s, ncolors, CGA_PALETTE[i].r, CGA_PALETTE[i].g, CGA_PALETTE[i].b);
+    char ch[2] = { 0, 0 };
+    for (int r = 0; r < 23; r++)
+        for (int c = 0; c < 40; c++)
+            if (p->panel[r][c]) { ch[0] = p->text[r][c]; screen_text(s, p->ga, c * 8, r * 8, ch, v.col[3], v.col[0]); }
+    if (p->mode == PM_OFFER) {               /* ovl4:A0B5: the box round the offer */
+        vline(s, 24, 0, 17, v.col);
+        vline(s, 24, 79, 17, v.col);
+        hline(s, 24, 1, 79, v.col);
+        hline(s, 56, 1, 79, v.col);
+    }
+}
+
+int play_debug_call(Play *p, int which, int arg)
+{
+    switch (which) {
+    case 0: encounters(p); return 0;
+    case 1: return move_squadrons(p);
+    case 2: eat(p, arg); return 0;
+    case 3: return map_battles(p);
+    case 4: restock(p); return 0;
+    case 5: return tick(p);
+    case 6: port_sources(p); return 0;
+    default: return 0;
     }
 }
