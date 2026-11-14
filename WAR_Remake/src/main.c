@@ -731,10 +731,10 @@ int main(int argc, char **argv)
         else if (SDL_strcasecmp(argv[i], "HERC") == 0 || SDL_strcmp(argv[i], "--herc") == 0) card = CARD_HERC;   /* WAR HERC (rt:000C) */
         else if (SDL_strncasecmp(argv[i], "video=", 6) == 0 || SDL_strncasecmp(argv[i], "--video=", 8) == 0) {
             const char *v = SDL_strchr(argv[i], '=') + 1;
-            if (!card_from_name(v, &card)) SDL_Log("video=%s: use cga, ega, tandy, vga or herc", v);
+            if (!card_from_name(v, &card)) SDL_Log("video=%s: use cga, composite, composite2, ega, tandy, vga or herc", v);
         }
         else if (SDL_strcmp(argv[i], "--video") == 0 && i + 1 < argc) {
-            if (!card_from_name(argv[++i], &card)) SDL_Log("--video %s: use cga, ega, tandy, vga or herc", argv[i]);
+            if (!card_from_name(argv[++i], &card)) SDL_Log("--video %s: use cga, composite, composite2, ega, tandy, vga or herc", argv[i]);
         }
         else if (SDL_strcmp(argv[i], "--log=verbose") == 0) log_level = GLOG_VERBOSE;
         else if (SDL_strcmp(argv[i], "--log") == 0 || SDL_strcmp(argv[i], "--log=normal") == 0) {
