@@ -179,6 +179,8 @@ void mapedit_draw(const MapEdit *e, Screen *s, GfxMode mode)
         else c.inv[i] = (uint8_t)(i ^ 15);   /* WARET.EXE XORs the 4-bit pixels */
     }
     screen_clear(s, c.col[0]);
+    /* ovl4:31BD: [A5C0] = 1, text_rows_add: a line over the bottom text row (draw_text_area_border) */
+    screen_fill(s, 0, 190, SCREEN_W, 1, c.col[3]);
 
     /* ovl4_33FA: the panel: a line under the map, a line beside the plan,
      * the letters and one page of tiles */
@@ -193,7 +195,10 @@ void mapedit_draw(const MapEdit *e, Screen *s, GfxMode mode)
     for (int i = 0; i < PAGE_TILES; i++) {
         char l[2] = { (char)('A' + i + (i >= 15)), 0 };   /* no P */
         text(&c, 12 + (i % 6) * 5, 14 + (i / 6) * 4, l);
-        tile(&c, set, e->page * PAGE_TILES + i, (0x15 + (i % 6) * 10) * 4, 0x5A + (i / 6) * 0x20);   /* ovl4_3558 */
+        /* ovl4_3558; WARET.EXE on an EGA or VGA draws at whole bytes of 8 pixels: 4 pixels left */
+        int tx = (0x15 + (i % 6) * 10) * 4;
+        if (gfx_card == CARD_EGA || gfx_card == CARD_VGA) tx &= ~7;
+        tile(&c, set, e->page * PAGE_TILES + i, tx, 0x5A + (i / 6) * 0x20);
     }
     /* ovl4_3B79: the plan of the map, 10 x 20 cells of 4 pixels */
     for (int y = 90; y <= 170; y++)
@@ -219,7 +224,12 @@ void mapedit_draw(const MapEdit *e, Screen *s, GfxMode mode)
     for (int y = cy; y < cy + TILE_H; y++)
         for (int x = cx; x < cx + TILE_W; x++) s->px[y * SCREEN_W + x] = c.inv[s->px[y * SCREEN_W + x] & 15];
     /* ovl4_3B51: the cursor's cell on the plan */
-    screen_fill(s, 12 + 4 * e->col, 90 + 4 * e->row, 4, 4, c.col[3]);
+    /* WARET.EXE (DOSBox-X): on a Tandy 1000 the cell is light red; on an EGA or VGA light red is
+     * ORed over the cell and the grid lines right of and under it (4 x 5 pixels) */
+    if (gfx_card == CARD_EGA || gfx_card == CARD_VGA) {
+        for (int y = 0; y < 5; y++)
+            for (int x = 0; x < 4; x++) s->px[(90 + 4 * e->row + y) * SCREEN_W + 12 + 4 * e->col + x] |= 12;
+    } else screen_fill(s, 12 + 4 * e->col, 90 + 4 * e->row, 4, 4, gfx_card == CARD_TANDY ? 12 : c.col[3]);
 
     char num[16];
     text(&c, 1, 22, O0S(e, 0xE5));            /* PAGE 1 */

@@ -18,12 +18,48 @@
  * Not in the file: the random number state (DS:0535), and AAE3-AAEF (the
  * food tick, the cursor-on-a-squad flag, the last sighting region). WAR.EXE
  * carries on with whatever those held; the remake starts them afresh.
+ *
+ * WARET.EXE, the 16-colour program, saves the same variables as SET: 24DCh
+ * bytes from its DS:0218 to 26F3 (its ov1:066F writes them, ov1:0746 reads
+ * them back). Its compiler laid them out in the same order, but word-aligned
+ * and with other variables between, so each run of WAR.EXE's addresses sits
+ * at its own distance (et_addr; found by aligning a SET and an S saved at the
+ * same point of the same campaign in DOSBox-X, and checked by how often each
+ * address is used in the two programs' code). Two differences: the map
+ * view's top ([021A]) is saved as an offset into the map buffer, 80 bytes a
+ * line pair; and the marks (WAR.EXE A51E, WARET 21AE) are screen-buffer
+ * addresses WARET.EXE resets to 9999 after loading, as it can't trust them,
+ * so the remake drops them too.
  */
 #include "savegame.h"
 
 #include <SDL3/SDL.h>
 
-#define AT(addr) ((addr) - ORIGINAL_S_BASE)
+/* WARET.EXE's DS address of a variable at WAR.EXE's DS address addr */
+static unsigned et_addr(unsigned addr)
+{
+    static const struct { unsigned lo, hi; int d; } RUN[] = {
+        { 0x8B8C, 0x9B69, 2 },     /* the enemy's cell tables, the supply map, the path memory */
+        { 0x9B6A, 0x9E5F, 4 },     /* the route memory, the map, the cursor */
+        { 0x9E60, 0xA20B, 16 },    /* the armies and the squad tables */
+        { 0xA4DC, 0xA5BD, 736 },   /* the opponent's values, the enemy's plans, time, the marks */
+        { 0xA5BE, 0xA6F3, 856 },   /* the opponent, the campaign number */
+        { 0xA6F4, 0xA8BF, 883 },   /* the counters, the rules */
+        { 0xA8C0, 0xA9AC, 919 },   /* the enemy's distances and values, the squads' delays (to the end of SET) */
+    };
+    for (size_t k = 0; k < SDL_arraysize(RUN); k++)
+        if (addr >= RUN[k].lo && addr <= RUN[k].hi) return (unsigned)((int)addr - 0x8650 + RUN[k].d);
+    return 0;
+}
+
+static bool set_file;      /* reading a SET (WARET.EXE) rather than an S */
+
+static size_t AT(unsigned addr)
+{
+    if (!set_file) return addr - ORIGINAL_S_BASE;
+    unsigned e = et_addr(addr);
+    return e >= ORIGINAL_SET_BASE ? e - ORIGINAL_SET_BASE : 0;
+}
 
 static int w(const uint8_t *s, unsigned addr)          /* a signed word at a DS address */
 {
@@ -32,12 +68,13 @@ static int w(const uint8_t *s, unsigned addr)          /* a signed word at a DS 
 
 static int wi(const uint8_t *s, unsigned addr, int i) { return w(s, addr + 2u * (unsigned)i); }
 
-int savegame_campaign_number(const uint8_t *s) { return w(s, 0xA694); }
-const uint8_t *savegame_map(const uint8_t *s) { return s + AT(0x9D82); }
+int savegame_campaign_number(const uint8_t *s) { set_file = false; return w(s, 0xA694); }
+const uint8_t *savegame_map(const uint8_t *s) { set_file = false; return s + AT(0x9D82); }
 
 bool savegame_import(Play *p, Campaign *c, const GameAssets *ga, const uint8_t *s, size_t size, uint32_t seed)
 {
-    if (!s || size != ORIGINAL_S_SIZE) return false;
+    if (!s || (size != ORIGINAL_S_SIZE && size != ORIGINAL_SET_SIZE)) return false;
+    set_file = size == ORIGINAL_SET_SIZE;
 
     /* the campaign: the map, the armies as they stand (the same 400 bytes
      * as a T file's, DS:9E60), the opponent and the rules */
@@ -93,7 +130,7 @@ bool savegame_import(Play *p, Campaign *c, const GameAssets *ga, const uint8_t *
         q->planned = wi(s, 0xA0B8, i) != 0;
         q->dest = wi(s, 0xA02C, i);
         int mark = wi(s, 0xA51E, i) & 0xFFFF;          /* the mark's screen-buffer address, or 9999 */
-        q->marked = mark != 9999 && mark >= 0xB68;
+        q->marked = !set_file && mark != 9999 && mark >= 0xB68;   /* WARET.EXE drops them (ov1:07E1) */
         if (q->marked) {
             q->mark_x = (mark - 0xB68) % 80;
             q->mark_y = (mark - 0xB68) / 80;
@@ -132,7 +169,9 @@ bool savegame_import(Play *p, Campaign *c, const GameAssets *ga, const uint8_t *
     p->value_flag = w(s, 0xA8D7);
 
     /* the map view, the cursor, time and the counters */
-    p->view_top = SDL_clamp(w(s, 0x886A), 0, VIEW_TOP_MAX);
+    /* WARET.EXE: [021A] less the map buffer's start ([01DA]), 80 bytes a line pair (ov1:06C0) */
+    int top = set_file ? (int)(uint16_t)(s[2] | (s[3] << 8)) / 80 : w(s, 0x886A);
+    p->view_top = SDL_clamp(top, 0, VIEW_TOP_MAX);
     p->cx = w(s, 0x9E4A);
     p->cy = w(s, 0x9E4C);
     p->sel = w(s, 0xA506);

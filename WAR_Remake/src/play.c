@@ -2429,12 +2429,21 @@ static void draw_cursor(const View *v, int cx, int cy, bool box)
 {
     int x = cx * 4, l = cy * 2;
     if (box) {
-        for (int k = 0; k <= 12; k += 12)
+        /* WARET.EXE's box is shorter: the top on line 2, the sides on 4, 6 and 8, the bottom on 10 (DOSBox-X) */
+        bool et = card_waret();
+        int top = et ? 2 : 0, bot = et ? 10 : 12;
+        for (int k = top; k <= bot; k += bot - top)
             for (int i = 0; i < 8; i++) vpx(v, x + i, l + k, (i >= 2 && i <= 5) ? 3 : 0);
-        static const int side[4] = { 2, 4, 8, 10 };
-        for (int k = 0; k < 4; k++) {
-            vpx(v, x, l + side[k], 3); vpx(v, x + 1, l + side[k], 3);
-            vpx(v, x + 6, l + side[k], 3); vpx(v, x + 7, l + side[k], 3);
+        static const int side_war[4] = { 2, 4, 8, 10 }, side_et[3] = { 4, 6, 8 };
+        const int *side = et ? side_et : side_war;
+        for (int k = 0; k < (et ? 3 : 4); k++) {
+            static const int sx[4] = { 0, 1, 6, 7 };
+            for (int i = 0; i < 4; i++) {
+                int sy = l + side[k] - v->top, px = x + sx[i];
+                if (gfx_card == CARD_TANDY) {   /* WARET.EXE on a Tandy 1000: the sides XOR 7 (DOSBox-X) */
+                    if (px >= 0 && px < SCREEN_W && sy >= 0 && sy < v->h) v->s->px[sy * SCREEN_W + px] ^= 7;
+                } else vpx(v, px, l + side[k], 3);
+            }
         }
         return;
     }
@@ -2443,8 +2452,13 @@ static void draw_cursor(const View *v, int cx, int cy, bool box)
         for (int i = 0; i < 4; i++) vpx(v, x + i, l + arm[k], i < 2 ? 0 : 3);
     for (int k = 4; k <= 5; k++) {
         static const int8_t bar[12] = { 0, 0, 3, 3, 3, -1, -1, 0, 0, 3, 3, 3 };
-        for (int i = 0; i < 12; i++)
+        for (int i = 0; i < 12; i++) {
             if (bar[i] >= 0) vpx(v, x - 4 + i, l + k, bar[i]);
+            else if (gfx_card == CARD_TANDY) {   /* WARET.EXE on a Tandy 1000: the gap ANDs with 14, as colour 3 is 14 (DOSBox-X) */
+                int px = x - 4 + i, sy = l + k - v->top;
+                if (px >= 0 && px < SCREEN_W && sy >= 0 && sy < v->h) v->s->px[sy * SCREEN_W + px] &= 14;
+            }
+        }
     }
 }
 
@@ -2471,13 +2485,14 @@ static void vline(Screen *s, int xbyte, int y, int len, const uint8_t col[4])   
 {
     for (int j = 0; j < len; j++)
         for (int i = 0; i < 4; i++)
-            if (y + j < SCREEN_H) s->px[(y + j) * SCREEN_W + xbyte * 4 + i] = col[i < 2 ? 0 : 3];
+            if (y + j < SCREEN_H && (i >= 2 || !card_waret()))   /* WARET.EXE draws only the white half */
+                s->px[(y + j) * SCREEN_W + xbyte * 4 + i] = col[i < 2 ? 0 : 3];
 }
 
 static void bar(Screen *s, int y, int len, const uint8_t col[4])    /* clear_box */
 {
     screen_fill(s, 0x1C * 4, y, 50 * 4, 8, col[0]);
-    screen_fill(s, 0x1C * 4, y, SDL_min(len, 50) * 4, 6, col[1]);
+    screen_fill(s, 0x1C * 4, y, SDL_min(len, 50) * 4, 6, card_waret() ? 14 : col[1]);   /* WARET.EXE: yellow bars */
 }
 
 static void draw_ds_bitmap(Screen *s, const GameAssets *ga, unsigned off, int x0, int y0, const uint8_t col[4])
@@ -2497,8 +2512,9 @@ static void pattern(Screen *s, int x, int y, uint8_t b, const uint8_t col[4])
 
 /* ovl6:89A9: a small map of who holds what: white and dotted white for you,
  * black and dotted for the enemy (only when the enemy is always seen) */
-static void view_graphics(const Play *p, Screen *s, const uint8_t col[4])
+static void view_graphics(const Play *p, Screen *s, const uint8_t col4[4])
 {
+    uint8_t col[4] = { col4[0], card_waret() ? 10 : col4[1], col4[2], col4[3] };   /* WARET.EXE: your ground in green */
     screen_fill(s, 0, 0x6A, 12 * 4, 1, col[3]);          /* draw_hline, rt:1E35 */
     for (int y = 0x6B; y < 0x6A + 0x54; y++) {
         pattern(s, 0, y, 0xF0, col);
@@ -2549,7 +2565,9 @@ static void info_graphics(const Play *p, Screen *s, const uint8_t col[4])   /* o
 static void formation_graphics(const Play *p, Screen *s, const uint8_t col[4])
 {
     for (int y = 86; y < 190; y++) {                       /* rt:1D68 */
-        for (int x = 0; x < 68; x++) s->px[y * SCREEN_W + x] = col[x < 2 ? 3 : 0];
+        /* up to the line's black half: WARET.EXE draws only the line's white half, but its
+         * clear_box fills whole bytes of 8 pixels (DOSBox-X, EGA and Tandy) */
+        for (int x = 0; x < 70; x++) s->px[y * SCREEN_W + x] = col[x < 2 ? 3 : 0];
     }
     vline(s, 17, 86, 104, col);
     screen_fill(s, 0, 86, 72, 1, col[3]);
@@ -2565,8 +2583,11 @@ static void formation_graphics(const Play *p, Screen *s, const uint8_t col[4])
             unsigned at = off + r * 2;
             if (at + 1 >= DS_SIZE) break;
             int word = (p->ga->ds[at] << 8) | p->ga->ds[at + 1];
-            for (int b = 0; b < 8; b++)
-                if (line + r < SCREEN_H) s->px[(line + r) * SCREEN_W + xb * 4 + b] = col[(word >> (14 - 2 * b)) & 3];
+            for (int b = 0; b < 8; b++) {
+                int v = (word >> (14 - 2 * b)) & 3;
+                if (!v && (gfx_card == CARD_EGA || gfx_card == CARD_VGA)) continue;   /* WARET.EXE on an EGA: black is not drawn (DOSBox-X) */
+                if (line + r < SCREEN_H) s->px[(line + r) * SCREEN_W + xb * 4 + b] = col[v];
+            }
         }
     }
     draw_ds_bitmap(s, p->ga, 0x448, 0, 192, col);           /* [+] */
@@ -2592,7 +2613,7 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
         if (!visible(p, i)) continue;
         SquadPose pose = q->small ? POSE_SMALL
                        : q->fighting ? POSE_FIGHTING
-                       : q->moving == 0 ? POSE_STANDING
+                       : q->moving == 0 && !q->on_route ? POSE_STANDING   /* rt:1A20: an enemy between route steps marches */
                        : q->condition <= 10 ? POSE_WEAK : POSE_MARCHING;
         bool white_fig = q->friendly != (q->clock == FIGHT_ON && p->blink);   /* fighting squads blink */
         screen_sprite(s, p->ga->squad_sprite[pose], q->x * 4, q->y * 2 - v.top, white_fig, white, black, 0, map_h);

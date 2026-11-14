@@ -20,7 +20,7 @@ const RGB STD16[16] = {
     { 0xFF, 0x55, 0x55 }, { 0xFF, 0x55, 0xFF }, { 0xFF, 0xFF, 0x55 }, { 0xFF, 0xFF, 0xFF },
 };
 
-static const char *const CARD_NAMES[CARD_COUNT] = { "CGA", "EGA", "Tandy", "VGA", "Hercules" };
+static const char *const CARD_NAMES[CARD_COUNT] = { "CGA", "CGA composite", "CGA composite (new)", "EGA", "Tandy", "VGA", "Hercules" };
 
 const char *card_name(VideoCard c) { return c >= 0 && c < CARD_COUNT ? CARD_NAMES[c] : "?"; }
 
@@ -30,6 +30,8 @@ bool card_from_name(const char *s, VideoCard *c)
     for (int k = 0; k < CARD_COUNT; k++)
         if (SDL_strcasecmp(s, CARD_NAMES[k]) == 0) { *c = (VideoCard)k; return true; }
     if (SDL_strcasecmp(s, "herc") == 0) { *c = CARD_HERC; return true; }
+    if (SDL_strcasecmp(s, "composite") == 0 || SDL_strcasecmp(s, "cga_composite") == 0) { *c = CARD_COMPOSITE; return true; }
+    if (SDL_strcasecmp(s, "composite2") == 0 || SDL_strcasecmp(s, "cga_composite2") == 0) { *c = CARD_COMPOSITE2; return true; }
     return false;
 }
 

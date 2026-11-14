@@ -940,13 +940,15 @@ void battle_finish(Battle *b)   /* battle 42E8 */
 /* ------------------------------------------------------------------ drawing */
 
 /* rt:1B17 on a 2-bit sprite: a white figure with a black outline (yours) or
- * the reverse, the outline taken within each 8-pixel word */
+ * the reverse, the outline taken within each 8-pixel word (4 pixels with
+ * WARET.EXE on a Tandy 1000, as on the map: measured in DOSBox-X) */
 static void draw_sprite(Screen *s, const Battle *b, int off, int addr, int side, const uint8_t col[4], int clip)
 {
     int ww = rd(b, off), hh = rd(b, off + 2);
     if (ww <= 0 || ww > 10 || hh <= 0 || hh > 40) return;
     int x0 = (addr % 80) * 4, y0 = (addr / 80) * 2;
     if (addr < 0) return;
+    int g = gfx_card == CARD_TANDY ? 4 : 8;
     for (int y = 0; y < hh * 2; y++) {
         int sy = y0 + y;
         if (sy < 0 || sy >= clip) continue;
@@ -955,9 +957,9 @@ static void draw_sprite(Screen *s, const Battle *b, int off, int addr, int side,
             int sx = x0 + x;
             if (sx < 0 || sx >= SCREEN_W) continue;
             int v = (row[x / 4] >> (6 - 2 * (x & 3))) & 3;
-            int in = x & 7;
+            int in = x & (g - 1);
             int l = in > 0 ? (row[(x - 1) / 4] >> (6 - 2 * ((x - 1) & 3))) & 3 : 0;
-            int r = in < 7 ? (row[(x + 1) / 4] >> (6 - 2 * ((x + 1) & 3))) & 3 : 0;
+            int r = in < g - 1 ? (row[(x + 1) / 4] >> (6 - 2 * ((x + 1) & 3))) & 3 : 0;
             uint8_t *d = &s->px[sy * SCREEN_W + sx];
             if (side == FRIEND) { if (v) *d = col[v]; else if (l | r) *d = col[0]; }
             else                { if (v) *d = col[0]; else if (l | r) *d = col[3]; }

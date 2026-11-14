@@ -32,8 +32,9 @@
  * Battle (Zoom): A Attack, R Retreat; then A Archers, B Barbarians, K Knights,
  *        S Squad and A Attack, F Forward, B Backoff, S Stop, Backspace back.
  *
- * Usage: AncientArtOfWar [video=cga|ega|tandy|vga|herc] [--viewer] [--log | --log=verbose] [game-folder]
- *          video=: the card to start on (CGA if not given); HERC is video=herc, as WAR HERC
+ * Usage: AncientArtOfWar [video=CARD] [--viewer] [--log | --log=verbose] [game-folder]
+ *          video=: the card to start on, CGA if not given: cga, composite (a CGA on a TV), composite2
+ *          (the new CGA on a TV), ega, tandy, vga, herc; HERC is video=herc, as WAR HERC
  *          --log: a debug log of each campaign played (gamelog.h), in the
  *          remake's folder under Logs/; --log=verbose (or --log verbose) for more
  *        AncientArtOfWar --screenshots OUTDIR [game-folder]   (write BMPs, no window)
@@ -75,6 +76,7 @@ typedef struct {
     SDL_Renderer *ren;
     SDL_Texture  *tex;           /* 320x200 game screen */
     SDL_Texture  *tex_herc;      /* 720x348 on a Hercules card */
+    SDL_Texture  *tex_comp;      /* 640x200 for a CGA on a TV (composite) */
     SDL_Texture  *up;            /* integer-upscaled copy for sharp 4:3 scaling */
     int           up_scale, up_w;
     bool          playing;
@@ -124,7 +126,7 @@ static void apply_display(App *app, Screen *s)
 static VideoCard current_card(const App *app)
 {
     if (app->herc) return CARD_HERC;
-    if (app->mode == MODE_CGA) return CARD_CGA;
+    if (app->mode == MODE_CGA) return app->card == CARD_COMPOSITE || app->card == CARD_COMPOSITE2 ? app->card : CARD_CGA;
     return app->card == CARD_EGA || app->card == CARD_TANDY ? app->card : CARD_VGA;
 }
 
@@ -136,21 +138,53 @@ static void set_card(App *app, VideoCard c)
     app->herc = c == CARD_HERC;
 }
 
+/* The Options Shoppe's display line and the CGA cards go together (a remake convenience: in WAR.EXE
+ * the setting only set a PCjr's or Tandy's palette registers, and a plain CGA looked the same):
+ * tv/composite is the CGA on a TV (CARD_COMPOSITE, or the new CGA's if that is shown), rgb the plain
+ * CGA; black/white keeps the card and Tab keeps black/white. card_to_display: after Tab or at the start, the line follows the
+ * card; display_to_card: after the line was changed in the Options Shoppe, the card follows it. */
+static void card_to_display(App *app)
+{
+    if (!app->menu || app->herc || app->mode != MODE_CGA) return;
+    int d = menu_options(app->menu)->display;
+    VideoCard c = current_card(app);
+    if (c == CARD_COMPOSITE || c == CARD_COMPOSITE2) { if (d == 2) menu_set_display(app->menu, 1); }   /* black/white stays: a TV in greys */
+    else if (d == 1) menu_set_display(app->menu, 2);
+}
+
+static void display_to_card(App *app, int before)
+{
+    if (!app->menu || app->herc || app->mode != MODE_CGA) return;
+    int d = menu_options(app->menu)->display;
+    if (d == before) return;
+    VideoCard c = current_card(app);
+    if (d == 1 && c != CARD_COMPOSITE && c != CARD_COMPOSITE2) set_card(app, CARD_COMPOSITE);
+    else if (d == 2 && c != CARD_CGA) set_card(app, CARD_CGA);
+}
+
 /* "CGA", "EGA", "Tandy", "VGA" or "Hercules" */
 static const char *display_name(const App *app) { return card_name(current_card(app)); }
 
-/* Tab: CGA, EGA, Tandy, VGA (the three if WARET.DAT is there), Hercules, then CGA again */
+/* Tab: CGA, CGA composite (old, new), EGA, Tandy, VGA (the three if WARET.DAT is there), Hercules, then CGA again */
 static void next_mode(App *app)
 {
     VideoCard c = current_card(app);
     do c = (VideoCard)((c + 1) % CARD_COUNT);
     while (card_assets(c) == MODE_VGA && !app->ga.set[MODE_VGA].loaded);
     set_card(app, c);
+    card_to_display(app);
 }
+
+static bool composite(const App *app) { VideoCard c = current_card(app); return c == CARD_COMPOSITE || c == CARD_COMPOSITE2; }
+
+/* the screen's size in pixels for the current card */
+static int out_w(const App *app) { return app->herc ? HERC_W : composite(app) ? COMP_W : SCREEN_W; }
+static int out_h(const App *app) { return app->herc ? HERC_H : SCREEN_H; }
 
 static void to_pixels(App *app, const Screen *s)
 {
     if (app->herc) screen_to_herc(s, app->rgb);
+    else if (composite(app)) screen_to_composite(s, current_card(app) == CARD_COMPOSITE2, app->rgb);
     else screen_to_xrgb(s, app->rgb);
 }
 
@@ -294,12 +328,15 @@ static void render(App *app)
     SDL_RenderClear(app->ren);
     if (app->have_assets) {
         if (app->herc && !app->tex_herc) app->herc = false;
+        if (composite(app) && !app->tex_comp) set_card(app, CARD_CGA);
         draw_screen(app);
-        int w = app->herc ? HERC_W : SCREEN_W, h = app->herc ? HERC_H : SCREEN_H;
-        SDL_Texture *tex = app->herc ? app->tex_herc : app->tex;
+        int w = out_w(app), h = out_h(app);
+        SDL_Texture *tex = app->herc ? app->tex_herc : composite(app) ? app->tex_comp : app->tex;
         SDL_UpdateTexture(tex, NULL, app->rgb, w * 4);
         bool integer;
-        SDL_FRect dst = dest_rect(app, w, h, &integer);
+        /* a composite screen is 640 hdots for 320 pixels: placed as 320 x 200, scaled sharply */
+        SDL_FRect dst = dest_rect(app, w == COMP_W ? SCREEN_W : w, h, &integer);
+        if (w == COMP_W) integer = false;
         if (integer) {
             SDL_RenderTexture(app->ren, tex, NULL, &dst);
         } else {
@@ -442,8 +479,7 @@ static int write_screenshots(App *app, const char *outdir)
     for (int c = 0; c < CARD_COUNT; c++) {   /* CGA, EGA, Tandy, VGA, Hercules */
         if (card_assets((VideoCard)c) == MODE_VGA && !app->ga.set[MODE_VGA].loaded) continue;
         set_card(app, (VideoCard)c);
-        bool herc = app->herc;
-        int w = herc ? HERC_W : SCREEN_W, h = herc ? HERC_H : SCREEN_H;
+        int w = out_w(app), h = out_h(app);
         for (int i = 0; i < NUM_SCREENS; i++) {
             app->index = i;
             draw_screen(app);
@@ -743,6 +779,8 @@ int main(int argc, char **argv)
     SDL_SetTextureScaleMode(app.tex, SDL_SCALEMODE_NEAREST);
     app.tex_herc = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, HERC_W, HERC_H);
     if (app.tex_herc) SDL_SetTextureScaleMode(app.tex_herc, SDL_SCALEMODE_NEAREST);
+    app.tex_comp = SDL_CreateTexture(app.ren, SDL_PIXELFORMAT_XRGB8888, SDL_TEXTUREACCESS_STREAMING, COMP_W, SCREEN_H);
+    if (app.tex_comp) SDL_SetTextureScaleMode(app.tex_comp, SDL_SCALEMODE_NEAREST);
     app.ev_folder = SDL_RegisterEvents(1);
     sound_init();                       /* without an audio device the game runs silent */
     if (log_level != GLOG_OFF) {
@@ -760,7 +798,7 @@ int main(int argc, char **argv)
         char *pref = SDL_GetPrefPath(APP_ORG, APP_NAME);   /* the data disk */
         app.menu = menu_create(&app.ga, app.campaigns, pref);
         SDL_free(pref);
-        if (app.menu) { menu_start(app.menu); app.in_menu = true; }
+        if (app.menu) { menu_start(app.menu); app.in_menu = true; card_to_display(&app); }
     }
     update_title(&app);
 
@@ -800,7 +838,7 @@ int main(int argc, char **argv)
                         char *pref = SDL_GetPrefPath(APP_ORG, APP_NAME);
                         app.menu = menu_create(&app.ga, app.campaigns, pref);
                         SDL_free(pref);
-                        if (app.menu) { menu_start(app.menu); app.in_menu = true; }
+                        if (app.menu) { menu_start(app.menu); app.in_menu = true; card_to_display(&app); }
                     }
                 } else ask_for_folder(&app);
                 dirty = true;
@@ -819,7 +857,11 @@ int main(int argc, char **argv)
                             if (e.key.repeat) continue;
                             app.tapped = pk;
                         }
-                        if (pk) menu_key(app.menu, pk);
+                        if (pk) {
+                            int before = menu_options(app.menu)->display;
+                            menu_key(app.menu, pk);
+                            display_to_card(&app, before);   /* the Options Shoppe's tv/composite or rgb */
+                        }
                     }
                 }
                 else if (app.playing) {
@@ -881,6 +923,7 @@ int main(int argc, char **argv)
     SDL_DestroyTexture(app.up);
     SDL_DestroyTexture(app.tex);
     SDL_DestroyTexture(app.tex_herc);
+    SDL_DestroyTexture(app.tex_comp);
     SDL_DestroyRenderer(app.ren);
     SDL_DestroyWindow(app.win);
     SDL_Quit();

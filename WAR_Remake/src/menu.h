@@ -62,6 +62,8 @@ void  menu_text(Menu *m, const char *utf8);   /* SDL text input */
 MenuAction menu_action(Menu *m);              /* and clears it */
 const Campaign *menu_game(const Menu *m);     /* the campaign to play */
 const MenuOptions *menu_options(const Menu *m);
+/* the Options Shoppe's display line set to follow the card (main.c; not written to CNF by itself) */
+void menu_set_display(Menu *m, int display);
 uint32_t menu_seed(const Menu *m);
 
 /* Saved games (the remake's own format, in the data folder) */

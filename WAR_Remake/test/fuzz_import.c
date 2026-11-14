@@ -7,7 +7,7 @@
  *
  * test/fuzz_import.c: a test or debugging aid for the remake (see README.md here)
  */
-/* damaged original S files: import, resume and play (ASan) */
+/* damaged original S or SET files: import, resume and play (ASan) */
 #include "../src/savegame.h"
 #include "../src/sound.h"
 #include <SDL3/SDL.h>
@@ -15,7 +15,7 @@ static GameAssets ga; static Campaign c; static Play p; static Screen scr;
 int main(int argc, char **argv)
 {
     (void)argc; char err[256]; sound_init_offline(); assets_load(&ga, argv[1], err, sizeof err);
-    size_t n = 0; uint8_t *orig = SDL_LoadFile(argv[2], &n), s[0x217E];
+    size_t n = 0; uint8_t *orig = SDL_LoadFile(argv[2], &n), s[ORIGINAL_SET_SIZE];   /* S or SET */
     uint32_t r = 1; int ok = 0, ended = 0;
     for (int it = 0; it < 400; it++) {
         SDL_memcpy(s, orig, n);

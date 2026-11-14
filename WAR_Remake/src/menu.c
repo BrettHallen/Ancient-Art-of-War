@@ -568,6 +568,12 @@ static void page_opponent(Menu *m);
 static void page_campaign_menu(Menu *m);
 static void page_shoppe(Menu *m);
 static void page_report(Menu *m);
+
+/* WARET.EXE on an EGA or a VGA puts a few texts one byte (4 pixels) further
+ * left than WAR.EXE and its own Tandy version do: the title page's item and
+ * your column of the battle report (DOSBox-X) */
+static int ega_left(const Menu *m) { return m->mode != MODE_CGA && gfx_card != CARD_TANDY; }
+
 static void page_edit_text(Menu *m, bool unroll);
 
 static void go(Menu *m, int state) { m->state = state; m->frame = 0; m->step = 0; m->drawn = false; m->tune_started = false; }
@@ -587,7 +593,7 @@ static void title_box(Menu *m)
 {
     if (m->box_inverted) xor_box(m, 17, 54, 25, 5);   /* the buffer is blitted again: back to normal */
     m->box_inverted = false;
-    small_caps(m, 19 - (m->mode != MODE_CGA), 58, O3S(m, TITLE_ITEMS[m->title_item]));   /* WARET.EXE: 4 pixels left */
+    small_caps(m, 19 - ega_left(m), 58, O3S(m, TITLE_ITEMS[m->title_item]));   /* WARET.EXE on an EGA or VGA: 4 pixels left */
     m->frame = 0;
     m->idle = 0;
 }
@@ -602,8 +608,8 @@ static void demo_start(Menu *m)
     for (int c = 0; c < NUM_CAMPAIGNS; c++)
         if (m->camps[c].loaded && SDL_strcasecmp(m->camps[c].file, name) == 0) idx = c;
     if (idx < 0 || !m->ga->have_battle) { m->idle = 0; return; }   /* not on this WAR disk: keep waiting */
-    small_caps(m, 19 - (m->mode != MODE_CGA), 58, O3S(m, 0x96B));   /* "    quit    " */
-    small_caps(m, 27 - (m->mode != MODE_CGA), 58, O3S(m, 0xE54));   /* "demo " over "quit" */
+    small_caps(m, 19 - ega_left(m), 58, O3S(m, 0x96B));   /* "    quit    " */
+    small_caps(m, 27 - ega_left(m), 58, O3S(m, 0xE54));   /* "demo " over "quit" */
     clear_row(m, 24);
     m->game = m->camps[idx];
     m->game.opponent = 0;                       /* A67C = 0, its values from O2 */
@@ -819,7 +825,9 @@ static void page_campaign_menu(Menu *m)
     m->frame_on = false;
     m->sweep = -1;
     scene_text(m);
-    if (editor_menu(m)) for (int r = 23; r < 25; r++) clear_row(m, r);   /* campaign_menu: PG shows down to line 191 */
+    /* campaign_menu: PG shows down to line 191. WARET.EXE leaves row 23 alone: its picture has a line
+     * on line 187 (DOSBox-X, EGA and Tandy) */
+    if (editor_menu(m)) for (int r = m->mode == MODE_CGA ? 23 : 24; r < 25; r++) clear_row(m, r);
     help_change_select(m, O3S(m, 0xD86), 50, 28, O3S(m, 0xBF6));   /* to move marker, [Enter] to select. */
 }
 
@@ -893,11 +901,12 @@ static void page_report(Menu *m)
 {
     bool won = m->report_code < 10;
     show_picture(m, won ? PIC_REPORT_WIN : PIC_REPORT_LOSE, false);
-    report_number(m, 41, 40, m->rep[0]);     /* 669h: captured, yours */
+    int f = 41 - ega_left(m);                /* WARET.EXE on an EGA or VGA: yours 4 pixels further left */
+    report_number(m, f, 40, m->rep[0]);      /* 669h: captured, yours */
     report_number(m, 52, 40, m->rep[1]);     /* 674h */
-    report_number(m, 41, 52, m->rep[2]);     /* 849h: casualties */
+    report_number(m, f, 52, m->rep[2]);      /* 849h: casualties */
     report_number(m, 52, 52, m->rep[3]);
-    report_number(m, 41, 66, m->rep[4]);     /* A79h: flags taken */
+    report_number(m, f, 66, m->rep[4]);      /* A79h: flags taken */
     report_number(m, 52, 66, m->rep[5]);
     if (won) {
         print_at(m, 6, 1, O2S(m, 0xF86));                         /* Victory was yours */
@@ -1017,7 +1026,7 @@ static int disk_cmp(const void *a, const void *b) { return SDL_strcasecmp((const
 /* the files of a data disk: TITLES, S and T files named in TITLES (T0-TZ) */
 static bool disk_file(const char *name)
 {
-    if (!SDL_strcasecmp(name, "TITLES") || !SDL_strcasecmp(name, "S")) return true;
+    if (!SDL_strcasecmp(name, "TITLES") || !SDL_strcasecmp(name, "S") || !SDL_strcasecmp(name, "SET")) return true;
     return (name[0] == 'T' || name[0] == 't') && name[1] && SDL_isalnum((unsigned char)name[1]) && !name[2];
 }
 
@@ -1166,13 +1175,31 @@ static bool data_titles_load(Menu *m)
 
 #define SAVE_MAGIC "WARREMAKE-S1"
 
-bool menu_has_saved_game(const Menu *m)
+/* The saved game on the data disk: S (the remake's or WAR.EXE's) or SET (WARET.EXE's, the 16-colour
+ * program's). A disk used by both programs can hold both: the one saved last is the game. */
+static bool saved_file_info(const Menu *m, const char *name, SDL_PathInfo *info)   /* any case */
 {
     int n = 0;
-    char **found = SDL_GlobDirectory(m->data_dir, "S", SDL_GLOB_CASEINSENSITIVE, &n);
+    char **found = SDL_GlobDirectory(m->data_dir, name, SDL_GLOB_CASEINSENSITIVE, &n);
+    bool ok = false;
+    if (found && n > 0) {
+        char path[1200];
+        data_path(m, found[0], path, sizeof path);
+        ok = SDL_GetPathInfo(path, info) && info->type == SDL_PATHTYPE_FILE;
+    }
     SDL_free(found);
-    return n > 0;
+    return ok;
 }
+
+static const char *saved_game_file(const Menu *m)
+{
+    SDL_PathInfo s, set;
+    bool has_s = saved_file_info(m, "S", &s), has_set = saved_file_info(m, "SET", &set);
+    if (has_s && has_set) return set.modify_time > s.modify_time ? "SET" : "S";
+    return has_set ? "SET" : has_s ? "S" : NULL;
+}
+
+bool menu_has_saved_game(const Menu *m) { return saved_game_file(m) != NULL; }
 
 static bool save_write(Menu *m, const Play *p)
 {
@@ -1226,8 +1253,9 @@ static void original_campaign(Menu *m, Campaign *c)
 bool menu_load_saved_game(Menu *m, Play *p, Campaign *c)
 {
     size_t size = 0;
-    uint8_t *d = assets_load_file(m->data_dir, "S", &size);
-    if (d && size == ORIGINAL_S_SIZE) {             /* saved by the original (save_game, ovl1:35C4) */
+    const char *file = saved_game_file(m);
+    uint8_t *d = file ? assets_load_file(m->data_dir, file, &size) : NULL;
+    if (d && (size == ORIGINAL_S_SIZE || size == ORIGINAL_SET_SIZE)) {   /* saved by WAR.EXE (ovl1:35C4) or WARET.EXE (ov1:066F) */
         bool imported = savegame_import(p, c, m->ga, d, size, (uint32_t)SDL_GetTicksNS());
         SDL_free(d);
         if (imported) original_campaign(m, c);
@@ -1254,10 +1282,11 @@ bool menu_load_saved_game(Menu *m, Play *p, Campaign *c)
 void menu_saved_game_failed(Menu *m)
 {
     size_t size = 0;
-    uint8_t *d = assets_load_file(m->data_dir, "S", &size);
+    const char *file = saved_game_file(m);
+    uint8_t *d = file ? assets_load_file(m->data_dir, file, &size) : NULL;
     SDL_free(d);
     SDL_memset(m->message, 0, sizeof m->message);
-    if (size == 0x217E) {                  /* save_game (ovl1:35C4): 217Eh bytes of WAR.EXE's data */
+    if (size == ORIGINAL_S_SIZE || size == ORIGINAL_SET_SIZE) {   /* WAR.EXE's or WARET.EXE's data */
         SDL_strlcpy(m->message[0], "  This game was saved by the original,", sizeof m->message[0]);
         SDL_strlcpy(m->message[1], "  but the file could not be read.", sizeof m->message[1]);
     } else {
@@ -1699,6 +1728,7 @@ void menu_save(Menu *m, const Play *p)
 MenuAction menu_action(Menu *m) { MenuAction a = m->action; m->action = MENU_NONE; return a; }
 const Campaign *menu_game(const Menu *m) { return &m->game; }
 const MenuOptions *menu_options(const Menu *m) { return &m->opt; }
+void menu_set_display(Menu *m, int display) { m->opt.display = SDL_clamp(display, 0, 2); }   /* the card's change redraws the page */
 uint32_t menu_seed(const Menu *m) { return m->seed; }
 
 static bool key_down(int k) { return k == PK_EQUALS || k == PK_KP_PLUS || k == PK_CTRL || k == PK_DOWN || k == PK_RIGHT; }
@@ -2233,6 +2263,8 @@ static void menu_draw_page(Menu *m, Screen *s, GfxMode mode)
     }
     if ((mode != m->mode || gfx_card != m->card) || !m->drawn) {
         bool first = !m->drawn;
+        /* Tab to a 16-colour card with the pointer on the display line, which WARET.EXE's pointer can't reach */
+        if (m->state == MS_SHOPPE && mode != MODE_CGA && m->shoppe_item == 0) m->shoppe_item = 1;
         m->mode = mode;
         m->card = gfx_card;
         if (first && (m->state == MS_TITLES || m->state == MS_STORY || m->state == MS_RULES) && m->step == 1) {

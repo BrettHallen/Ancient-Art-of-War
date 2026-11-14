@@ -676,7 +676,12 @@ void sqedit_draw(const SquadEdit *e, Screen *s, GfxMode mode)
         const PSquad *q = &e->p.sq[SDL_clamp(e->p.sel, 0, MAX_SQUADS - 1)];
         for (int y = 0x92; y < 0x92 + 0x2A; y++) {
             for (int x = 0; x < 0x23 * 4; x++) s->px[y * SCREEN_W + x] = col[x < 2 ? 3 : 0];
-            s->px[y * SCREEN_W + 0x23 * 4 + 2] = col[3];           /* draw_vline */
+            /* draw_vline (byte 0Fh): black then white. WARET.EXE draws only the white half, but its
+             * clear_box fills whole bytes of 8 pixels, so the black half is black too (DOSBox: CGA,
+             * EGA and Tandy) */
+            s->px[y * SCREEN_W + 0x23 * 4] = col[0];
+            s->px[y * SCREEN_W + 0x23 * 4 + 1] = col[0];
+            s->px[y * SCREEN_W + 0x23 * 4 + 2] = col[3];
             s->px[y * SCREEN_W + 0x23 * 4 + 3] = col[3];
         }
         screen_fill(s, 0, 0x92, 0x24 * 4, 1, col[3]);              /* draw_hline */

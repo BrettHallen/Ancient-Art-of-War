@@ -1,7 +1,7 @@
 # The Ancient Art of War - Remake
 A modern version of The Ancient Art of War (Broderbund, 1984) for macOS, written in C with [SDL3](https://www.libsdl.org/). It also builds on Windows and Linux.
 
-The remake uses the original backgrounds, map tiles and font, shown as the original showed them on each video card it supported: **CGA** (4 colours, WAR.EXE), **EGA**, **Tandy 1000** and **VGA** (16 colours, WARET.EXE), or **Hercules** monochrome (the original's `WAR HERC`).
+The remake uses the original backgrounds, map tiles and font, shown as the original showed them on each video card it supported: **CGA** (4 colours, WAR.EXE) on an RGB monitor or on a TV or composite monitor (the old and the new IBM CGA's colours), **EGA**, **Tandy 1000** and **VGA** (16 colours, WARET.EXE), or **Hercules** monochrome (the original's `WAR HERC`).
 
 **No original game files are included.** The remake loads all graphics, campaigns, messages, soldiers and the opponents' values from your own copy of the game, so you need the files from the original disk: `WAR.EXE`, `M`, the `P` files, the `T` files, `TITLES`, `DTITLES`, `F`, `CNF`, `O2` to `O7`, plus `WARET.DAT` for the VGA graphics.
 
@@ -70,12 +70,16 @@ build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar ../WAR_Original_Files_3
 
 The app also looks in a `game` folder next to itself and in the current folder. Press **O** in the viewer to choose a different folder.
 
-**Video card:** `video=` on the command line chooses the card the game starts on (CGA if not given); Tab goes through them in the game, CGA → EGA → Tandy → VGA → Hercules:
+**Video card:** `video=` on the command line chooses the card the game starts on (CGA if not given); Tab goes through them in the game, CGA → CGA composite → CGA composite (new) → EGA → Tandy → VGA → Hercules:
 ```sh
-build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar video=ega      # or cga, tandy, vga, herc
+build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar video=ega      # or cga, composite, composite2, tandy, vga, herc
 build/AncientArtOfWar.app/Contents/MacOS/AncientArtOfWar HERC           # as WAR HERC: the same as video=herc
 ```
-The original's 16-colour program, WARET.EXE, drew the same pictures (WARET.DAT) on all three 16-colour cards, but only on a VGA did it load each picture's own palette; an **EGA** and a **Tandy 1000** showed them in the standard 16 colours, so the same pictures look quite different (on the opening page the woven border is red instead of brown, "Broderbund" yellow instead of green). The Tandy version also drew a few things differently: the pointer (a blue hand or sword on an EGA or VGA, a red and black one on a Tandy), a yellow map cursor, and the outlines of squads and flags. The text rows are white on all three, the scrolls' too, and the Options Shoppe's first line names the card ("EGA: sixteen colors"; no black/white or composite display to choose), with "EGA: no centering" on an EGA or VGA. All of this was measured in DOSBox-X with WARET.EXE on each machine, and the remake matches its screens pixel for pixel where they were compared: the opening and title pages, the scrolls, the opponents, the campaign menu, the Options Shoppe, the map, and the soldiers on the battle screen (black and white on every card). Not yet compared: the battle report, the boxes on the map (Info, Size, Formation) and the editors.
+The original's 16-colour program, WARET.EXE, drew the same pictures (WARET.DAT) on all three 16-colour cards, but only on a VGA did it load each picture's own palette; an **EGA** and a **Tandy 1000** showed them in the standard 16 colours, so the same pictures look quite different (on the opening page the woven border is red instead of brown, "Broderbund" yellow instead of green). The Tandy version also drew a few things differently: the pointer (a blue hand or sword on an EGA or VGA, a red and black one on a Tandy), a yellow map cursor, and the outlines of squads and flags. The text rows are white on all three, the scrolls' too, and the Options Shoppe's first line names the card ("EGA: sixteen colors"; no black/white or composite display to choose), with "EGA: no centering" on an EGA or VGA. WARET.EXE drew other small things its own way too: on an EGA or VGA a picture placed half-way through a byte of 8 pixels moves 4 pixels left (the title page's item, your numbers on the battle report, the map maker's tiles), and icons leave their black pixels undrawn; the trace box is 8 lines high instead of 12; Info's bars are yellow and the View map shows your ground in green; the map maker marks its plan's cell in light red; on a Tandy the trace box's sides and the gap in the cursor are drawn over what is there (XOR 7, AND 14), and the soldiers' outlines on the battle screen and in the formation editor stay within 4 pixels. All of this was measured in DOSBox-X with WARET.EXE on each machine, and the remake matches its screens pixel for pixel on all three cards, apart from what moves or blinks: the opening and title pages, the scrolls, the opponents, the quote and PREPARE FOR WAR!, the campaign menu, the Options Shoppe, the map and its boxes (Info, Size, Formation, Detach, a traced path, View, Time, Surrender), the battle report, the battle screen's soldiers, and the editors (the map maker, the squads, Change a campaign's menu, the formation editor).
+
+**CGA on a TV:** a CGA's composite output (to a TV or a composite colour monitor) shows WAR.EXE's 4 colours as other colours, made by the TV from the dots' pattern: each pixel's colour depends on its neighbours. `video=composite` shows the original IBM CGA, `video=composite2` the later one (its colours are paler); both are 640 dots across, each colour taken from the pixel and its neighbours as DOSBox-X draws them (`machine=cga` with `composite` on, measured with a test pattern of every pixel triple). The Options Shoppe's black-and-white display is shown in greys, without the colours.
+
+The Options Shoppe's *display* line goes with these cards (the remake's own convenience: in WAR.EXE the setting only changed the palette registers of a PCjr or Tandy 1000 running the CGA version, and a plain CGA looked the same whatever it said). On a CGA, choosing *tv/composite* shows the CGA on a TV and *rgb* the plain CGA; *black/white* turns the picture grey on either. The other way round, Tab onto a composite card makes the line say *tv/composite* and Tab back to the plain CGA makes it *rgb* (black/white stays as it is). On an EGA, Tandy or VGA the line names the card and the pointer can't reach it, as in WARET.EXE.
 
 **Hercules:** WAR.EXE drew the same picture for Hercules as for CGA, with each 4-colour pixel shown as two black or lit pixels, 640x200 in the middle of the card's 720x348 screen; the remake shows that whole screen (4:3, or square pixels with F2), lit pixels in DOSBox's grey. It matches DOSBox's Hercules screens pixel for pixel.
 
@@ -108,12 +112,12 @@ The original kept saved games and new campaigns on *data disks*, swapped in the 
 | `CNF` | the options |
 | `F` | the formations, once some have been taught (the remake uses it in place of the game's own `F`) |
 | `DRIVE` | the name of the data disk in the drive |
-| `Data Disks/Data Disk 1/` | a data disk: `TITLES` (its list of campaigns, first made from `DTITLES`), the `T` files of its campaigns, and `S`, its saved game |
+| `Data Disks/Data Disk 1/` | a data disk: `TITLES` (its list of campaigns, first made from `DTITLES`), the `T` files of its campaigns, and `S`, its saved game (`SET` is the 16-colour program's) |
 | `Data Disks/…/` | more data disks: any folder here is one (up to 12) |
 
 The data disk in the drive is chosen in the *Options Shoppe* (*disk …*, or *a new data disk*), or from the list that *( data disk )* shows when there is more than one. New campaigns are written to it, and its saved game is the one carried on.
 
-To use an old data disk, make a new folder in `Data Disks` (any name) and copy the floppy's files into it as they are; upper or lower case doesn't matter. Its campaigns can be played and changed, and a game the original saved on it (`S`) can be carried on: choose *( data disk )*, then **S** for *Saved game*. The remake finds the campaign's title by its map, and carries on from the same moment: squads, paths, marks, battles under way, the enemy's plans and the time setting.
+To use an old data disk, make a new folder in `Data Disks` (any name) and copy the floppy's files into it as they are; upper or lower case doesn't matter. Its campaigns can be played and changed, and a game the original saved on it (`S`, or `SET` from the 16-colour program WARET.EXE) can be carried on: choose *( data disk )*, then **S** for *Saved game*. With both on the disk, the one saved last is carried on. The remake finds the campaign's title by its map, and carries on from the same moment: squads, paths, marks (not from a `SET`, as WARET.EXE itself forgets them), battles under way, the enemy's plans and the time setting.
 
 If a file can't be written there (the disk is full, say), the remake says *Game not saved!* for a saved game, and *Unable to use data disk. Press any key to continue.* for the options, a campaign, `TITLES` or `F`, as the original does for a bad data disk. Your changes to a campaign are kept while you stay in the editor, so the next save that works writes them all (answering **N** to *Save the last changes?* reloads the campaign from its file); taught formations are used until you quit.
 
@@ -145,7 +149,7 @@ If a file can't be written there (the disk is full, say), the remake says *Game 
 | Up / Down, - / +, mouse wheel | Scroll a campaign map (as in the original, - scrolls up) |
 | Shift + - / +, Home / End | Top / bottom of the map |
 | Enter | Play the campaign shown |
-| Tab | Switch the video card: CGA, EGA, Tandy, VGA, Hercules |
+| Tab | Switch the video card: CGA, CGA composite (old, new), EGA, Tandy, VGA, Hercules |
 | A | 4:3 like the original monitor, or square pixels |
 | H | Show or hide the caption |
 | F, Cmd+Enter | Full screen |
@@ -182,19 +186,20 @@ On the battle screen:
 | then A, F, B, S | Attack, Forward, Backoff or Stop; Backspace goes back |
 | R | Retreat |
 
-Tab switches between CGA, EGA, Tandy, VGA and Hercules (in the original, Tab scrolled up), F2 changes the aspect, and Cmd+Enter or Alt+Enter is full screen.
+Tab switches between CGA, the CGA on a TV (old and new), EGA, Tandy, VGA and Hercules (in the original, Tab scrolled up), F2 changes the aspect, and Cmd+Enter or Alt+Enter is full screen.
 
 ### Screenshots
 ```sh
 AncientArtOfWar --screenshots OUTDIR GAME-FOLDER
 ```
-This writes every screen as BMP files for each card: CGA, EGA, Tandy and VGA (320x200), and Hercules (720x348), without opening a window. Campaign maps are shown at the bottom of the map, where the game starts.
+This writes every screen as BMP files for each card: CGA, EGA, Tandy and VGA (320x200), the CGA on a TV (640x200) and Hercules (720x348), without opening a window. Campaign maps are shown at the bottom of the map, where the game starts.
 
 ## Source
 | File | Purpose |
 |------|---------|
 | `src/assets.c` | Loads and decodes the original files: the font and the squad and flag sprites from WAR.EXE, the CGA tiles (M) and pictures (P files), and the VGA pictures and tiles from WARET.DAT |
 | `src/gfx.c` | The 320x200 game screen: palette, pictures, tiles and text in the original font; the video cards (the standard 16 colours of an EGA or Tandy, a VGA's 6-bit palette, Hercules) |
+| `src/composite.c` | A CGA screen as a TV shows it: the colour of each of 640 dots from the pixel, its neighbours and the palette, for the old and the new CGA (tables measured in DOSBox-X) |
 | `src/campaign.c` | Loads the 11 campaigns (T0-TA), their titles (TITLES), squads and flags, and draws a campaign map: 10 x 20 tiles, 9 rows on screen, with the squads and flags on top |
 | `src/play.c` | Campaign play, following overlay 6 of WAR.EXE routine by routine (each function names the routine): cursor, commands, path memory, movement, terrain, supply, food and condition, forts, flags, sighting, messages, Info, Size, View, the end of the game, and the enemy commander (the ai_ functions). Runs at 20 iterations a second, about the speed of an IBM PC/XT |
 | `src/battle.c` | The battle screen, following overlay 7 of WAR.EXE: the background from the terrain, formations, the soldiers' animation scripts, choosing targets, fighting, archers and arrows, retreats, the order menus and the losses. Runs at 8 frames a second |

@@ -65,10 +65,37 @@ Set-up: `$DOS/war_et/` a copy of the game disk with `CNFET`; `$DOS/data_bx/` a d
 | `wseq.sh MACHINE` | the opening, title page, the three scrolls, the opponents and the map (`x_MACHINE_sNN.png`) |
 | `wmenus.sh MACHINE` | the title page, the campaign menu and the Options Shoppe (`x_MACHINE_mNN.png`) |
 | `wdemo.sh MACHINE` | record the demo (2 frames a second) into `$DOS/xdemo_MACHINE/` |
+| `wquote.sh MACHINE` | the quote and PREPARE FOR WAR! (`x_MACHINE_qNN.png`, every half second) |
+| `wtomap.sh MACHINE` | to the first campaign's map |
+| `wtosquad.sh MACHINE` | the map, then the cursor onto your squad 16 with `steer.py X LINE`, which taps the arrow keys until `cursor.py` finds the cursor there (from its shape) and the command line shows a squad's commands: one tap moves WARET.EXE's cursor further than the remake's single key, so the scripts steer |
+| `wboxes.sh MACHINE` | from your squad 16: Info, Size, Formation, Detach, a traced path, View, Time, Surrender and the battle report (`x_MACHINE_kNN.png`; `dump_cards` sends the same keys) |
+| `wtrace.sh MACHINE` | from your squad 16: M, the cursor up and left, M: the trace box and the path's mark (`x_MACHINE_uNN.png`) |
+| `wedit.sh MACHINE` | Make a new campaign: the map maker and the squads, Size, Info, Formation (`x_MACHINE_eNN.png`) |
+| `wchange.sh MACHINE` | Change a campaign: the scroll of campaigns and the editor's menu (`x_MACHINE_cNN.png`) |
+| `wsaveset.sh start\|play\|mark` | saved games for `WAR_Remake/test/test_set`, copied to `$DOS/sets/`: `start` saves the first campaign as it reaches the map with WARET.EXE (`SET_start`) and with WAR.EXE (`S_start`, through `dosboxx_et_cga.conf`); `play` traces squad 16 north-west, sets the time fast and saves 25 s later; `mark` saves with squad 16 on a long traced path |
+| `wloadset.sh MACHINE` | WARET.EXE loads the data disk's `SET` and plays on: a shot every 4 s (`x_MACHINE_lNN.png`) |
+| `wformed.sh MACHINE` | Teach squads new formations: formations 1, 3 and 6, the pointer (`x_MACHINE_fNN.png`) |
+| `dosboxx_et_cga.conf` | WAR.EXE (CGA) with the data disk as B:, to run the same scripts on the CGA version (`$DOS/war_cgab/`: a copy of the game disk with CNF's last word set to 1) |
 | `egacmp.py REMAKE.idx SHOT.png` | an EGA or Tandy screen (standard colours, so each is one index) against the remake's indexes from `WAR_Remake/test/dump_cards`: the differing pixels grouped by (remake index -> original index) |
 | `vgacmp.py REMAKE.idx SHOT.png` | the same for a VGA screen, by colour |
 
-Checked this way (Nov 14): the opening and title pages, the scrolls, the opponents, the campaign menu, the Options Shoppe and the map matched pixel for pixel on all three cards, apart from what moves or blinks; the battle screen's soldiers and text rows by their colours.
+Checked this way (Nov 14): the opening and title pages, the scrolls, the opponents, the quote, the campaign menu, the Options Shoppe, the map and its boxes, the trace box and path marks, the battle report and the editors matched pixel for pixel on all three cards, apart from what moves or blinks (DOSBox reads a key held 0.15 s twice in some places, so a script's screen can be one step on); the battle screen's soldiers and their outlines by counting each outline's place in its 4 or 8 pixels.
+
+DOSBox-X ignores the signal to quit: `dosrunx.sh` kills the last one with `kill -9`, as stray copies slow the next run and change its timing.
+
+### The CGA on a TV (composite)
+
+DOSBox-X draws a CGA's composite output with `machine=cga_composite` (the old IBM CGA) and `machine=cga_composite2` (the new one), at its default TV settings. The remake's tables (`WAR_Remake/src/composite.c`) were measured with a test pattern:
+
+| File | Use |
+|---|---|
+| `cgapat.py` | writes `CGAPAT.COM` (put it in `$DOS/comptest/`) and `pattern.json`: mode 4 with every triple of 2-bit pixels at both pixel parities, palette 1 then (after a key) palette 0. Needs `nasm` |
+| `wcgapat.sh` | CGAPAT.COM on the old and the new CGA: shots `pat_MACHINE_p1.png`, `pat_MACHINE_p0.png` |
+| `complut.py pattern.json SHOTS-DIR [OUT.c]` | the colour of each hdot by (CGA, palette, phase of 4 hdots, left, pixel, right) from those shots, reporting any seen in two colours; `OUT.c` gets the table as `composite.c` has it |
+| `compcmp.py REMAKE.rgb SHOT.png` | a composite screen from `dump_cards` (`NAME_comp.rgb`, `NAME_comp2.rgb`) against DOSBox-X's |
+| `dosboxx_pat_cga_composite.conf`, `dosboxx_pat_cga_composite2.conf`, `dosboxx_war_cga_composite.conf`, `dosboxx_war_cga_composite2.conf` | the pattern, and WAR.EXE, on the old and the new CGA |
+
+Checked (Nov 14): the remake's composite screens are DOSBox-X's pixel for pixel, apart from the title page's blinking box.
 
 ## The remake's tests
 

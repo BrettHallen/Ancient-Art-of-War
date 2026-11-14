@@ -25,15 +25,25 @@ typedef struct {
  * VGA was found, [277E]); an EGA or a Tandy 1000 shows them in the standard 16
  * colours. The Tandy version also draws a few things differently (the
  * pointer, the map cursor, the outline of squads and flags); see gfx_card. */
-typedef enum { CARD_CGA, CARD_EGA, CARD_TANDY, CARD_VGA, CARD_HERC, CARD_COUNT } VideoCard;
+typedef enum { CARD_CGA, CARD_COMPOSITE, CARD_COMPOSITE2, CARD_EGA, CARD_TANDY, CARD_VGA, CARD_HERC, CARD_COUNT } VideoCard;
+/* CARD_COMPOSITE, CARD_COMPOSITE2: WAR.EXE on a CGA shown on a TV or composite
+ * monitor, the old IBM CGA and the new one (composite.c) */
 
 /* The card the screen is being drawn for (main sets it). The drawing code asks
  * it only where WARET.EXE's EGA/VGA and Tandy versions differ. */
 extern VideoCard gfx_card;
 
-const char *card_name(VideoCard c);                    /* "CGA", "EGA", "Tandy", "VGA", "Hercules" */
-bool card_from_name(const char *s, VideoCard *c);      /* cga, ega, tandy, vga, herc or hercules (any case) */
+const char *card_name(VideoCard c);                    /* "CGA", "CGA composite", "CGA composite (new)", "EGA", "Tandy", "VGA", "Hercules" */
+bool card_from_name(const char *s, VideoCard *c);      /* cga, composite, composite2, ega, tandy, vga, herc or hercules (any case) */
 GfxMode card_assets(VideoCard c);                      /* the pictures it shows: MODE_VGA for the 16-colour cards */
+
+/* A CGA screen as a TV shows it: 640 x 200 (each pixel is two "hdots", whose
+ * colours depend on the pixels either side), old or new CGA (composite.c) */
+#define COMP_W 640
+void screen_to_composite(const Screen *s, bool new_cga, uint32_t *out);
+
+/* drawn as WARET.EXE draws (an EGA, a Tandy 1000 or a VGA) */
+static inline bool card_waret(void) { return gfx_card == CARD_EGA || gfx_card == CARD_TANDY || gfx_card == CARD_VGA; }
 
 /* The standard 16 colours (an EGA's or a Tandy 1000's defaults) */
 extern const RGB STD16[16];

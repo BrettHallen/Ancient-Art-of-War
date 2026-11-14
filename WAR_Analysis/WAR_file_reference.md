@@ -32,19 +32,20 @@ Key functions (all routines are now named in WAR.ASM): load_file 0000:17ED; dos_
 
 Font: 8x8, 1 bit per pixel, 95 characters (space to '~') at DS:05C9 (8 bytes each). put_char expands each 4-bit nibble to CGA pixels through the table at DS:05B9 (default: set bits = colour 3, clear = colour 0, i.e. white on black); 40 characters per text row.
 
-Findings: two copy-protection checks (INT 13h read of track 10 incl. bad sector 241 on the original floppy; manual word lookup via WarW). Joystick on port 201h. Hercules: `WAR HERC` (or no CGA found) sets the card to 720x348 graphics (herc_setup ovl1:8441, CRTC table DS:095E) and points the row table DS:096A at Hercules scanlines 72-271, so the CGA picture shows 640x200 in the middle, each 2-bit pixel as two mono pixels. Campaign names from a "T0".."TA" table at DS:08C1.
+Findings: two copy-protection checks (INT 13h read of track 10 incl. bad sector 241 on the original floppy; manual word lookup via WarW). Joystick on port 201h. Hercules: `WAR HERC` (or no CGA found) sets the card to 720x348 graphics (herc_setup ovl1:8441, CRTC table DS:095E) and points the row table DS:096A at Hercules scanlines 72-271, so the CGA picture shows 640x200 in the middle, each 2-bit pixel as two mono pixels. On a CGA with a TV or composite monitor the colours are artifact colours (each pixel's colour depends on its neighbours; the old and the new IBM CGA differ): measured in DOSBox-X (machine=cga_composite, cga_composite2) with a test pattern, see WAR_Analysis/tools. Campaign names from a "T0".."TA" table at DS:08C1.
 
 Sound: PC speaker (timer 2) and the Tandy/PCjr SN76496 (port C0h); the tunes are word tables in O2 and O7 (see the README's Sound section).
 
 ## WARET.EXE on an EGA, a Tandy 1000 and a VGA (measured in DOSBox-X, Nov 14 2026)
 - [26F6] = 2 for an EGA or VGA, 1 for a Tandy; [277E] = the VGA display code (0 otherwise). The picture loader (0133:01B2) loads a picture's own 16 colours (shifted to 6 bits, INT 10h AX=1012h) **only on a VGA**; an EGA or a Tandy shows the same pixels in the standard 16 colours.
-- Text rows colour 15 (the scrolls' too); the pointer blue on EGA/VGA (2-bit pixels with bit 0 clear -> colour 1), ANDed as 4-bit pixels on a Tandy (01 -> 3, 10 -> 12); XOR flips 4 bits; the title item 4 px left of WAR.EXE's; Tandy: a yellow map cursor and squad outlines within 4 pixels; Options Shoppe: "EGA/VGA/Tandy: sixteen colors", "EGA/VGA: no centering". Details: README.md, WARET.DAT.
-- The saved game is `SET`.
+- Text rows colour 15 (the scrolls' too); the pointer blue on EGA/VGA (2-bit pixels with bit 0 clear -> colour 1), ANDed as 4-bit pixels on a Tandy (01 -> 3, 10 -> 12); XOR flips 4 bits; the title item 4 px left of WAR.EXE's; Tandy: a yellow map cursor and squad outlines within 4 pixels; Options Shoppe: "EGA/VGA/Tandy: sixteen colors", "EGA/VGA: no centering". On an EGA or VGA a byte column of 4 pixels becomes a byte of 8 (a picture at a half byte moves 4 px left; clear_box fills whole bytes) and icons leave black undrawn; draw_vline draws only its white half; Info's bars yellow, View's own ground light green; the trace box 8 lines high (Tandy: sides XOR 7, top yellow); Tandy: the cursor's gap ANDs with 14, battle and formation-editor outlines within 4 pixels; the map maker's plan cell and the formation editor's mark light red. Compared pixel for pixel: the menus, the map and its boxes, the report, the editors. Details: README.md, WARET.DAT.
+- The saved game is `SET`: 24DCh bytes, DS:0218-26F3 (ov1:066F writes it, ov1:0746 reads it), WAR.EXE's S variables in the same order at other offsets (README.md, Saved games).
 
 ## WARET.DAT format (16-colour / VGA graphics) - DECODED
 ### Archive
-- Bytes 0-3: dword offset of directory (0x39C47).
-- Directory: 3 bytes (unknown), word entry count (49), then 49 x [word record ID, dword file offset].
+- Bytes 0-3: dword offset of directory (0x39C47); bytes 4-5: word length of the directory (299); records from offset 6.
+- Directory: byte 0 (3Fh, never read), word 0 (where WARET.EXE stores the DOS file handle once the archive is open: the directory is the program's in-memory record of the open file, saved with the handle cleared), word entry count (49), then 49 x [word record ID, dword file offset]. WARET.EXE checks offset + length = file size on opening (linear 17F8) and each record's checksum and length when reading it (18EA).
+- All 49 records are read by WARET.EXE; the unused numbers between the groups (12-14, 17-19, 31-39, 51-59) are just gaps. Records 2 and 7 hold 10 and 769 bytes more than their declared size in their run-length streams, never unpacked.
 - Each record: word payload length, byte checksum (sum of payload bytes & 0xFF), payload.
 
 ### Compression (same for every compressed record)
@@ -92,7 +93,7 @@ Unpacked data = word width (320), word height (200), word bytes per row (160), t
 | PE-PO (not PL) | Menu/title screens, see record map above. | Byte RLE: pairs of [count, byte]; pairs alternate between the even-line field and the odd-line field until each has 8000 bytes (load_picture_rle8). |
 
 ### Map sprites (in WAR.EXE, DS)
-Squad poses at DS:031C (marching), 0338 (standing, no orders: start of game), 0354 (fighting), 0370 (weak, condition <= 10), 038C (small figure: a squad of spies only, [A090] = 2); flag at DS:03A8. The letters A, B and K for the Formation preview are at DS:03C4, 03D0, 03DC (8x6). 28 bytes each: word width (1), word height in line pairs (6), then per line pair a big-endian 2bpp word for the even line and one for the odd line; only colours 0 and 3. Drawn by rt:1B17: friendly squads / white flags = white figure + black outline (pixels left and right of figure pixels, within the 8-pixel word); enemy squads / black flags = black figure + white outline. Pose chosen in rt:19D9 from the squad's state (moving speed 9EB0, fighting A0F4, figure A090) and condition. Enemy squads are hidden unless seen, unless rule "Enemy is seen" = 80 (always).
+Squad poses at DS:031C (marching), 0338 (standing, no orders: start of game), 0354 (fighting), 0370 (weak, condition <= 10), 038C (small figure: a squad of spies only, [A090] = 2); flag at DS:03A8. The letters A, B and K for the Formation preview are at DS:03C4, 03D0, 03DC (8x6). 28 bytes each: word width (1), word height in line pairs (6), then per line pair a big-endian 2bpp word for the even line and one for the odd line; only colours 0 and 3. Drawn by rt:1B17: friendly squads / white flags = white figure + black outline (pixels left and right of figure pixels, within the 8-pixel word); enemy squads / black flags = black figure + white outline. Pose chosen in rt:19D9 from the squad's state (moving speed 9EB0, fighting A0F4, figure A090) and condition: standing only when not moving and not on a route (A1BC), so an enemy squad between route steps marches. Enemy squads are hidden unless seen, unless rule "Enemy is seen" = 80 (always).
 
 ## Overlay resource files (sprites + UI text, one per program module)
 | File | Contents |
@@ -115,7 +116,7 @@ Squad poses at DS:031C (marching), 0338 (standing, no orders: start of game), 03
 | DTITLES | Same layout for a new data disk; first entry "( war disk )". New campaigns take the names in the order listed (T1, T3, T4 ... TA, T2, TB); removing one moves its name to the end. |
 | F | 420 bytes: the formations. Three tables of 10 formations x 14 men: type (0 knight, 1 barbarian, 2 archer), x (byte column 44-75; archers stand 2 further back) and y (line pair). Formation 0 lines the men along a fort wall, 1-5 are fixed, 6-9 can be changed in the formation editor (which writes F to the WAR disk, each formation sorted by x). The enemy's squad is mirrored (x = 76 - x). |
 | WARW | 672 bytes: the word list for the manual question ("On page N, what is word N in paragraph N"), loaded as "WarW" by overlay 2. Decoded: XOR each byte with a key that starts at 117 and goes up by 23 (low 8 bits) per byte, up to the first three zero bytes; then entries separated by ';', each a page byte, a byte (word << 4 \| paragraph) and the word. |
-| S | Saved game (on the data disk): 217Eh bytes of the data segment, DS:8868-A9E5 (the view, the enemy's cell tables, the supply map, the path and route memories, the map, the armies and every squad table, the opponent's values, the counters and the rules). Laid out in the README's Saved games section. |
+| S | Saved game (on the data disk): 217Eh bytes of the data segment, DS:8868-A9E5 (the view, the enemy's cell tables, the supply map, the path and route memories, the map, the armies and every squad table, the opponent's values, the counters and the rules). Laid out in the README's Saved games section. WARET.EXE saves the same variables as SET: 24DCh bytes, its DS:0218-26F3, in the same order with other offsets (the README's table). |
 
 ### Campaign map (confirmed Nov 2026)
 - 10 tiles across x 20 down (320x400 px), row by row from the top, 200 bytes at T-file offset 0x348.
@@ -149,8 +150,8 @@ Editor defaults for a new squad: friend, speed 2, formation 1, condition 35, foo
 - Rules (9 words at 0x5A2): villages supply food (0/1), forts supply food (0/1), supply-line range (1, 2, 4), forts train men (30, 60, 120), your men's shape (1 prime, 2 good, 4 out of), enemy is seen (20 close, 40 far, 80 always), water (10, 20, 40), mountains (4, 8, 16), forest (3, 6).
 
 ## Open questions
-- How WARET.EXE colours the shared 2bpp sprites (O3, O6, O8) in 16-colour mode (sprite blitter near linear 0x1684, plane writes via port 0x3C5 at 0x1640). Partly answered by the DOSBox-X comparisons above (text rows, pointer, XOR, map sprites and cursor, battle soldiers); the battle report, the map's boxes and the editors are still unchecked, and there the remake maps the CGA colours to the nearest colours of each 16-colour picture.
-- WARET.EXE's own logic was not disassembled; the remake assumes it plays like WAR.EXE.
+- How WARET.EXE colours the shared 2bpp sprites (O3, O6, O8) in 16-colour mode (sprite blitter near linear 0x1684, plane writes via port 0x3C5 at 0x1640). Answered by the DOSBox-X comparisons above (Nov 14): black and white on all three cards, colour 3 drawn as 14 on a Tandy where it is ANDed or XORed; the menus, the map and its boxes, the report and the editors now checked pixel for pixel.
+- WARET.EXE's game logic was not studied routine by routine (only its archive reader and its save and load were read in the raw disassembly); the remake assumes it plays like WAR.EXE, and a SET played on by both ends the same way.
 
 ## Other
 - "DPQZSJHIU 2:94 EBWF NVSSZ" in both EXEs = "COPYRIGHT 1983 DAVE MURRY" shifted +1.

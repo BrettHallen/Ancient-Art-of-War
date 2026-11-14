@@ -262,6 +262,7 @@ static void sprite(const FormEdit *e, Screen *s, unsigned off, int xb, int line,
 {
     int ww = rd(e, off), hh = rd(e, off + 2);
     if (ww <= 0 || ww > 4 || hh <= 0 || hh > 20) return;
+    int g = gfx_card == CARD_TANDY ? 4 : 8;                     /* the outline's word: 4 pixels on a Tandy 1000 */
     for (int y = 0; y < hh * 2; y++) {
         int sy = line + y;
         if (sy < 50 || sy >= 180) continue;                     /* ovl5_46C5 shows lines 50-179 */
@@ -269,9 +270,9 @@ static void sprite(const FormEdit *e, Screen *s, unsigned off, int xb, int line,
         for (int x = 0; x < ww * 8; x++) {
             int sx = xb * 4 + x;
             if (sx < 144 || sx >= SCREEN_W) continue;
-            int v = (row[x / 4] >> (6 - 2 * (x & 3))) & 3, in = x & 7;
+            int v = (row[x / 4] >> (6 - 2 * (x & 3))) & 3, in = x & (g - 1);
             int l = in > 0 ? (row[(x - 1) / 4] >> (6 - 2 * ((x - 1) & 3))) & 3 : 0;
-            int r = in < 7 ? (row[(x + 1) / 4] >> (6 - 2 * ((x + 1) & 3))) & 3 : 0;
+            int r = in < g - 1 ? (row[(x + 1) / 4] >> (6 - 2 * ((x + 1) & 3))) & 3 : 0;
             if (v) s->px[sy * SCREEN_W + sx] = col[v];
             else if (l | r) s->px[sy * SCREEN_W + sx] = col[0];
         }
@@ -310,8 +311,8 @@ void formed_draw(const FormEdit *e, Screen *s, GfxMode mode)
     screen_fill(s, 0, 183, SCREEN_W, SCREEN_H - 183, c[0]);
 
     /* ovl5_43D9: the box of numbers */
-    for (int y = 0; y < 50; y++)
-        for (int x = 0; x < 132; x++) s->px[y * SCREEN_W + x] = c[x < 2 ? 3 : 0];
+    for (int y = 0; y < 50; y++)                       /* the line's black half too (DOSBox: CGA, EGA, Tandy) */
+        for (int x = 0; x < 134; x++) s->px[y * SCREEN_W + x] = c[x < 2 ? 3 : 0];
     screen_fill(s, 0x21 * 4 + 2, 0, 2, 50, c[3]);
     screen_fill(s, 0, 0, 0x22 * 4, 1, c[3]);
     screen_fill(s, 0, 50, 0x22 * 4, 1, c[3]);
@@ -330,7 +331,7 @@ void formed_draw(const FormEdit *e, Screen *s, GfxMode mode)
 
     /* formation_preview (rt:0D3F): the plan of the formation, from the men */
     for (int y = 86; y < 190; y++)
-        for (int x = 0; x < 68; x++) s->px[y * SCREEN_W + x] = c[x < 2 ? 3 : 0];
+        for (int x = 0; x < 70; x++) s->px[y * SCREEN_W + x] = c[x < 2 ? 3 : 0];
     screen_fill(s, 17 * 4 + 2, 86, 2, 104, c[3]);
     screen_fill(s, 0, 86, 72, 1, c[3]);
     screen_fill(s, 0, 190, 72, 1, c[3]);
@@ -341,8 +342,11 @@ void formed_draw(const FormEdit *e, Screen *s, GfxMode mode)
         unsigned off = t == 0 ? 0x3DC : t == 1 ? 0x3D0 : 0x3C4;   /* K, B, A */
         for (int r = 0; r < 6; r++) {
             int word = (e->ga->ds[off + r * 2] << 8) | e->ga->ds[off + r * 2 + 1];
-            for (int b = 0; b < 8; b++)
-                if (line + r < SCREEN_H) s->px[(line + r) * SCREEN_W + xb * 4 + b] = c[(word >> (14 - 2 * b)) & 3];
+            for (int b = 0; b < 8; b++) {
+                int v = (word >> (14 - 2 * b)) & 3;
+                if (!v && (gfx_card == CARD_EGA || gfx_card == CARD_VGA)) continue;   /* WARET.EXE on an EGA: black is not drawn */
+                if (line + r < SCREEN_H) s->px[(line + r) * SCREEN_W + xb * 4 + b] = c[v];
+            }
         }
     }
 
@@ -351,16 +355,22 @@ void formed_draw(const FormEdit *e, Screen *s, GfxMode mode)
         int fx = SDL_clamp(e->cx / 2 - 0x16, 1, 15), fy = SDL_clamp(e->cy - 0x56, 0x2C, 0x5C) * 2;
         for (int r = 0; r < 4; r++)
             for (int b = 0; b < 4; b++)
-                if ((r & 1) || b == 1 || b == 2) s->px[(fy + r) * SCREEN_W + fx * 4 + b] = c[2];
+                if ((r & 1) || b == 1 || b == 2)            /* WARET.EXE: light red (DOSBox-X, EGA and Tandy) */
+                    s->px[(fy + r) * SCREEN_W + fx * 4 + b] = card_waret() ? 12 : c[2];
         /* draw_cursor: the map's cross */
         int x = e->cx * 4, l = (e->cy - 100) * 2;
+        uint8_t cc[4] = { c[0], c[1], c[2], gfx_card == CARD_TANDY ? 14 : c[3] };   /* yellow on a Tandy 1000, as on the map */
         static const int arm[6] = { 0, 1, 2, 7, 8, 9 };
         for (int k = 0; k < 6; k++)
-            for (int i = 0; i < 4; i++) s->px[(l + arm[k]) * SCREEN_W + x + i] = c[i < 2 ? 0 : 3];
+            for (int i = 0; i < 4; i++) s->px[(l + arm[k]) * SCREEN_W + x + i] = cc[i < 2 ? 0 : 3];
         static const int8_t bar[12] = { 0, 0, 3, 3, 3, -1, -1, 0, 0, 3, 3, 3 };
         for (int k = 4; k <= 5; k++)
-            for (int i = 0; i < 12; i++)
-                if (bar[i] >= 0 && x - 4 + i < SCREEN_W) s->px[(l + k) * SCREEN_W + x - 4 + i] = c[bar[i]];
+            for (int i = 0; i < 12; i++) {
+                if (x - 4 + i >= SCREEN_W) continue;
+                uint8_t *d = &s->px[(l + k) * SCREEN_W + x - 4 + i];
+                if (bar[i] >= 0) *d = cc[bar[i]];
+                else if (gfx_card == CARD_TANDY) *d &= 14;
+            }
     }
 
     /* rows 23 and 24 */
