@@ -22,33 +22,33 @@ Scans of the original documentation:
 - [The Ancient Art of War](/WAR_Documentation)
 - [The Ancient Art of War at Sea (in progress)](/WAS_Documentation)
 
-## [Ancient Art of War 3½" Files](/WAR_Original_Files_3.5)
+## The Ancient Art of War (WAR)
+### [Ancient Art of War 3½" Files](/WAR_Original_Files_3.5)
 Files from the 3½ " disk version.
 
-## [Ancient Art of War at Sea 3½" Files](/WAS_Original_Files_3.5)
-Files from the 3½" disk version.
-
-## [Ancient Art of War Analysis](/WAR_Analysis)
+### [Ancient Art of War Analysis](/WAR_Analysis)
 Analysis of the files from the AAoW disks.
 
-## [Ancient Art of War Graphics](/WAR_Graphics)
+### [Ancient Art of War Graphics](/WAR_Graphics)
 Graphics decoded from the AAoW disk: the map tiles and full-screen pictures from both the [CGA](/WAR_Graphics/CGA) version and the 16-colour EGA/[VGA](/WAR_Graphics/VGA) version, plus the script that extracts them.
 
-## [Ancient Art of War Remake](/WAR_Remake)
+### [Ancient Art of War Remake](/WAR_Remake)
 A modern version of the game in C and SDL3, using the original CGA or VGA graphics loaded from [your own copy of the game](/WAR_Original_Files_3.5). My main target is macOS but you could probably compile also for Linux & Windows.<br>
 
-Work in progress.<br>
+## The Ancient Art of War at Sea (WAS)
+### [Ancient Art of War at Sea 3½" Files](/WAS_Original_Files_3.5)
+Files from the 3½" disk version.
 
-## [Ancient Art of War at Sea Analysis](/WAS_Analysis)
+### [Ancient Art of War at Sea Analysis](/WAS_Analysis)
 Analysis of the files from the AAWS disk: the [file reference](/WAS_Analysis/WAS_file_reference.md), the findings and the annotated disassembly of WAS.EXE.
 
-## [Ancient Art of War at Sea Graphics](/WAS_Graphics)
+### [Ancient Art of War at Sea Graphics](/WAS_Graphics)
 Graphics decoded from the AAWS disk: the map tiles and full-screen pictures from both the [CGA](/WAS_Graphics/CGA) version and the 16-colour [Tandy 1000](/WAS_Graphics/VGA) version, plus the script that extracts them.
 
-## [Ancient Art of War at Sea Remake](/WAS_Remake)
-Planned: a modern version of AAWS, built the same way as the WAR remake.<br>
+### [Ancient Art of War at Sea Remake](/WAS_Remake)
+A modern version of the game in C and SDL3, using the original graphics loaded from [your own copy of the game](/WAS_Original_Files_3.5). My main target is macOS but you could probably compile also for Linux & Windows.<br>
 
-## Useful Links
+# Useful Links
 - [Official developer site](https://www.evryware.com/index.html)
 - [John Lahmy's Fansite](https://web.archive.org/web/20220224143929/http://ancient-art-of-war.0fees.net/?i=3)
 - [Original Mac version](https://www.macintoshrepository.org/3503-the-ancient-art-of-war)
