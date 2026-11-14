@@ -5,6 +5,9 @@ The remake uses the original backgrounds, map tiles and font, shown as the origi
 
 **No original game files are included.** The remake loads all graphics, campaigns, messages, soldiers and the opponents' values from your own copy of the game, so you need the files from the original disk: `WAR.EXE`, `M`, the `P` files, the `T` files, `TITLES`, `DTITLES`, `F`, `CNF`, `O2` to `O7`, plus `WARET.DAT` for the VGA graphics.
 
+## [Quick Reference Guide](WAR_Remake_Quick_Reference.pdf)
+A guide to build & run the remake.
+
 ## Status
 The game starts as the original does (overlay 1 of WAR.EXE):
 - **the title pages**: *presented by*, then the barbarian with *go to war / make changes / quit* in the blinking box
