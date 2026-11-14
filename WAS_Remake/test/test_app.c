@@ -10,7 +10,9 @@
  * menus ("presented by", the title page), F12 to the viewer, the first
  * campaign map, Enter to play, the marker, Fleet, Time, Tab, Esc and Y back
  * to the title page, then quit from it. Saves the window's last frame of each
- * step as a BMP.
+ * step as a BMP. It starts with --video=pcjr: the title page must show the
+ * PCjr's colours for it (black, cyan, red, white), and the four Tabs go round
+ * the modes back to the PCjr.
  *
  * Usage: SDL_VIDEODRIVER=offscreen test_app GAME-FOLDER OUT-FOLDER
  */
@@ -27,7 +29,7 @@ static const struct { int wait_ms; SDL_Keycode key; } SCRIPT[] = {
     { 400, SDLK_RETURN },                           /* play */
     { 9000, SDLK_LEFT }, { 400, SDLK_LEFT }, { 400, SDLK_LEFT }, { 400, SDLK_DOWN },   /* the marker, once the map shows */
     { 400, SDLK_F }, { 400, SDLK_SPACE }, { 400, SDLK_T }, { 400, SDLK_TAB }, { 400, SDLK_TAB }, { 400, SDLK_TAB },
-    { 400, SDLK_ESCAPE }, { 400, SDLK_Y },          /* to the title page */
+    { 400, SDLK_TAB }, { 400, SDLK_ESCAPE }, { 400, SDLK_Y },          /* to the title page */
     { 2000, SDLK_MINUS }, { 1500, SDLK_RETURN },    /* quit */
 };
 #define NSCRIPT ((int)(sizeof SCRIPT / sizeof SCRIPT[0]))
@@ -70,8 +72,28 @@ int main(int argc, char **argv)
 {
     if (argc < 3) { SDL_Log("usage: test_app GAME-FOLDER OUT-FOLDER"); return 2; }
     OUT = argv[2];
-    char *args[] = { argv[0], argv[1], NULL };
-    int rc = app_main(2, args);
-    SDL_Log("test_app: %d keys sent, %d frames, rc %d: %s", step, frame_no, rc, step == NSCRIPT && rc == 0 ? "passed" : "FAILED");
-    return step == NSCRIPT && rc == 0 ? 0 : 1;
+    char *args[] = { argv[0], "--video=pcjr", argv[1], NULL };
+    int rc = app_main(3, args);
+    /* the title page (step 0's frame) in the PCjr's colours: 0, 3 (cyan), 4 (red), 15 */
+    bool pcjr = false;
+    char p[256];
+    SDL_snprintf(p, sizeof p, "%s/app_00.bmp", OUT);
+    SDL_Surface *t = SDL_LoadBMP(p);
+    if (t) {
+        bool cyan = false, red = false, cga = false;
+        for (int y = 0; y < t->h; y += 3)
+            for (int x = 0; x < t->w; x += 3) {
+                Uint8 r, g, b;
+                SDL_ReadSurfacePixel(t, x, y, &r, &g, &b, NULL);
+                if (r == 0 && g == 170 && b == 170) cyan = true;
+                if (r == 170 && g == 0 && b == 0) red = true;
+                if (r == 85 && g == 255 && b == 255) cga = true;
+            }
+        pcjr = cyan && red && !cga;
+        SDL_DestroySurface(t);
+    }
+    if (!pcjr) SDL_Log("FAIL: the title page is not in the PCjr's colours (--video=pcjr)");
+    bool ok = step == NSCRIPT && rc == 0 && pcjr;
+    SDL_Log("test_app: %d keys sent, %d frames, rc %d: %s", step, frame_no, rc, ok ? "passed" : "FAILED");
+    return ok ? 0 : 1;
 }

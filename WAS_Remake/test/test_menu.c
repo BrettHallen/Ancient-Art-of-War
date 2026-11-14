@@ -62,6 +62,10 @@ static void shot(Menu *m, const char *name)
     menu_draw(m, &scr, MODE_CGA);
     SDL_snprintf(n, sizeof n, "m_%s", name);
     save_screen(n);
+    menu_draw(m, &scr, MODE_CGA);                 /* as WAS.EXE shows it on a PCjr */
+    screen_apply_jr(&scr, menu_jr(m));
+    SDL_snprintf(n, sizeof n, "m_%s_pcjr", name);
+    save_screen(n);
     if (ga.set[MODE_16].loaded) {
         menu_draw(m, &scr, MODE_16);
         SDL_snprintf(n, sizeof n, "m_%s_16", name);

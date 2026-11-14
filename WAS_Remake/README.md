@@ -1,12 +1,12 @@
 ﻿# The Ancient Art of War at Sea - Remake
-A modern version of The Ancient Art of War at Sea (Brøderbund, 1987) for macOS, written in C with [SDL3](https://www.libsdl.org/). It also builds on Windows and Linux. It is built the same way as the [WAR remake](../WAR_Remake): the original program is ported routine by routine from its disassembly (`../WAS_Analysis/WAS.EXE.asm`) and checked against the original.
+A modern version of The Ancient Art of War at Sea (Brøderbund, 1987) for macOS, written in C with [SDL3](https://www.libsdl.org/). It also builds on Windows and Linux. It is built the same way as the [WAR remake](../WAR_Remake): the original program is ported routine by routine from its disassembly (`../WAS_Analysis/WAS.ASM`) and checked against the original.
 
-The remake uses the original pictures, map tiles, sprites and font, in either the **CGA** (4-colour) version or the **16-colour** version made for the Tandy 1000, or shown as on a **Hercules** monochrome card (the original's `WAS HERC`).
+The remake uses the original pictures, map tiles, sprites and font, shown as the original showed them on each kind of display it supported: **CGA** (4 colours; an EGA or VGA card showed the same), a **PCjr** (WAS.EXE chose its own four colours for each screen there), the **Tandy 1000** (the 16-colour version, WAST.EXE) or a **Hercules** monochrome card (the original's `WAS HERC`).
 
 **No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `SO0`-`SO8`, `AD`, `B`, the `S` files, `SITLES` and `SDITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
 ## Status
-Steps 1 to 8 of the plan (`WAS_Remake_plan.md`) are done.
+Steps 1 to 9 of the plan (`WAS_Remake_plan.md`) are done (9: the video modes).
 
 **Sound** (step 8): the PC speaker, as the original drives it: every beep, buzz and tune, the scroll crackling as it unrolls, the low notes as a game starts and ends, a port running empty, the crown's tune, and the battle's guns, crashes, calls and boarding. Each note lasts the time the original's delays gave it on an IBM PC/XT, played at the time the game made it. The Options Shoppe's sound line works as in the original: *all sounds are off*, *do not play music* (the tunes stay quiet), *all sounds are on*.
 
@@ -24,7 +24,7 @@ Steps 1 to 8 of the plan (`WAS_Remake_plan.md`) are done.
 - the **battle report** at the end of a game, won or lost, with the picture for your opponent, the ships sunk and captured and the flags taken
 - the **demo**: left alone on the title page for about 7 seconds, the game plays one of the campaigns by itself, scrolling to the news and zooming into a battle; any key ends it
 
-The pages are drawn as WAS.EXE draws them and take the time they took on an IBM PC/XT (the scroll unrolling, the pause while a campaign loads); they match the original in DOSBox pixel for pixel. Saved games are in the original's format (`SS`, the 10,444 bytes of WAS.EXE's data it saves): the original's saved games load in the remake, and the remake's in the original. Data disks are folders in `~/Library/Application Support/AncientArtOfWarAtSea/Remake/Data Disks/`, with the original's files (`SITLES`, the `S` files, `SS`); the Options Shoppe's data disk line chooses one, or makes a new one. In 16 colours the pages are the Tandy 1000 version's pictures.
+The pages are drawn as WAS.EXE draws them and take the time they took on an IBM PC/XT (the scroll unrolling, the pause while a campaign loads); they match the original in DOSBox pixel for pixel. Saved games are in the original's format (`SS`, the 10,444 bytes of WAS.EXE's data it saves): the original's saved games load in the remake, and the remake's in the original. Data disks are folders in `~/Library/Application Support/AncientArtOfWarAtSea/Remake/Data Disks/`, with the original's files (`SITLES`, the `S` files, `SS`); the Options Shoppe's data disk line chooses one, or makes a new one. In the Tandy mode the pages are the Tandy 1000 version's pictures, with its white text and its pointer.
 
 **The enemy commander** (step 5, overlay 4 of WAS.EXE): the enemy's squadrons now sail. Each in turn is given orders as in the original: stay in port to take on supplies or repairs, guard its crown, go for yours or for your flagship, or for wherever your squadrons look weak on its strength map, finding a route that keeps clear of your strength and of water its ships should avoid, and attacking any squadron it can beat on the way. Merchants sail to the ports that call for them and fill them up, and can be taken. How bold and how careful the enemy is comes from the opponent you chose. Its routines were checked against WAS.EXE's own code, run in an emulator from the same game state, and matched byte for byte. The time this thinking took on an IBM PC/XT is kept: at the fastest time a game goes at about two ticks a second, as the original does.
 
@@ -34,7 +34,7 @@ The pages are drawn as WAS.EXE draws them and take the time they took on an IBM 
 - **boarding**: when ships grapple, *X grapples Y. Zoom Pass*: **Z** goes on deck. Forty men of the two crews, as many on each side as the ships' damage, types and other ships alongside allow. **A**ttack (or **L**eave), then send your men FROM one part of your deck TO another (**F**lag, **Q**uarterdeck, **P**oopdeck, **R**ailing; **C**ross to the enemy's flag; **A**gain sends another; Esc starts over). The side that clears the other's deck or reaches its flag takes the ship
 - afterwards the map shows the ships captured and lost, and the game goes on
 
-The battle runs at the speed it had on an IBM PC/XT, as the rest of the game does: its first screens and the boarding's deck match the original in DOSBox pixel for pixel, and its timings were measured there. In the 16-colour mode the battle is shown in its CGA colours for now (how the Tandy version draws it is still to be found out).
+The battle runs at the speed it had on an IBM PC/XT, as the rest of the game does: its first screens and the boarding's deck match the original in DOSBox pixel for pixel, and its timings were measured there. In the Tandy mode the battle is drawn as WAST.EXE draws it: in the 4-colour mode, in light blue, brown, black and white, with plain sea and land, and boarding in 16 colours on the Tandy version's deck. These, the map with its marker, Info and Fleet, and the first menu pages (the title pages, the titles, the story, the rules, the opponents) match WAST.EXE in DOSBox-X pixel for pixel, as the PCjr's title page, scroll, map and battle match WAS.EXE on a PCjr.
 
 **Campaign play, the rules** (step 3, overlay 4 of WAS.EXE): your squadrons can now be sailed, and the game follows the original's rules:
 - **Move**: over one of your squadrons press **M**, trace its path with the marker (it becomes a box that stays on the sea and moves at half speed, as in the original), and press **M** to mark the end (**C** cancels). The squadron sets out at full sail and a little cross marks where it will stop; in **Info**, **S** changes its speed (anchored, half sail, full sail)
@@ -93,7 +93,13 @@ build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea ../WAS_Origin
 
 The app also looks in a `game` folder next to itself and in the current folder. Press **O** to choose a different folder.
 
-**Hercules:** as `WAS HERC` did, `HERC` on the command line starts the app on a Hercules card (Tab gets there too):
+**Video mode:** the app starts in CGA; `--video=` chooses another, and Tab goes round them (CGA, PCjr, Tandy, Hercules):
+```sh
+build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea --video=tandy    # cga, pcjr, tandy or herc
+```
+`--video=ega` and `--video=vga` start in CGA, as WAS.EXE looked the same on those cards. The game plays the same in every mode: the Tandy version's own test for land when tracing a path (its 16-colour coastlines, a few pixels different at some shores) is not used, WAS.EXE's is (`WAS_Analysis/README.md`, "The Tandy version"). The Tandy mode needs `WAST.DAT`. On a PCjr the Options Shoppe's display line (rgb, tv/composite, black/white) chooses which of each screen's colour sets is used, as in the original.
+
+**Hercules:** as `WAS HERC` did, `HERC` (or `--video=herc`) on the command line starts the app on a Hercules card:
 ```sh
 build/AncientArtOfWarAtSea.app/Contents/MacOS/AncientArtOfWarAtSea HERC
 ```
@@ -127,7 +133,7 @@ Each campaign started (or saved game carried on) opens a new text file in `Logs/
 | Shift + - / +, Home / End | Top / bottom of the map |
 | Enter | On a map: play that campaign |
 | I | On a map: the story, then the squadrons and ships, then the map again |
-| Tab | Switch between CGA, 16 colours and Hercules |
+| Tab | Switch between CGA, PCjr, Tandy and Hercules |
 | F2 or A | 4:3 like the original monitor, or square pixels |
 | H | Show or hide the caption |
 | F, Cmd+Enter, Alt+Enter | Full screen |
@@ -182,7 +188,7 @@ In the sea battle:
 | A, L | On deck: Attack, or Leave |
 | F, Q, P, R, C, A | On deck: FROM / TO Flag, Quarterdeck, Poopdeck, Railing, Cross to the enemy's flag; Again sends another man; Esc starts over |
 
-And the remake's own: **Tab** switches between CGA, 16 colours and Hercules (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)*.
+And the remake's own: **Tab** switches between CGA, PCjr, Tandy and Hercules (in the original Tab scrolls up; - does the same), **F2** changes the aspect, **Alt+Enter** or **Cmd+Enter** full screen, and **Esc** asks *Quit to the title page? (Y or N)*.
 
 ## Tests
 See `test/README.md`.

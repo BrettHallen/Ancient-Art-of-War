@@ -115,11 +115,16 @@ static int  f484(Battle *b, int a);
 
 /* ------------------------------------------------------------------ the deck picture */
 
+static void t_unpack(Battle *b);
+static void t_to_screen(Battle *b, int off, int bx, int end);
+static void t_man(Battle *b, int spr, int addr, int side);
+
 /* ovl7_fe6b: unpack B (at the buffer's start) into the two fields at dst and
  * dst+3E80h. Each field: a word count of runs, then runs: a byte n <= 200 and
  * the byte to repeat n times, or n > 200 and n-200 bytes to copy. */
 static void fe6b(Battle *b, int dst)
 {
+    t_unpack(b);
     int si = BUF;
     long work = 20;
     for (int f = 0; f < 2; f++) {
@@ -141,10 +146,88 @@ static void fe6b(Battle *b, int dst)
     ASM(work);
 }
 
+/* ------------------------------------------------------------------ the Tandy version's deck (mode 9) */
+
+/* expand_2to4 (WAST rt:01DAB) through the nibble table DS:2E86: a 2-bit byte to
+ * two 4-bit bytes, colours 0, 1, 2, 3 to 0, 3, 12, 15 (a mask's 11b to 1111b) */
+static uint16_t x24(int v)
+{
+    static const uint8_t X4[4] = { 0, 3, 12, 15 };
+    int hi = (X4[(v >> 6) & 3] << 4) | X4[(v >> 4) & 3], lo = (X4[(v >> 2) & 3] << 4) | X4[v & 3];
+    return (uint16_t)(hi | (lo << 8));     /* the bytes as stosw leaves them: hi first */
+}
+
+/* boarding_load_b (WAST ovl4:72A2): mode 9, WAST.DAT's deck into its two fields
+ * (put_block16: even lines, odd lines) */
+static void t_load(Battle *b)
+{
+    b->t9 = true;
+    memset(b->scr16, 0, sizeof b->scr16);
+    for (int y = 0; y < SCREEN_H; y++) b->row16[y] = true;
+    memset(b->vram_t, 0, sizeof b->vram_t);
+    memset(b->deck16, 0, sizeof b->deck16);
+    const Image *img = &b->ga->set[MODE_16].pictures[PIC_DECK];
+    if (!b->ga->set[MODE_16].loaded || !img->px) return;
+    for (int y = 0; y < SCREEN_H && y < img->h; y++)
+        for (int x = 0; x + 1 < SCREEN_W && x + 1 < img->w; x += 2)
+            b->deck16[y & 1][(y >> 1) * 160 + x / 2] =
+                (uint8_t)(((img->px[y * img->w + x] & 15) << 4) | (img->px[y * img->w + x + 1] & 15));
+}
+
+/* unpack_deck (WAST ovl4:9EF6) in mode 9: 91 clean lines of each field into the working copy */
+static void t_unpack(Battle *b)
+{
+    for (int f = 0; f < 2; f++) memcpy(b->work16[f], b->deck16[f], 0x38E0);
+}
+
+/* deck_to_screen (WAST ovl4:9F90) in mode 9: as fec9, 160 bytes a line */
+static void t_line(Battle *b, int f, int line, int row)
+{
+    if (row < 0 || row >= SCREEN_H || line < 0 || line >= 100) return;
+    const uint8_t *src = &b->work16[f][line * 160];
+    for (int i = 0; i < 160; i++) {
+        b->scr16[row * SCREEN_W + 2 * i] = src[i] >> 4;
+        b->scr16[row * SCREEN_W + 2 * i + 1] = src[i] & 15;
+    }
+    b->row16[row] = true;
+}
+
+static void t_to_screen(Battle *b, int off, int bx, int end)
+{
+    int line[2] = { off / 80, off / 80 }, f = 0;
+    for (int ax = 0; ax < 200; ax += 2, bx += 2) { t_line(b, f, line[f]++, bx / 2); f ^= 1; }
+    for (; bx < end; bx += 2) { t_line(b, f, line[f]++, bx / 2); f ^= 1; }
+}
+
+/* draw_man (WAST ovl4:A006) in mode 9: the man's 2-bit picture expanded, at the
+ * CGA address's place in the working copy */
+static void t_man(Battle *b, int spr, int addr, int side)
+{
+    int si = spr;
+    int w = b->m[si++ & 0xFFFF], h = b->m[si++ & 0xFFFF];
+    if (w == 0 || h == 0) return;
+    for (int y = 0; y < h; y++, addr += 80)
+        for (int f = 0; f < 2; f++) {
+            int di = addr - FLD;
+            for (int k = 0; k < w; k++, di++) {
+                uint16_t a = x24(b->m[si++ & 0xFFFF]), c = x24(b->m[si++ & 0xFFFF]);
+                for (int j = 0; j < 2; j++) {
+                    long o = 2L * di + j;
+                    if (o < 0 || o >= (long)sizeof b->work16[0]) continue;
+                    uint8_t am = (uint8_t)(a >> (8 * j)), cv = (uint8_t)(c >> (8 * j));
+                    uint8_t *d = &b->work16[f][o];
+                    if (side != 0) *d = (uint8_t)((*d & ~am) | cv);
+                    else *d = (uint8_t)((*d | am) & ~cv);
+                }
+            }
+        }
+}
+
 /* ovl7_fec9: copy the fields to the screen, a line of 80 bytes from each in
  * turn, from offset off; rows from bx/2: 100 of them, then on until row end/2 */
 static void fec9(Battle *b, int off, int bx, int end)
 {
+    t_to_screen(b, off, bx, end);
     int si = FLD + off, dx = si + FLD1, rows = 0;
     for (int ax = 0; ax < 200; ax += 2, bx += 2, rows++) {
         int di = row_addr(bx / 2);
@@ -167,6 +250,7 @@ static void fec9(Battle *b, int off, int bx, int end)
  * NOT the second. */
 static void ff14(Battle *b, int spr, int addr, int side)
 {
+    t_man(b, spr, addr, side);
     int si = spr;
     int w = b->m[si++ & 0xFFFF], h = b->m[si++ & 0xFFFF];
     if (w == 0 || h == 0) return;      /* a 0 would loop 65536 times in WAS.EXE: none in its tables */
@@ -1112,6 +1196,10 @@ static int load_b(Battle *b, int a0, int a1)
     fe6b(b, FLD);
     def1(b);
     fec9(b, 0, 0, 0x16C);
+    /* the Tandy version's mode 9 cleared the screen: it draws the line under the
+       deck again (text_rows_add, WAST ovl4:7A5F) */
+    for (int xb = 0; xb < 80; xb++) { b->vram_t[row_addr(182) + xb] = 0xFF; b->vram_t[row_addr(183) + xb] = 0; }
+    b->row16[182] = b->row16[183] = false;
     d444(b);
     g_clear_row(b, 23);
     while (b_getkey(b)) ;
@@ -1190,7 +1278,12 @@ out:
 int ovl7_boarding(Battle *b, int o, int s)
 {
     depth = 0;
+    t_load(b);
     int r = c9b0(b, o, s);
+    /* the Tandy version: mode 4 and its colours again (collisions ovl4:4184), the screen cleared */
+    b->t9 = false;
+    memset(b->vram_t, 0, sizeof b->vram_t);
+    g_tandy_colours(b);
     size_t n = 0;
     void *d = assets_load_file(b->ga->dir, "SO8", &n);
     if (d) {

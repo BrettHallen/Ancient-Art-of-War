@@ -45,9 +45,12 @@ void viewer_key(Viewer *v, ViewerKey k)
     case VK_TOP:     viewer_scroll(v, -MAP_PIXEL_H); break;
     case VK_BOTTOM:  viewer_scroll(v, MAP_PIXEL_H); break;
     case VK_MODE:                    /* CGA, then 16 colours (if WAST.DAT is there), then Hercules */
-        if (v->herc) { v->herc = false; v->mode = MODE_CGA; }
-        else if (v->mode == MODE_CGA && v->ga->set[MODE_16].loaded) v->mode = MODE_16;
-        else { v->mode = MODE_CGA; v->herc = true; }
+        switch (viewer_video(v)) {
+        case VIDEO_CGA:   viewer_set_video(v, VIDEO_PCJR); break;
+        case VIDEO_PCJR:  viewer_set_video(v, v->ga->set[MODE_16].loaded ? VIDEO_TANDY : VIDEO_HERC); break;
+        case VIDEO_TANDY: viewer_set_video(v, VIDEO_HERC); break;
+        default:          viewer_set_video(v, VIDEO_CGA); break;
+        }
         break;
     case VK_CAPTION: v->caption = !v->caption; break;
     case VK_STORY:   if (viewer_is_map(v)) v->page = (v->page + 1) % 3; break;
@@ -55,7 +58,45 @@ void viewer_key(Viewer *v, ViewerKey k)
     }
 }
 
-const char *viewer_mode_name(const Viewer *v) { return v->herc ? "Hercules" : mode_name(v->mode); }
+const char *viewer_mode_name(const Viewer *v)
+{
+    return v->herc ? "Hercules" : v->pcjr ? "PCjr" : mode_name(v->mode);
+}
+
+Video viewer_video(const Viewer *v)
+{
+    return v->herc ? VIDEO_HERC : v->pcjr ? VIDEO_PCJR : v->mode == MODE_16 ? VIDEO_TANDY : VIDEO_CGA;
+}
+
+void viewer_set_video(Viewer *v, Video video)
+{
+    if (video == VIDEO_TANDY && !(v->ga && v->ga->set[MODE_16].loaded)) video = VIDEO_CGA;
+    v->mode = video == VIDEO_TANDY ? MODE_16 : MODE_CGA;
+    v->herc = video == VIDEO_HERC;
+    v->pcjr = video == VIDEO_PCJR;
+}
+
+void viewer_jr(const Viewer *v, JrPal *j)
+{
+    int d = v->ga ? assets_scnf_word(v->ga, 0x684D) : 1;
+    const uint8_t *set = JR_PLAY;          /* the tiles, the font, the sprites, the maps */
+    switch (v->index) {
+    case PIC_TITLE:          set = JR_STARTUP; break;
+    case PIC_TITLE_SHIP:     set = JR_TITLE; break;
+    case PIC_SCROLL_1:
+    case PIC_SCROLL_2:       set = JR_SCROLL; break;
+    case PIC_OPPONENTS:      set = JR_OPPONENT; break;
+    case PIC_SCENES_1:       set = JR_CAMPAIGN_MENU; break;
+    case PIC_SCENES_2:       set = JR_EDITOR_MENU; break;
+    case PIC_OPTIONS_SHOPPE: set = JR_OPTIONS; break;
+    case PIC_REPORT_1: case PIC_REPORT_2: case PIC_REPORT_4: set = JR_REPORT; break;
+    case PIC_REPORT_3:       set = JR_REPORT_2; break;
+    case PIC_FACE:           set = JR_CAMPAIGN_MENU; break;   /* the opening (from the campaign menu) keeps its colours */
+    default: break;
+    }
+    jr_screen(j, d, set);
+    if ((v->index == PIC_SCROLL_1 || v->index == PIC_SCROLL_2) && d != 0) jr_bios(j, 0);   /* scroll_palette */
+}
 
 const char *viewer_title(const Viewer *v, int index)
 {
@@ -244,5 +285,10 @@ void viewer_draw(const Viewer *v, Screen *s)
         cap[40] = 0;   /* 40 characters per line */
         screen_fill(s, 0, SCREEN_H - 8, SCREEN_W, 8, black);
         screen_text(s, v->ga, 0, SCREEN_H - 8, cap, white, black);
+    }
+    if (v->pcjr) {                       /* the PCjr's colours for this screen */
+        JrPal j;
+        viewer_jr(v, &j);
+        screen_apply_jr(s, &j);
     }
 }

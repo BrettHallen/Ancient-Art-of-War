@@ -110,6 +110,7 @@ int main(int argc, char **argv)
     CHECK(p.mode == PM_SQUAD, "over a squadron");
     CHECK(SDL_strcmp(row(&p, 24), "Move Info Join Practice") == 0, "squadron line '%s'", row(&p, 24));
     save(&p, MODE_CGA, "p2_squadron");
+    save(&p, MODE_16, "p2_squadron_16");
 
     press(&p, PK_I);
     CHECK(p.mode == PM_INFO, "Info");
@@ -129,6 +130,7 @@ int main(int argc, char **argv)
     CHECK(SDL_strcmp(row(&p, 22), "Foe:     7Flag, 11Line,  9Frigate.") == 0, "fleet foe '%s'", row(&p, 22));
     CHECK(SDL_strcmp(row(&p, 24), "End") == 0, "fleet End");
     save(&p, MODE_CGA, "p4_fleet");
+    save(&p, MODE_16, "p4_fleet_16");
     press(&p, PK_SPACE);
     CHECK(p.mode == PM_NORMAL && p.text_rows == 2, "Fleet ended");
 

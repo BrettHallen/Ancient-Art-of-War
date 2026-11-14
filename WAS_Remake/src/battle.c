@@ -321,7 +321,7 @@ static void ship_name(Battle *b)   /* ovl6_e204: centred on row 1 */
 void ovl6_crew_panel(Battle *b)
 {
     int s = b->sel;
-    memset(&b->m[PANEL], 0, 0x18C * 2);
+    memset(&b->m[PANEL], 0, 0x18C * 2); memset(b->panel_t, 0, sizeof b->panel_t);
     b_cost(b, 410 * (1000.0 / 300.0));   /* memsetw */
     int l4 = 90, l2 = 125;
     if (starboard(b)) {
@@ -699,6 +699,9 @@ static bool battle_setup(Battle *b)
     if (b->practice) b->enemy_fired = true;
     if (!load_into(b, "SO6", SO6, 0x355)) return false;
     if (!load_into(b, "SO7", SO7, 0x70E)) return false;
+    /* the Tandy version's (WAST.DAT); without WAST.DAT, WAS.EXE's */
+    memcpy(b->so6t, b->ga->have_so67t ? b->ga->so6t : &b->m[SO6], sizeof b->so6t);
+    memcpy(b->so7t, b->ga->have_so67t ? b->ga->so7t : &b->m[SO7], sizeof b->so7t);
     g_build_shore(b);
     if (!load_into(b, "SO8", BMEM_SO8, 0x483C)) return false;
     ovl6_sprites(b);
@@ -1381,7 +1384,7 @@ static void battle_main(void *arg)
     if (!battle_setup(b)) { b->result = 0x270F; b->state = BATTLE_OVER; return; }
     rt_view_from_sel(b);
     rt_draw_all(b);
-    g_palette(b, 1);
+    g_colours(b);
     ovl6_background(b);
     ovl5_draw_ships(b);
     g_box(b, b->bx, b->by, 1);
@@ -1417,7 +1420,7 @@ static void battle_main(void *arg)
             }
             if (!skip) {
                 if (rt_battle_over(b)) {
-                    memset(&b->m[PANEL], 0, 0x18C * 2);
+                    memset(&b->m[PANEL], 0, 0x18C * 2); memset(b->panel_t, 0, sizeof b->panel_t);
                     g_panel_copy(b, b->crew_scroll);
                     b->ending = 40;
                     bool sinking = false;
@@ -1496,6 +1499,8 @@ bool battle_start(Battle *b, Play *p, bool practice)
         memcpy(&b->m[0x609F + i * 15], p->c->ships[i].name, 15);
     b->shore = p->battle_shore;
     b->palette = 1;
+    jr_screen(&b->jr, assets_scnf_word(b->ga, 0x684D), JR_PLAY);
+    g_tandy_colours(b);
     b->state = BATTLE_RUNNING;
     b->clock_us = b->target_us = 0;
     if (!fiber_start(&b->fiber, battle_main, b)) return false;
@@ -1526,9 +1531,28 @@ void battle_run(Battle *b, double us)
     if (b->clock_us < b->target_us) fiber_resume(&b->fiber);
 }
 
+/* The screen: CGA (WAS.EXE) in palette 1 or 0; the PCjr's registers are put
+ * on by main.c (screen_apply_jr). The Tandy version (mode MODE_16): its
+ * 4-colour screen with its palette registers, or while boarding mode 9's
+ * 16-colour screen, with the text rows (drawn as on the CGA screen) in the
+ * colours expand_2to4 gives them (0, 3, 12, 15). */
 void battle_draw(const Battle *b, Screen *s, GfxMode mode)
 {
-    (void)mode;
+    if (mode == MODE_16) {
+        static const uint8_t X4[4] = { 0, 3, 12, 15 };
+        screen_set_palette(s, STD16_PALETTE, 16);
+        for (int y = 0; y < SCREEN_H; y++) {
+            uint8_t *out = &s->px[y * SCREEN_W];
+            if (b->t9 && b->row16[y]) { memcpy(out, &b->scr16[y * SCREEN_W], SCREEN_W); continue; }
+            const uint8_t *row = &b->vram_t[row_addr(y)];
+            for (int xb = 0; xb < 80; xb++)
+                for (int k = 0; k < 4; k++) {
+                    int c = (row[xb] >> (6 - 2 * k)) & 3;
+                    out[xb * 4 + k] = b->t9 ? X4[c] : b->tpal[c];
+                }
+        }
+        return;
+    }
     const RGB *pal = b->palette ? CGA_PALETTE : CGA_PALETTE_0;
     screen_set_palette(s, pal, 4);
     for (int y = 0; y < SCREEN_H; y++) {

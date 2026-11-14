@@ -49,6 +49,7 @@ void  menu_text(Menu *m, const char *utf8);
 /* Run overlay 1 for us microseconds of an IBM PC/XT's time */
 void  menu_run(Menu *m, double us);
 void  menu_draw(const Menu *m, Screen *s, GfxMode mode);
+const JrPal *menu_jr(const Menu *m);          /* on a PCjr: the palette registers (rt_0c8f) */
 
 MenuAction menu_action(Menu *m);              /* and clears it */
 bool  menu_on_title(const Menu *m);           /* the title page waits for a key (F12: the viewer) */

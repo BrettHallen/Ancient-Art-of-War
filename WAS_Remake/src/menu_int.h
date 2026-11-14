@@ -93,6 +93,7 @@ struct Menu {
     uint8_t     c16[2][4];                    /* CGA colours (palette 1, palette 0) in the 16 */
     int         view;                         /* ([3F39] - BUF) / 80: the line pair at the top */
     bool        pal0;                         /* CGA palette 0 (the scrolls) */
+    JrPal       jr;                           /* on a PCjr: the palette registers (rt_0c8f) */
     int         rows;                         /* [645B]: text rows below the picture */
     int         blit_lines;                   /* 100 + [6459] / 2 */
     int         ccol, crow;                   /* the text position [0831], [0833] */
@@ -205,6 +206,7 @@ void text_rows_add(Menu *m, int n);             /* rt:0BC2 */
 void show_one_moment(Menu *m);                  /* ovl1:8A2F */
 void plus_or_minus(Menu *m);                    /* ovl1_bec5 */
 void palette(Menu *m, bool pal0);
+void colours(Menu *m, const uint8_t set[8]);   /* rt_0c8f */
 void hline(Menu *m, int line, int xb, int len); /* rt:2B95 */
 const char *DS(const Menu *m, unsigned off);
 void mspk_on(Menu *m);                          /* the speaker at overlay 1's clock (sound.c) */

@@ -2760,6 +2760,7 @@ typedef struct {
     Screen *s;
     int     top, h;          /* first map line shown, lines shown */
     uint8_t col[4];          /* CGA colours 0-3 in the screen palette */
+    bool    tandy;           /* the Tandy version's (WAST.EXE) marker: yellow */
 } View;
 
 static void vpx(const View *v, int x, int line, int c)
@@ -2769,17 +2770,40 @@ static void vpx(const View *v, int x, int line, int c)
     v->s->px[sy * SCREEN_W + x] = v->col[c];
 }
 
-/* rt_280e: the marker, a cross */
+/* a pixel of the Tandy version's own colour (0-15) */
+static void vpx16(const View *v, int x, int line, int c)
+{
+    int sy = line - v->top;
+    if (x < 0 || x >= SCREEN_W || sy < 0 || sy >= v->h) return;
+    v->s->px[sy * SCREEN_W + x] = (uint8_t)c;
+}
+
+static int vget(const View *v, int x, int line)
+{
+    int sy = line - v->top;
+    if (x < 0 || x >= SCREEN_W || sy < 0 || sy >= v->h) return -1;
+    return v->s->px[sy * SCREEN_W + x];
+}
+
+/* rt_280e: the marker, a cross. The Tandy version's (WAST draw_cursor rt:0231A)
+ * is yellow (EEh), and its middle's two untouched pixels lose their bit 0
+ * (AND E0EEh after OR E0h) */
 static void draw_cursor(const View *v, int cx, int cy)
 {
     int x = cx * 4, l = cy * 2;
     static const int arm[6] = { 0, 1, 2, 7, 8, 9 };
     for (int k = 0; k < 6; k++)
-        for (int i = 0; i < 4; i++) vpx(v, x + i, l + arm[k], i < 2 ? 0 : 3);
+        for (int i = 0; i < 4; i++) {
+            if (v->tandy) vpx16(v, x + i, l + arm[k], i < 2 ? 0 : 14);
+            else vpx(v, x + i, l + arm[k], i < 2 ? 0 : 3);
+        }
     for (int k = 4; k <= 5; k++) {
         static const int8_t bar[12] = { 0, 0, 3, 3, 3, -1, -1, 0, 0, 3, 3, 3 };
-        for (int i = 0; i < 12; i++)
-            if (bar[i] >= 0) vpx(v, x - 4 + i, l + k, bar[i]);
+        for (int i = 0; i < 12; i++) {
+            if (!v->tandy) { if (bar[i] >= 0) vpx(v, x - 4 + i, l + k, bar[i]); continue; }
+            if (bar[i] >= 0) vpx16(v, x - 4 + i, l + k, bar[i] ? 14 : 0);
+            else { int c = vget(v, x - 4 + i, l + k); if (c >= 0) vpx16(v, x - 4 + i, l + k, c & 0xE); }
+        }
     }
 }
 
@@ -2791,7 +2815,13 @@ static void draw_trace_box(const View *v, int cx, int cy)
         int line = 2 * (cy + 1 + k);
         if (k == 0 || k == 4) {
             static const uint8_t edge[8] = { 0, 0, 3, 3, 3, 3, 0, 0 };
-            for (int i = 0; i < 8; i++) vpx(v, x + i, line, edge[i]);
+            for (int i = 0; i < 8; i++) {
+                if (v->tandy) vpx16(v, x + i, line, edge[i] ? 14 : 0);
+                else vpx(v, x + i, line, edge[i]);
+            }
+        } else if (v->tandy) {                 /* WAST: the sides XOR 77h, each pixel's colour XOR 7 */
+            static const int sx[4] = { 0, 1, 6, 7 };
+            for (int i = 0; i < 4; i++) { int c = vget(v, x + sx[i], line); if (c >= 0) vpx16(v, x + sx[i], line, c ^ 7); }
         } else {
             vpx(v, x, line, 3); vpx(v, x + 1, line, 3);
             vpx(v, x + 6, line, 3); vpx(v, x + 7, line, 3);
@@ -2829,10 +2859,18 @@ static void xor_block(Screen *s, int line, int xbyte, int lines, const uint8_t c
     }
 }
 
-static void vline(Screen *s, int line, int xbyte, int n, const uint8_t col[4])   /* rt_2b71: n line pairs of 0Fh */
+/* rt_2b71: n line pairs of 0Fh. The Tandy version (WAST draw_vline rt:0277B in
+ * mode 9) writes only the byte of the two right pixels (FFh), so the left two
+ * keep what was there */
+static void vline_t(Screen *s, int line, int xbyte, int n, const uint8_t col[4], bool tandy)
 {
-    for (int j = 0; j < n * 2; j++) cga_byte(s, line + j, xbyte, 0x0F, col);
+    for (int j = 0; j < n * 2; j++) {
+        if (!tandy) { cga_byte(s, line + j, xbyte, 0x0F, col); continue; }
+        if (line + j < 0 || line + j >= SCREEN_H || xbyte < 0 || xbyte >= 80) continue;
+        s->px[(line + j) * SCREEN_W + xbyte * 4 + 2] = s->px[(line + j) * SCREEN_W + xbyte * 4 + 3] = col[3];
+    }
 }
+#define vline(s, line, xbyte, n, col) vline_t(s, line, xbyte, n, col, tandy)
 
 static void hline(Screen *s, int line, int xbyte, int len, const uint8_t col[4])   /* draw_hline (rt:2B95) */
 {
@@ -2855,16 +2893,21 @@ static void ds_icon_sized(Screen *s, const GameAssets *ga, int line, int xbyte, 
             if (off + 2 + r * w + b < DS_SIZE) cga_byte(s, line + r, xbyte + b, ga->ds[off + 2 + r * w + b], col);
 }
 
-static void draw_bar(Screen *s, int line, int xbyte, int len, uint8_t pat, const uint8_t col[4])   /* rt:2B2A */
+/* rt:2B2A. t16 >= 0: the Tandy version's (WAST rt:0272D), a solid colour */
+static void draw_bar(Screen *s, int line, int xbyte, int len, uint8_t pat, const uint8_t col[4], int t16)
 {
     for (int j = 0; j < 3; j++) {
         for (int i = 0; i < 21; i++) cga_byte(s, line + j, xbyte + i, 0, col);
-        for (int i = 0; i < len; i++) cga_byte(s, line + j, xbyte + i, pat, col);
+        for (int i = 0; i < len; i++) {
+            if (t16 < 0) cga_byte(s, line + j, xbyte + i, pat, col);
+            else if (line + j >= 0 && line + j < SCREEN_H && xbyte + i >= 0 && xbyte + i < 80)
+                SDL_memset(&s->px[(line + j) * SCREEN_W + (xbyte + i) * 4], t16, 4);
+        }
     }
 }
 
 /* squadron_info (rt:074B): the panel over the map */
-static void info_graphics(const Play *p, Screen *s, const uint8_t col[4])
+static void info_graphics(const Play *p, Screen *s, const uint8_t col[4], bool tandy)
 {
     for (int y = 62; y < 62 + 74; y++)                   /* rt_2e04 */
         for (int b = 5; b < 75; b++) cga_byte(s, y, b, 0, col);
@@ -2884,17 +2927,34 @@ static void info_graphics(const Play *p, Screen *s, const uint8_t col[4])
     for (int k = 0; k < 3 && p->list[k] != -1; k++) {
         const PShip *sh = &p->ship[p->list[k]];
         int len = (5 - sh->sails) * 4;
-        draw_bar(s, k * 8 + 81, 51, len > 0 ? len : 1, 0xDD, col);
+        draw_bar(s, k * 8 + 81, 51, len > 0 ? len : 1, 0xDD, col, tandy ? 14 : -1);   /* WAST: EEEEh, yellow */
         len = (5 - sh->hull) * 4;
-        draw_bar(s, k * 8 + 84, 51, len > 0 ? len : 1, 0x11, col);
+        draw_bar(s, k * 8 + 84, 51, len > 0 ? len : 1, 0x11, col, tandy ? 6 : -1);    /* 6666h, brown */
     }
     int sup = SDL_clamp(p->sq[p->sel].supplies, 0, 21);
-    draw_bar(s, 112, 51, sup, 0x55, col);
-    draw_bar(s, 115, 51, sup, 0x55, col);
+    draw_bar(s, 112, 51, sup, 0x55, col, tandy ? 10 : -1);                           /* AAAAh, light green */
+    draw_bar(s, 115, 51, sup, 0x55, col, tandy ? 10 : -1);
+}
+
+/* The Tandy version prints SAIL, HULL and SUPPLIES in colour (squadron_info
+ * rt:006BC sets the text colour DS:2E2D: EEEEh, 6666h, AAAAh): the white
+ * pixels of those cells */
+static void info_text_colours(const Play *p, Screen *s)
+{
+    static const struct { int row, col, n; uint8_t c; } T[3] = { { 8, 27, 4, 14 }, { 8, 32, 4, 6 }, { 14, 14, 8, 10 } };
+    for (int k = 0; k < 3; k++)
+        for (int c = T[k].col; c < T[k].col + T[k].n; c++) {
+            if (!p->panel[T[k].row][c]) continue;
+            for (int y = 0; y < 8; y++)
+                for (int x = 0; x < 8; x++) {
+                    uint8_t *q = &s->px[(T[k].row * 8 + y) * SCREEN_W + c * 8 + x];
+                    if (*q == 15) *q = T[k].c;
+                }
+        }
 }
 
 /* ovl4_a347: the Detach / Join panel (rt_2e26 and the lines) */
-static void detach_graphics(Screen *s, const uint8_t col[4])
+static void detach_graphics(Screen *s, const uint8_t col[4], bool tandy)
 {
     vline(s, 60, 10, 24, col);
     vline(s, 60, 40, 24, col);
@@ -2932,7 +2992,7 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
     int map_h = play_map_h(p);
     draw_tiles(p, s, mode, p->view_top * 2, map_h);
 
-    View v = { s, p->view_top * 2, map_h, { 0, 1, 2, 3 } };
+    View v = { s, p->view_top * 2, map_h, { 0, 1, 2, 3 }, mode == MODE_16 };
     int ncolors = set->tiles[0].ncolors;
     for (int i = 0; i < 4; i++)
         v.col[i] = screen_nearest(s, ncolors, CGA_PALETTE[i].r, CGA_PALETTE[i].g, CGA_PALETTE[i].b);
@@ -2968,7 +3028,7 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
     }
 
     bool over = p->mode == PM_INFO || p->mode == PM_DETACH || p->mode == PM_OFFER;
-    if (p->mode == PM_INFO) info_graphics(p, s, v.col);
+    if (p->mode == PM_INFO) info_graphics(p, s, v.col, v.tandy);
     if (p->mode == PM_DETACH)                /* rt_2e26: the panel is cleared; its lines go over the title */
         for (int y = 60; y < 60 + 48; y++)
             for (int b = 11; b < 71; b++) cga_byte(s, y, b, 0, v.col);
@@ -2977,13 +3037,14 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
         for (int r = 0; r < 23; r++)          /* put_char only where something was written */
             for (int c = 0; c < 40; c++)
                 if (p->panel[r][c]) { ch[0] = p->text[r][c]; screen_text(s, p->ga, c * 8, r * 8, ch, white, black); }
+        if (p->mode == PM_INFO && v.tandy) info_text_colours(p, s);
     }
-    if (p->mode == PM_DETACH) detach_graphics(s, v.col);
+    if (p->mode == PM_DETACH) detach_graphics(s, v.col, v.tandy);
     if (p->mode == PM_DETACH)                /* the ship marked */
         xor_block(s, 80 + 8 * (p->dj_pos % 3), p->dj_pos < 3 ? 11 : 41, 8, v.col);
     if (p->mode == PM_OFFER) {               /* ovl4:A0B5: the box round the offer */
-        vline(s, 24, 0, 17, v.col);
-        vline(s, 24, 79, 17, v.col);
+        vline_t(s, 24, 0, 17, v.col, v.tandy);
+        vline_t(s, 24, 79, 17, v.col, v.tandy);
         hline(s, 24, 1, 79, v.col);
         hline(s, 56, 1, 79, v.col);
     }
@@ -2994,7 +3055,7 @@ void play_draw(const Play *p, Screen *s, GfxMode mode)
  * map, so the question shows over the last page of the menus */
 void play_draw_offer(const Play *p, Screen *s, GfxMode mode)
 {
-    View v = { s, 0, SCREEN_H, { 0, 1, 2, 3 } };
+    View v = { s, 0, SCREEN_H, { 0, 1, 2, 3 }, mode == MODE_16 };
     int ncolors = mode == MODE_CGA ? 4 : 16;
     for (int i = 0; i < 4; i++)
         v.col[i] = screen_nearest(s, ncolors, CGA_PALETTE[i].r, CGA_PALETTE[i].g, CGA_PALETTE[i].b);
@@ -3003,8 +3064,8 @@ void play_draw_offer(const Play *p, Screen *s, GfxMode mode)
         for (int c = 0; c < 40; c++)
             if (p->panel[r][c]) { ch[0] = p->text[r][c]; screen_text(s, p->ga, c * 8, r * 8, ch, v.col[3], v.col[0]); }
     if (p->mode == PM_OFFER) {               /* ovl4:A0B5: the box round the offer */
-        vline(s, 24, 0, 17, v.col);
-        vline(s, 24, 79, 17, v.col);
+        vline_t(s, 24, 0, 17, v.col, v.tandy);
+        vline_t(s, 24, 79, 17, v.col, v.tandy);
         hline(s, 24, 1, 79, v.col);
         hline(s, 56, 1, 79, v.col);
     }

@@ -5,7 +5,7 @@
  * Original game by Dave Murry & Barry Murry
  * Published by Brøderbund Software Inc.
  *
- * gfx.c: the 320x200 indexed-colour game screen.
+ * gfx.c: the 320x200 indexed-colour game screen, Hercules and the PCjr's colours.
  */
 #include "gfx.h"
 
@@ -113,4 +113,36 @@ void screen_to_herc(const Screen *s, uint32_t *out)
             row[2 * x + 1] = (c & 1) ? lit : 0;
         }
     }
+}
+
+/* ------------------------------------------------------------------ the PCjr's palette registers */
+
+const uint8_t JR_STARTUP[8]       = { 4, 11, 12, 15,  0, 10, 12, 15 };   /* ovl1_startup ovl1:7716 */
+const uint8_t JR_SCROLL[8]        = { 0,  3,  4, 14,  0, 14,  7, 15 };   /* show_scroll ovl1:7FA5 */
+const uint8_t JR_CAMPAIGN_MENU[8] = { 0,  3,  4, 15,  0, 14,  7, 15 };   /* campaign_menu ovl1:8307 */
+const uint8_t JR_EDITOR_MENU[8]   = { 0, 11, 12, 15,  0,  7, 14, 15 };   /* editor_menu ovl1:8495 */
+const uint8_t JR_TITLE[8]         = { 0,  3,  4, 15,  0,  7, 14, 15 };   /* show_title_ship ovl1:873D */
+const uint8_t JR_OPPONENT[8]      = { 0, 11,  4, 15,  0, 14,  7, 15 };   /* choose_opponent ovl1:8C45 */
+const uint8_t JR_REPORT[8]        = { 0,  3,  4, 15,  0, 14, 11, 15 };   /* battle_report ovl1:97C1, 980B */
+const uint8_t JR_REPORT_2[8]      = { 0,  6, 12, 15,  0, 14, 11, 15 };   /* battle_report ovl1:97EA (lost, opponent 2) */
+const uint8_t JR_OPTIONS[8]       = { 0, 10,  5, 15,  0, 14,  7, 15 };   /* options_shoppe ovl1:9CAC, ovl1_a0e5 */
+const uint8_t JR_EDITORS[8]       = { 0, 10,  9, 15,  0, 15, 11, 15 };   /* ovl2_7650, ovl3_7650 */
+const uint8_t JR_PLAY[8]          = { 0, 10,  8, 15,  0,  7,  6, 15 };   /* campaign_play, game_over, sea_battle */
+
+void jr_screen(JrPal *j, int display, const uint8_t set[8])   /* rt_0c8f, [0814] set */
+{
+    static const uint8_t RGB_SET[4] = { 0, 2, 12, 15 };
+    const uint8_t *c = display == 2 ? RGB_SET : display == 1 ? set : set + 4;
+    for (int i = 0; i < 4; i++) j->reg[i] = c[i];
+}
+
+void jr_bios(JrPal *j, int pal)
+{
+    static const uint8_t P0[3] = { 2, 4, 6 }, P1[3] = { 3, 5, 15 };
+    for (int i = 0; i < 3; i++) j->reg[i + 1] = pal ? P1[i] : P0[i];
+}
+
+void screen_apply_jr(Screen *s, const JrPal *j)
+{
+    for (int i = 0; i < 4; i++) s->pal[i] = STD16_PALETTE[j->reg[i] & 15];
 }

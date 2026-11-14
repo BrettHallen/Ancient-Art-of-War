@@ -28,6 +28,7 @@
 #define WAS_BATTLE_H
 
 #include "fiber.h"
+#include "gfx.h"
 #include "play.h"
 
 #define BS          6        /* ships in a battle: 0-2 yours (squadron 6303), 3-5 theirs (6301) */
@@ -47,6 +48,25 @@ typedef struct Battle {
                                  the gun crew's panel buffer (3F3D, 44 bytes x 18 lines) */
     uint8_t  vram[0x4000];    /* the CGA screen (B800:0000): even lines, then odd lines at 2000h */
     int      palette;         /* CGA palette 1 (normal) or 0 (the explosion's flashes) */
+    JrPal    jr;              /* on a PCjr: the palette registers (rt_0c8f, then the BIOS's flashes) */
+
+    /* The Tandy version (WAST.EXE, the remake's 16-colour mode). Its battle is
+       WAS.EXE's in the CGA 4-colour mode, so every drawing routine also draws
+       into vram_t, with WAST.EXE's fills (the sea 55h, the shore lines 55h,
+       AAh, 5Ah, A5h) and its own SO6 and SO7; shown with the palette registers
+       tpal: the registers treg (sea_battle ovl4:0037: 0, 9 light blue, 6 brown,
+       15), or during the explosion's flashes with the BIOS's palette 0 0, 10,
+       12, 14 (seen in DOSBox-X: palette 1 shows treg again). Boarding is
+       in the 16-colour mode 9 (boarding_load_b ovl4:72A2): the deck from
+       WAST.DAT, the men turned to 4 bits a pixel (expand_2to4 rt:01DAB). */
+    uint8_t  vram_t[0x4000];
+    uint8_t  tpal[4], treg[4];
+    uint8_t  so6t[0x355], so7t[0x70E], panel_t[0x2C * 18];
+    bool     t9;                              /* boarding: the screen is mode 9 */
+    uint8_t  deck16[2][100 * 160];            /* WAST.DAT's deck, by field, 160 bytes a line */
+    uint8_t  work16[2][100 * 160];            /* the deck with the men (unpack_deck ovl4:9EF6, draw_man A006) */
+    uint8_t  scr16[SCREEN_W * SCREEN_H];      /* mode 9's screen (deck_to_screen ovl4:9F90) */
+    bool     row16[SCREEN_H];                 /* rows of scr16 shown (the rest: vram_t, the text) */
 
     /* the fiber and its clock */
     Fiber    fiber;
@@ -148,5 +168,10 @@ void battle_draw(const Battle *b, Screen *s, GfxMode mode);
 /* After the battle (state != BATTLE_RUNNING): free the fiber and go back to
  * the map (campaign_play starts again: Play's after-battle checks). */
 void battle_finish(Battle *b);
+
+/* For the tests only: when >= 0, every broadside blows up this ship as though a
+ * shot had (as WAS_Analysis/tools/dosbox's patched WAST.EXE did to see the
+ * Tandy explosion's colours). -1 in the game. */
+extern int battle_test_blow_up;
 
 #endif

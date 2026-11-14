@@ -1,6 +1,6 @@
-"""Generate the annotated WAS.EXE.asm from the wasdis model.
+"""Generate the annotated WAS.ASM from the wasdis model.
 
-Usage:  python3 gen_asm.py [output]     (default: ../WAS.EXE.asm)
+Usage:  python3 gen_asm.py [output]     (default: ../WAS.ASM)
 Needs capstone (pip install capstone).
 Adapted from WAR_Analysis/disassembler/gen_asm.py (Nov 2026). Add names to N as routines
 are understood, then run it again.
@@ -15,7 +15,7 @@ sys.path.insert(0, HERE)
 import wasdis as W
 from capstone import x86
 
-OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', 'WAS.EXE.asm')
+OUT = sys.argv[1] if len(sys.argv) > 1 else os.path.join(HERE, '..', 'WAS.ASM')
 
 # ------------------------------------------------------------------ names
 # (region, offset): (name, description)

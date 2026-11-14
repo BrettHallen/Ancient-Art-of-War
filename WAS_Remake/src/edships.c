@@ -92,8 +92,23 @@ static void over_byte(Menu *m, int a, int field, int lines, uint8_t (*op)(uint8_
         if ((force >> (6 - 2 * k)) & 3) d[k] = m->c16[0][(b >> (6 - 2 * k)) & 3];
 }
 
-static uint8_t op_set(uint8_t old, uint8_t v, uint8_t *f) { (void)old; *f = 0xFF; return v; }
-static uint8_t op_cross(uint8_t old, uint8_t v, uint8_t *f) { (void)v; *f = 0xC3; return (uint8_t)((old | 0xC0) & 0xFC); }
+
+/* the marker: as over_byte, but in 16 colours as the Tandy version draws it
+ * (WAST draw_cursor rt:0231A): yellow, and the middle's two untouched pixels
+ * lose their bit 0 (cross: OR E0h, AND E0EEh) */
+static void over_mark(Menu *m, int a, int field, int lines, bool cross, uint8_t v)
+{
+    int lp = a / 80, xb = a % 80, line = (lp - m->view) * 2 + field;
+    if (a < 0 || line < 0 || line >= lines || line >= SCREEN_H) return;
+    uint8_t old = m->vram[line * 80 + xb];
+    uint8_t b = cross ? (uint8_t)((old | 0xC0) & 0xFC) : v, force = cross ? 0xC3 : 0xFF;
+    m->vram[line * 80 + xb] = b;
+    uint8_t *d = &m->v16[line * SCREEN_W + xb * 4];
+    for (int k = 0; k < 4; k++) {
+        if ((force >> (6 - 2 * k)) & 3) d[k] = ((b >> (6 - 2 * k)) & 3) ? 14 : 0;
+        else d[k] &= 0xE;
+    }
+}
 /* draw_map_sprite (rt:2941): side -1 (the player's) white with a black edge, 0 black with a white edge */
 static uint8_t op_white(uint8_t old, uint8_t d, uint8_t *f)
 {
@@ -131,18 +146,18 @@ void ed_overlay(Menu *m, int lines)
         }
     if (m->mk_on) {
         int a = m->mk_addr;
-        over_byte(m, a, 0, lines, op_set, 0x0F);
-        over_byte(m, a, 1, lines, op_set, 0x0F);
-        over_byte(m, a + 80, 0, lines, op_set, 0x0F);
-        over_byte(m, a + 159, 0, lines, op_set, 0x0F);
-        over_byte(m, a + 159, 1, lines, op_set, 0x0F);
-        over_byte(m, a + 160, 0, lines, op_cross, 0);
-        over_byte(m, a + 160, 1, lines, op_cross, 0);
-        over_byte(m, a + 161, 0, lines, op_set, 0x3F);
-        over_byte(m, a + 161, 1, lines, op_set, 0x3F);
-        over_byte(m, a + 240, 1, lines, op_set, 0x0F);
-        over_byte(m, a + 320, 0, lines, op_set, 0x0F);
-        over_byte(m, a + 320, 1, lines, op_set, 0x0F);
+        over_mark(m, a, 0, lines, false, 0x0F);
+        over_mark(m, a, 1, lines, false, 0x0F);
+        over_mark(m, a + 80, 0, lines, false, 0x0F);
+        over_mark(m, a + 159, 0, lines, false, 0x0F);
+        over_mark(m, a + 159, 1, lines, false, 0x0F);
+        over_mark(m, a + 160, 0, lines, true, 0);
+        over_mark(m, a + 160, 1, lines, true, 0);
+        over_mark(m, a + 161, 0, lines, false, 0x3F);
+        over_mark(m, a + 161, 1, lines, false, 0x3F);
+        over_mark(m, a + 240, 1, lines, false, 0x0F);
+        over_mark(m, a + 320, 0, lines, false, 0x0F);
+        over_mark(m, a + 320, 1, lines, false, 0x0F);
     }
 }
 
@@ -186,17 +201,44 @@ static void map_into_buf(Menu *m)
 
 /* ------------------------------------------------------------------ the Info panel's drawing */
 
-static void draw_vline(Menu *m, int line, int xb, int n)    /* rt:2B71 */
+/* rt:2B71. In 16 colours as the Tandy version (WAST draw_vline rt:0277B in
+ * mode 9): only the two right pixels (FFh), the left two keep what was there */
+static void draw_vline(Menu *m, int line, int xb, int n)
 {
-    for (int l = 0; l < 2 * n; l++) scr_byte(m, line + l, xb, 0x0F);
+    for (int l = 0; l < 2 * n; l++) {
+        uint8_t keep[2] = { 0, 0 }, *d = NULL;
+        if (line + l >= 0 && line + l < SCREEN_H && xb >= 0 && xb < 80) {
+            d = &m->v16[(line + l) * SCREEN_W + xb * 4];
+            keep[0] = d[0]; keep[1] = d[1];
+        }
+        scr_byte(m, line + l, xb, 0x0F);
+        if (d) { d[0] = keep[0]; d[1] = keep[1]; }
+    }
     WORK(m, 20 + 2 * n * 8);
 }
 
-static void draw_bar(Menu *m, int line, int xb, int len, uint8_t pattern)   /* rt:2B2A */
+/* rt:2B2A. In 16 colours the Tandy version's bars are solid (WAST draw_bar
+ * rt:0272D with squadron_info's EEEEh, 6666h, AAAAh): the sails yellow, the
+ * hull brown, the supplies light green */
+static void draw_bar(Menu *m, int line, int xb, int len, uint8_t pattern)
 {
+    int t16 = pattern == 0xDD ? 14 : pattern == 0x11 ? 6 : pattern == 0x55 ? 10 : -1;
     for (int l = 0; l < 3; l++) for (int i = 0; i < 0x15; i++) scr_byte(m, line + l, xb + i, 0);
-    for (int l = 0; l < 3; l++) for (int i = 0; i < len; i++) scr_byte(m, line + l, xb + i, pattern);
+    for (int l = 0; l < 3; l++) for (int i = 0; i < len; i++) {
+        scr_byte(m, line + l, xb + i, pattern);
+        if (t16 >= 0 && line + l >= 0 && line + l < SCREEN_H && xb + i >= 0 && xb + i < 80)
+            SDL_memset(&m->v16[(line + l) * SCREEN_W + (xb + i) * 4], t16, 4);
+    }
     WORK(m, 60 + 3 * (0x15 + len) * 2);
+}
+
+/* squadron_info's coloured words in 16 colours (WAST rt:006BC, DS:2E2D): the
+ * white pixels of n cells from (col, row) */
+static void text16(Menu *m, int col, int row, int n, uint8_t c)
+{
+    for (int y = row * 8; y < row * 8 + 8 && y < SCREEN_H; y++)
+        for (int x = col * 8; x < (col + n) * 8 && x < SCREEN_W; x++)
+            if (m->v16[y * SCREEN_W + x] == 15) m->v16[y * SCREEN_W + x] = c;
 }
 
 /* invert_block (rt:2DC8): XOR FFh, w bytes by 2 x h lines at a screen address */
@@ -246,7 +288,10 @@ static void squadron_info(Menu *m)
     print_at(m, 7, 8, DS(m, 0x2D));                     /* NAME */
     print_at(m, 19, 8, DS(m, 0x32));                    /* TYPE */
     print_at(m, 27, 8, DS(m, 0x37));                    /* SAIL/HULL */
+    text16(m, 27, 8, 4, 14);                            /* (the Tandy version's colours) */
+    text16(m, 32, 8, 4, 6);
     print_at(m, 14, 14, DS(m, 0x41));                   /* SUPPLIES--- */
+    text16(m, 14, 14, 8, 10);
     print_at(m, 4, 14, DS(m, m->ed.side[m->sq] == -1 ? 0x51 : 0x4D));   /* FRIEND / FOE */
     static const struct { int xb; unsigned off; } TICKS[10] = {
         { 50, 0x5EF }, { 53, 0x607 }, { 55, 0x613 }, { 58, 0x613 }, { 60, 0x5EF },
@@ -786,7 +831,7 @@ int ships_editor(Menu *m)
     m->rows = 2;
     m->a6469 = 2;
     text_rows_add(m, 0);
-    palette(m, false);
+    colours(m, JR_EDITORS);                          /* rt_0c8f ovl2_7650 */
     text_area_reset(m);
     int r = 0;
     if (m->a6485 == 9) {                                /* a new campaign */

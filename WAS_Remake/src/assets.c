@@ -347,6 +347,15 @@ static bool load_16(GameAssets *ga)
         SDL_free(raw);
     }
     ok = ok && t == NUM_TILES;
+    {
+        size_t l6 = 0, l7 = 0;
+        const uint8_t *p6 = dat_record(&dat, 26, &l6), *p7 = dat_record(&dat, 27, &l7);
+        ga->have_so67t = p6 && p7;
+        if (ga->have_so67t) {
+            SDL_memcpy(ga->so6t, p6, SDL_min(l6, sizeof ga->so6t));
+            SDL_memcpy(ga->so7t, p7, SDL_min(l7, sizeof ga->so7t));
+        }
+    }
     free_blob(&dat);
     if (!ok) {
         for (int i = 0; i < PIC_COUNT; i++) image_free(&set->pictures[i]);

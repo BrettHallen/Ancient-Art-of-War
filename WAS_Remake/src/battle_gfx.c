@@ -9,6 +9,12 @@
  * screen as WAS.EXE has it (B800:0000, 80 bytes a line, even lines first,
  * odd lines at 2000h; the row table DS:0D3B). Each routine names the one it
  * ports; the arithmetic, the clipping and the byte masks are WAS.EXE's.
+ *
+ * Each also draws the Tandy version's screen (vram_t): WAST.EXE's routines are
+ * the same but for the fills (WAST.ASM: the sea 5555h in rt_5dc5 and rt_6242,
+ * the shore lines converted by shore_to_tandy rt:01D73) and its own SO6 and
+ * SO7, so the two screens are drawn side by side and Tab can change at any
+ * time.
  */
 #include "battle_int.h"
 
@@ -17,6 +23,33 @@
 int row_addr(int row) { return (row & 1) * 0x2000 + (row >> 1) * 80; }
 
 static inline uint8_t *V(Battle *b, int addr) { return &b->vram[addr & 0x3FFF]; }
+static inline uint8_t *VT(Battle *b, int addr) { return &b->vram_t[addr & 0x3FFF]; }
+
+/* a byte on both screens: CGA v, Tandy vt */
+static inline void P2(Battle *b, int addr, int v, int vt)
+{
+    *V(b, addr) = (uint8_t)v;
+    *VT(b, addr) = (uint8_t)vt;
+    if (b->t9) {                       /* boarding on the Tandy: this row now shows what is drawn on it */
+        int a = addr & 0x3FFF, row = ((a & 0x1FFF) / 80) * 2 + (a >= 0x2000);
+        if (row < SCREEN_H) b->row16[row] = false;
+    }
+}
+static inline void P1(Battle *b, int addr, int v) { P2(b, addr, v, v); }
+
+/* shore_to_tandy (WAST rt:01D73): the shore's fill bytes as the Tandy version has them */
+static int tshore(int v) { return v == 0x66 ? 0x55 : v == 0x77 ? 0xAA : v == 0x67 ? 0x5A : v == 0x76 ? 0xA5 : v; }
+
+/* A byte of the data segment as the Tandy version has it: its SO6 and SO7, and
+ * the gun crew's panel buffer drawn from them */
+int mbt(const Battle *b, int a)
+{
+    a &= 0xFFFF;
+    if (a >= SO6 && a < SO6 + (int)sizeof b->so6t) return b->so6t[a - SO6];
+    if (a >= SO7 && a < SO7 + (int)sizeof b->so7t) return b->so7t[a - SO7];
+    if (a >= PANEL && a < PANEL + (int)sizeof b->panel_t) return b->panel_t[a - PANEL];
+    return b->m[a];
+}
 
 /* The time these routines take on an XT: about their 8086 instructions (counted
  * from the asm: per byte and per line), at the 300 instructions a millisecond of
@@ -32,7 +65,7 @@ void g_clear_row(Battle *b, int row)   /* clear_text_row rt:2C48 */
     WORK(b, 400);
     for (int i = 0; i < 8; i++) {
         int a = row_addr(row * 8 + i);
-        for (int k = 0; k < 80; k++) *V(b, a + k) = 0;
+        for (int k = 0; k < 80; k++) P1(b, a + k, 0);
     }
     g_goto(b, 0, row);
 }
@@ -47,8 +80,8 @@ void g_putc(Battle *b, int c)   /* rt_32d4 */
     for (int i = 0; i < 8; i++) {
         int a = row_addr(b->trow * 8 + i) + b->tcol * 2;
         int g = mb(b, src + i);
-        *V(b, a) = (uint8_t)mb(b, 0x88C + (g >> 4));
-        *V(b, a + 1) = (uint8_t)mb(b, 0x88C + (g & 15));
+        P1(b, a, mb(b, 0x88C + (g >> 4)));
+        P1(b, a + 1, mb(b, 0x88C + (g & 15)));
     }
     if ((unsigned)++b->tcol >= 40) { b->tcol = 0; b->trow++; }
 }
@@ -74,13 +107,13 @@ void g_hline(Battle *b, int line, int x, int len)   /* draw_hline rt:2B95 */
 {
     WORK(b, 15 + len);
     int a = row_addr(line) + x;
-    for (int i = 0; i < len; i++) *V(b, a + i) = 0xFF;
+    for (int i = 0; i < len; i++) P1(b, a + i, 0xFF);
 }
 
 void g_vline(Battle *b, int line, int x, int n)   /* draw_vline rt:2B71: 2n lines of 0Fh */
 {
     WORK(b, 15 + 12 * n);
-    for (int i = 0; i < 2 * n; i++) *V(b, row_addr(line + i) + x) = 0x0F;
+    for (int i = 0; i < 2 * n; i++) P1(b, row_addr(line + i) + x, 0x0F);
 }
 
 void g_icon(Battle *b, int src, int line, int x)   /* draw_icon rt:2CC4 */
@@ -90,7 +123,7 @@ void g_icon(Battle *b, int src, int line, int x)   /* draw_icon rt:2CC4 */
     WORK(b, 20 + h * (w + 8));
     for (int r = 0; r < h; r++) {
         int a = row_addr(line + r) + x;
-        for (int i = 0; i < w; i++) *V(b, a + i) = (uint8_t)mb(b, src++);
+        for (int i = 0; i < w; i++, src++) P2(b, a + i, mb(b, src), mbt(b, src));
     }
 }
 
@@ -100,11 +133,41 @@ void g_invert_block(Battle *b, int addr, int w, int h)   /* invert_block rt:2DC8
     WORK(b, 20 + 2 * h * (3 * w + 6));
     for (int r = 0; r < 2 * h; r++) {
         int a = row_addr(row + r) + x;
-        for (int i = 0; i < w; i++) *V(b, a + i) ^= 0xFF;
+        for (int i = 0; i < w; i++) { *V(b, a + i) ^= 0xFF; *VT(b, a + i) ^= 0xFF; }
     }
 }
 
-void g_palette(Battle *b, int n) { b->palette = n; }   /* set_cga_palette_if rt:30AE */
+/* set_cga_palette_if rt:30AE: BIOS INT 10h AH=0Bh. On a PCjr it sets the
+ * palette registers 1-3 (jr_bios). In the Tandy version (WAST.EXE's explosion
+ * ovl4:2A12, in DOSBox-X with machine=tandy, 14 Nov): palette 0 shows colours
+ * 1-3 as 10, 12, 14 (light green, light red, yellow), palette 1 the battle's
+ * own registers again (9, 6, 15), so after an explosion the battle is in its
+ * usual colours */
+void g_palette(Battle *b, int n)
+{
+    static const uint8_t P0[4] = { 0, 10, 12, 14 };
+    b->palette = n;
+    jr_bios(&b->jr, n);
+    memcpy(b->tpal, n ? b->treg : P0, 4);
+}
+
+/* the battle's colours as it starts: rt_0c8f in sea_battle (ovl5:7683; CGA
+ * palette 1, or the PCjr's registers); the Tandy version sets mode 4 and the
+ * registers 1 and 2 to 9 and 6 (WAST sea_battle ovl4:0037-0057, and collisions
+ * ovl4:4184 after boarding) */
+void g_colours(Battle *b)
+{
+    b->palette = 1;
+    jr_screen(&b->jr, assets_scnf_word(b->ga, 0x684D), JR_PLAY);
+    g_tandy_colours(b);
+}
+
+void g_tandy_colours(Battle *b)
+{
+    static const uint8_t T[4] = { 0, 9, 6, 15 };
+    memcpy(b->treg, T, 4);
+    memcpy(b->tpal, T, 4);
+}
 
 /* ------------------------------------------------------------------ the gun crew's panel */
 
@@ -114,22 +177,22 @@ void g_panel_copy(Battle *b, int off)   /* rt_6697: 24 bytes of each of 18 buffe
     WORK(b, 351);
     for (int r = 2; r < 20; r++) {
         int a = row_addr(r) + 12;
-        for (int i = 0; i < 24; i++) *V(b, a + i) = (uint8_t)mb(b, src + i);
+        for (int i = 0; i < 24; i++) P2(b, a + i, mb(b, src + i), mbt(b, src + i));
         src += 0x2C;
     }
 }
 
-void g_panel_sprite(Battle *b, int spr, int off, int half, int over)   /* rt_656f */
+static void panel_sprite(Battle *b, int spr, int off, int half, int over, bool t)
 {
-    int w = mb(b, spr), rows = mb(b, spr + 1) * 2;
+    int (*rd)(const Battle *, int) = t ? mbt : mb;
+    int w = rd(b, spr), rows = rd(b, spr + 1) * 2;
     int si = spr + 2, row = PANEL + off;
-    WORK(b, 20 + rows * (8 + w * (half ? 30 : 22)));
     while (rows-- > 0) {
         int di = row, carry = 0;
         for (int i = 0; i <= w; i++) {
             int al;
             if (i < w) {
-                al = mb(b, si++);
+                al = rd(b, si++);
                 if (half) {
                     int ah = (al >> 4) | carry;
                     carry = (al << 4) & 0xFF;
@@ -139,14 +202,23 @@ void g_panel_sprite(Battle *b, int spr, int off, int half, int over)   /* rt_656
                 if (!carry) break;
                 al = carry; carry = 0;
             }
-            int bl = over ? 0 : mb(b, di);
+            int bl = over ? 0 : rd(b, di);
             bl &= ~(al >> 2) & 0xFF;
             bl &= ~(al << 2) & 0xFF;
-            setmb(b, di, al | bl);
+            if (t) { if (di >= PANEL && di < PANEL + (int)sizeof b->panel_t) b->panel_t[di - PANEL] = (uint8_t)(al | bl); }
+            else setmb(b, di, al | bl);
             di++;
         }
         row += 0x2C;
     }
+}
+
+void g_panel_sprite(Battle *b, int spr, int off, int half, int over)   /* rt_656f */
+{
+    int w = mb(b, spr), rows = mb(b, spr + 1) * 2;
+    WORK(b, 20 + rows * (8 + w * (half ? 30 : 22)));
+    panel_sprite(b, spr, off, half, over, false);
+    panel_sprite(b, spr, off, half, over, true);
 }
 
 /* ------------------------------------------------------------------ the battle view (lines 34-181) */
@@ -162,19 +234,25 @@ void g_mask(Battle *b, int spr, int y, int colour, int x, int half)
     while (rows-- > 0) {
         if (row < 34) { si += w; row++; continue; }
         if (row >= 182) return;
-        int base = row_addr(row), dx = x, bh = 0;
+        int base = row_addr(row), dx = x, bh = 0, bht = 0;
         for (int i = 0; ; i++) {
-            int al;
+            int al, alt;
             if (i < w) {
+                alt = mbt(b, si);
                 al = mb(b, si++);
-                if (half) { int ah = (al >> 4) | bh; bh = (al << 4) & 0xFF; al = ah; }
+                if (half) {
+                    int ah = (al >> 4) | bh; bh = (al << 4) & 0xFF; al = ah;
+                    ah = (alt >> 4) | bht; bht = (alt << 4) & 0xFF; alt = ah;
+                }
             } else {
-                if (bh == 0) break;
+                if (bh == 0 && bht == 0) break;
                 al = bh; bh = 0;
+                alt = bht; bht = 0;
             }
             if (dx >= 0 && dx <= 79) {
-                uint8_t *p = V(b, base + dx);
+                uint8_t *p = V(b, base + dx), *q = VT(b, base + dx);
                 *p = (uint8_t)((al & colour) | (*p & ~al));
+                *q = (uint8_t)((alt & colour) | (*q & ~alt));
             }
             dx++;
         }
@@ -210,7 +288,7 @@ void g_erase(Battle *b, int spr, int y, int x, int hull)
         if (row >= 34) {
             if (row >= 182) return;
             int a = row_addr(row) + bp;
-            for (int i = 0; i < dx; i++) *V(b, a + i) = 0x66;
+            for (int i = 0; i < dx; i++) P2(b, a + i, 0x66, 0x55);
         }
         row++;
     }
@@ -222,15 +300,15 @@ void g_box(Battle *b, int x, int y, int on)   /* rt_62dc: the overview's box, 16
     int r = 2 * y;
     WORK(b, 460);
     for (int i = 0; i < 16; i++) {
-        *V(b, row_addr(r) + x + i) = v;
-        *V(b, row_addr(r + 28) + x + i) = v;
-        *V(b, row_addr(r + 1) + x + i) = v;
-        *V(b, row_addr(r + 29) + x + i) = v;
+        P1(b, row_addr(r) + x + i, v);              /* (WAST.EXE's rt_62dc too: 66h) */
+        P1(b, row_addr(r + 28) + x + i, v);
+        P1(b, row_addr(r + 1) + x + i, v);
+        P1(b, row_addr(r + 29) + x + i, v);
     }
     for (int i = 0; i < 28; i++) {
         int a = row_addr(r + i) + x;
-        *V(b, a) = v;
-        *V(b, a + 15) = v;
+        P1(b, a, v);
+        P1(b, a + 15, v);
     }
 }
 
@@ -239,7 +317,7 @@ void g_sea(Battle *b)   /* rt_5dc5 */
     WORK(b, 148 * 47);
     for (int r = 34; r <= 181; r++) {
         int a = row_addr(r);
-        for (int i = 0; i < 80; i++) *V(b, a + i) = 0x66;
+        for (int i = 0; i < 80; i++) P2(b, a + i, 0x66, 0x55);
     }
 }
 
@@ -254,7 +332,7 @@ void g_shore_overview(Battle *b, int rle)   /* rt_5de5: one coded line a screen 
             if (n == 0x63) break;
             WORK(b, n);
             int v = mb(b, si++);
-            for (int i = 0; i < n; i++) *V(b, di++) = (uint8_t)v;
+            for (int i = 0; i < n; i++, di++) P2(b, di, v, tshore(v));
         }
     }
 }
@@ -314,7 +392,7 @@ void g_shore_close(Battle *b, int rle, int xoff)
                 int c = line[k++ & 255];
                 if (c == 0x63) break;
                 int v = line[k++ & 255];
-                for (int i = 0; i < c; i++) *V(b, di++) = (uint8_t)v;
+                for (int i = 0; i < c; i++, di++) P2(b, di, v, tshore(v));
             }
             r++;
             if (--left == 0) return;
@@ -376,16 +454,18 @@ void g_ship(Battle *b, int spr, int y, int set, int x, int half, int sails, int 
                     al = bh; bh = 0;
                 }
                 if (dx >= 0 && dx <= 0x4F) {
-                    uint8_t *p = V(b, base + dx);
-                    int bl = *p;
-                    if (set) {
-                        bl &= ~(al >> 2) & 0xFF;
-                        bl &= ~(al << 2) & 0xFF;
-                        *p = (uint8_t)(al | bl);
-                    } else {
-                        bl |= al >> 2;
-                        bl |= (al << 2) & 0xFF;
-                        *p = (uint8_t)(bl & ~al);
+                    for (int t = 0; t < 2; t++) {
+                        uint8_t *p = t ? VT(b, base + dx) : V(b, base + dx);
+                        int bl = *p;
+                        if (set) {
+                            bl &= ~(al >> 2) & 0xFF;
+                            bl &= ~(al << 2) & 0xFF;
+                            *p = (uint8_t)(al | bl);
+                        } else {
+                            bl |= al >> 2;
+                            bl |= (al << 2) & 0xFF;
+                            *p = (uint8_t)(bl & ~al);
+                        }
                     }
                 }
                 dx++;
@@ -413,21 +493,21 @@ void g_mast(Battle *b, int set, int dmg)
     int si = 0x1080, dx = set;
     for (int bp = 1; bp <= 6; bp++) {
         int al = dx > 0 ? mb(b, si) : 0;
-        al = mast_mask(bp, dmg, al); *V(b, row_addr(14) + bp) = (uint8_t)al;
-        al = mast_mask(bp, dmg, al); *V(b, row_addr(15) + bp) = (uint8_t)al;
+        al = mast_mask(bp, dmg, al); P1(b, row_addr(14) + bp, (uint8_t)al);
+        al = mast_mask(bp, dmg, al); P1(b, row_addr(15) + bp, (uint8_t)al);
         si++;
     }
     for (int bp = 1; bp <= 6; bp++) {
         int al = dx > 0 ? mb(b, si) : 0;
-        al = mast_mask(bp, dmg, al); *V(b, row_addr(16) + bp) = (uint8_t)al;
-        al = mast_mask(bp, dmg, al); *V(b, row_addr(17) + bp) = (uint8_t)al;
+        al = mast_mask(bp, dmg, al); P1(b, row_addr(16) + bp, (uint8_t)al);
+        al = mast_mask(bp, dmg, al); P1(b, row_addr(17) + bp, (uint8_t)al);
         si++;
     }
     dx--;
     for (int bp = 1; bp <= 6; bp++) {
         int al = 0;
         if (dx > 0) al = mb(b, si++);
-        for (int r = 18; r <= 21; r++) { al = mast_mask(bp, dmg, al); *V(b, row_addr(r) + bp) = (uint8_t)al; }
+        for (int r = 18; r <= 21; r++) { al = mast_mask(bp, dmg, al); P1(b, row_addr(r) + bp, (uint8_t)al); }
     }
     dx--;
     for (int ah = 4; ah > 0; ah--) {
@@ -435,22 +515,23 @@ void g_mast(Battle *b, int set, int dmg)
         for (int bp = 1; bp <= 6; bp++) {
             int al = 0;
             if (dx > 0) al = mb(b, si++);
-            al = mast_mask(bp, dmg, al); *V(b, row_addr(row) + bp) = (uint8_t)al;
-            al = mast_mask(bp, dmg, al); *V(b, row_addr(row + 1) + bp) = (uint8_t)al;
+            al = mast_mask(bp, dmg, al); P1(b, row_addr(row) + bp, (uint8_t)al);
+            al = mast_mask(bp, dmg, al); P1(b, row_addr(row + 1) + bp, (uint8_t)al);
         }
         dx--;
     }
     for (int r = 0; r < 24; r++) {
-        uint8_t *p = V(b, row_addr(r) + 4);
+        uint8_t *p = V(b, row_addr(r) + 4), *q = VT(b, row_addr(r) + 4);
         *p = (uint8_t)((*p & 0x3F) | 0x80);
+        *q = (uint8_t)((*q & 0x3F) | 0x80);
     }
-    *V(b, row_addr(1) + 3) = 0x2A; *V(b, row_addr(1) + 4) = 0xAA;
-    *V(b, row_addr(7) + 1) = 0x00; *V(b, row_addr(7) + 2) = 0x02;
-    *V(b, row_addr(7) + 3) = 0xAA; *V(b, row_addr(7) + 4) = 0xAA;
-    *V(b, row_addr(13) + 3) = 0xAA; *V(b, row_addr(13) + 4) = 0xAA;
-    *V(b, row_addr(7) + 5) = 0xA0; *V(b, row_addr(7) + 6) = 0x00;
-    *V(b, row_addr(13) + 5) = 0xAA; *V(b, row_addr(13) + 6) = 0x00;
-    *V(b, row_addr(13) + 1) = 0x00; *V(b, row_addr(13) + 2) = 0x2A;
+    P1(b, row_addr(1) + 3, 0x2A); P1(b, row_addr(1) + 4, 0xAA);
+    P1(b, row_addr(7) + 1, 0x00); P1(b, row_addr(7) + 2, 0x02);
+    P1(b, row_addr(7) + 3, 0xAA); P1(b, row_addr(7) + 4, 0xAA);
+    P1(b, row_addr(13) + 3, 0xAA); P1(b, row_addr(13) + 4, 0xAA);
+    P1(b, row_addr(7) + 5, 0xA0); P1(b, row_addr(7) + 6, 0x00);
+    P1(b, row_addr(13) + 5, 0xAA); P1(b, row_addr(13) + 6, 0x00);
+    P1(b, row_addr(13) + 1, 0x00); P1(b, row_addr(13) + 2, 0x2A);
 }
 
 /* rt_64f0(n): the speed (0-9) as a bar at byte 8 */
@@ -458,18 +539,18 @@ void g_speed_bar(Battle *b, int n)
 {
     int bx = 0x28, dx = n;
     while (dx > 0) {
-        *V(b, row_addr(bx / 2 + 1) + 8) = 0x55;
+        P1(b, row_addr(bx / 2 + 1) + 8, 0x55);
         if (bx >= 0x24) { if (--dx == 0) break; }
-        *V(b, row_addr(bx / 2) + 8) = 0x55;
+        P1(b, row_addr(bx / 2) + 8, 0x55);
         bx -= 4;
         if (bx == 8 || bx == 0x14 || bx == 0x1C) continue;
         dx--;
     }
     dx = n;
     while (bx > 0) {
-        *V(b, row_addr(bx / 2) + 8) = 0;
+        P1(b, row_addr(bx / 2) + 8, 0);
         if (dx == 3 || dx == 1) dx = 9;
-        else *V(b, row_addr(bx / 2 + 1) + 8) = 0;
+        else P1(b, row_addr(bx / 2 + 1) + 8, 0);
         bx -= 4;
     }
 }
@@ -479,13 +560,14 @@ void g_needle(Battle *b, int spr, int x, int row)   /* rt_660c: half a byte to t
     int w = mb(b, spr), h = mb(b, spr + 1), si = spr + 2;
     WORK(b, 20 + 2 * h * (10 + 12 * w));
     for (int k = 0; k < 2 * h; k++) {
-        int a = row_addr(row + k) + x, carry = 0;
-        for (int i = 0; i < w; i++) {
-            int al = mb(b, si++);
-            *V(b, a++) = (uint8_t)((al >> 4) | carry);
+        int a = row_addr(row + k) + x, carry = 0, ct = 0;
+        for (int i = 0; i < w; i++, si++, a++) {
+            int al = mb(b, si), at = mbt(b, si);
+            P2(b, a, (al >> 4) | carry, (at >> 4) | ct);
             carry = (al << 4) & 0xFF;
+            ct = (at << 4) & 0xFF;
         }
-        *V(b, a) = (uint8_t)carry;
+        P2(b, a, carry, ct);
     }
 }
 
@@ -493,13 +575,13 @@ void g_fill(Battle *b, int x, int line, int w, int h, int v)   /* rt_66e2 (AAh),
 {
     for (int r = 0; r < 2 * h; r++) {
         int a = row_addr(line + r) + x;
-        for (int i = 0; i < w; i++) *V(b, a + i) = (uint8_t)v;
+        for (int i = 0; i < w; i++) P1(b, a + i, v);
     }
 }
 
 void g_bar3f(Battle *b, int x, int line, int n)   /* rt_673e */
 {
-    for (int r = 0; r < 2 * n; r++) *V(b, row_addr(line + r) + x) = 0x3F;
+    for (int r = 0; r < 2 * n; r++) P1(b, row_addr(line + r) + x, 0x3F);
 }
 
 /* ------------------------------------------------------------------ the shore (ovl5_8d89) */

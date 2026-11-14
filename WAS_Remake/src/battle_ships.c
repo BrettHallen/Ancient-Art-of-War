@@ -1119,6 +1119,8 @@ static void tone_bursts(Battle *b, int gap, int n, int freq)   /* ovl5_ab6e */
         for (int d = n; d > 0; d--) { b_click(b); b_delay(b, d); b_click(b); b_delay(b, gap); }
 }
 
+int battle_test_blow_up = -1;
+
 static void explosion(Battle *b)   /* ovl5_a7ad: a ship blows up ([6CDC]) */
 {
     int s = b->fired_sunk, h = b->turning[s] ? b->prev_heading[s] : b->heading[s];
@@ -1426,6 +1428,7 @@ int ovl5_fire(Battle *b, int s)
     }
     if (ovl5_input(b)) return 1;
     b->fired_sunk = b->fired_struck = -1;
+    if (battle_test_blow_up >= 0) b->fired_sunk = battle_test_blow_up;
     bool hidden = (h2 >= 11 && h2 <= 13 && b->crew_side[s] && (b->aim_r_set[s] == 0 || (big && b->aim_r_set[s] == 1))) ||
                   (h2 >= 3 && h2 <= 5 && !b->crew_side[s] && (b->aim_l_set[s] == 0 || (big && b->aim_l_set[s] == 1)));
     if (!shot_hits(b, s, tx, ty, 1) && b->view == 3 && !hidden) splash(b, SO6 + 0x2F5, vy2, vx2, 0);

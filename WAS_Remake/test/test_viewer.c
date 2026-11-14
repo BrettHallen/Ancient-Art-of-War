@@ -95,28 +95,29 @@ int main(int argc, char **argv)
             for (int c = 0; c < MAP_W; c++)
                 CHECK(cs[i].map[r][c] >= 1 && cs[i].map[r][c] <= NUM_TILES, "S%d map tile", i);
 
-    /* the viewer: every screen in both sets, the captions off, maps at the top and bottom */
+    /* the viewer: every screen in CGA, PCjr and Tandy (Tab's order), the captions off, maps at the top and bottom */
     Viewer v;
     viewer_init(&v, &ga, cs);
     viewer_key(&v, VK_CAPTION);
     char path[1200];
-    for (int m = 0; m < MODE_COUNT; m++) {
+    for (int m = 0; m < 3; m++) {
+        CHECK(viewer_video(&v) == (Video)m, "Tab %d times: %d", m, (int)viewer_video(&v));
         for (int i = 0; i < NUM_SCREENS; i++) {
             viewer_draw(&v, &s);
-            SDL_snprintf(path, sizeof path, "%s/%s_%02d.bmp", argv[2], mode_name(v.mode), i + 1);
+            SDL_snprintf(path, sizeof path, "%s/%s_%02d.bmp", argv[2], viewer_mode_name(&v), i + 1);
             save(&s, path);
             if (viewer_is_map(&v)) {
                 viewer_key(&v, VK_TOP);
                 viewer_draw(&v, &s);
-                SDL_snprintf(path, sizeof path, "%s/%s_%02d_top.bmp", argv[2], mode_name(v.mode), i + 1);
+                SDL_snprintf(path, sizeof path, "%s/%s_%02d_top.bmp", argv[2], viewer_mode_name(&v), i + 1);
                 save(&s, path);
                 viewer_key(&v, VK_STORY);
                 viewer_draw(&v, &s);
-                SDL_snprintf(path, sizeof path, "%s/%s_%02d_story.bmp", argv[2], mode_name(v.mode), i + 1);
+                SDL_snprintf(path, sizeof path, "%s/%s_%02d_story.bmp", argv[2], viewer_mode_name(&v), i + 1);
                 save(&s, path);
                 viewer_key(&v, VK_STORY);
                 viewer_draw(&v, &s);
-                SDL_snprintf(path, sizeof path, "%s/%s_%02d_ships.bmp", argv[2], mode_name(v.mode), i + 1);
+                SDL_snprintf(path, sizeof path, "%s/%s_%02d_ships.bmp", argv[2], viewer_mode_name(&v), i + 1);
                 save(&s, path);
                 viewer_key(&v, VK_STORY);
                 CHECK(v.page == 0, "Enter three times: the map again");
@@ -127,10 +128,10 @@ int main(int argc, char **argv)
         CHECK(v.index == 0, "wrapped round");
         viewer_key(&v, VK_MODE);
     }
-    CHECK(v.mode == MODE_CGA && v.herc, "Tab twice: Hercules");
+    CHECK(v.mode == MODE_CGA && v.herc, "Tab three times: Hercules");
     CHECK(SDL_strcmp(viewer_mode_name(&v), "Hercules") == 0, "Hercules' name");
     viewer_key(&v, VK_MODE);
-    CHECK(v.mode == MODE_CGA && !v.herc, "Tab three times: CGA");
+    CHECK(v.mode == MODE_CGA && !v.herc && !v.pcjr, "Tab four times: CGA");
 
     /* Hercules (WAS HERC): each CGA pixel is two mono pixels, the screen at 32,72 of 720x348 */
     {

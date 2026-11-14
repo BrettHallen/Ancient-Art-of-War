@@ -9,14 +9,14 @@
  * the asset viewer (step 1, behind F12 on the title page).
  *
  * Everything is drawn from the player's own copy of the original game, in
- * the CGA colours (WAS.EXE) or the 16 colours of the Tandy 1000 version
- * (WAST.DAT).
+ * the CGA colours (WAS.EXE), WAS.EXE's colours on a PCjr, the Tandy 1000
+ * version's (WAST.EXE, WAST.DAT) or as on a Hercules card.
  *
  * The menus: the original keys (-/+ or the arrows, Enter, Esc, Space, Y/N, S/N,
- *        C/Q), plus Tab CGA/16 colours/Hercules, F2 aspect, F12 (title page)
+ *        C/Q), plus Tab CGA/PCjr/Tandy/Hercules, F2 aspect, F12 (title page)
  *        the asset viewer, Alt/Cmd+Enter full screen.
  *
- * Viewer keys:  Left/Right, Space  previous/next screen    Tab   CGA / 16 colours / Hercules
+ * Viewer keys:  Left/Right, Space  previous/next screen    Tab   CGA / PCjr / Tandy / Hercules
  *        Up/Down, -/+, mouse wheel   scroll a campaign map
  *        Shift+-/+, Home/End         top / bottom of the map
  *        Enter       play the campaign shown
@@ -29,10 +29,12 @@
  *        M Move (trace, M marks, C cancels), I Info (S speed), D Detach,
  *        J Join (-/+ mark, S switch, E end), E End, T Time, F Fleet,
  *        P Pause, S Surrender, C Clear, Alt+S save, Y/N answers, Enter at the end), plus
- *        Tab CGA/16 colours/Hercules, F2 aspect, Alt/Cmd+Enter full screen,
+ *        Tab CGA/PCjr/Tandy/Hercules, F2 aspect, Alt/Cmd+Enter full screen,
  *        Esc leave the game.
  *
- * Usage: AncientArtOfWarAtSea [HERC] [--log | --log=verbose] [game-folder]   (HERC: start on a Hercules card, as WAS HERC)
+ * Usage: AncientArtOfWarAtSea [--video=cga|pcjr|tandy|herc] [HERC] [--log | --log=verbose] [game-folder]
+ *        (--video: the video mode to start in, CGA if none; ega and vga start in CGA, as
+ *        WAS.EXE shows on those cards; HERC: a Hercules card, as WAS HERC)
  *          --log: a debug log of each campaign played (gamelog.h), in the
  *          remake's folder under Logs/; --log=verbose (or --log verbose) for more
  *        AncientArtOfWarAtSea --screenshots OUTDIR [game-folder]   (write BMPs, no window)
@@ -141,11 +143,27 @@ static SDL_FRect dest_rect(App *app, int w, int h, bool *integer)
 /* Options Shoppe: "display is black/white" (on a plain CGA the setting does nothing) */
 static void apply_display(App *app, Screen *s)
 {
+    /* On a PCjr WAS.EXE also chooses other colours for black/white (rt_0c8f: 0, 14, 7, 15
+     * and the like, four greys apart on a black-and-white monitor); they are made grey after */
     if (!app->menu || assets_scnf_word(&app->ga, 0x684D) != 0) return;
     for (int i = 0; i < 16; i++) {
         int g = (s->pal[i].r * 30 + s->pal[i].g * 59 + s->pal[i].b * 11) / 100;
         s->pal[i] = (RGB){ (uint8_t)g, (uint8_t)g, (uint8_t)g };
     }
+}
+
+/* The PCjr: WAS.EXE's CGA screen in the colours its palette registers hold for
+ * the screen shown (rt_0c8f; the battle's and the scrolls' BIOS palette changes) */
+static void apply_pcjr(App *app, Screen *s)
+{
+    JrPal j;
+    if (app->in_menu && app->menu) j = *menu_jr(app->menu);
+    else if (app->playing && app->battle) j = app->battle->jr;
+    else if (app->playing && (app->play.hidden || app->play.offer_at_start) && app->from_menu && app->menu)
+        j = *menu_jr(app->menu);
+    else if (app->playing) jr_screen(&j, assets_scnf_word(&app->ga, 0x684D), JR_PLAY);   /* campaign_play ovl4:78AC */
+    else return;                         /* the viewer: viewer_draw puts them on */
+    screen_apply_jr(s, &j);
 }
 
 static void render(App *app)
@@ -166,6 +184,7 @@ static void render(App *app)
         }
         else if (app->playing) play_draw(&app->play, &app->screen, mode);
         else viewer_draw(&app->viewer, &app->screen);
+        if (app->viewer.pcjr) apply_pcjr(app, &app->screen);
         if (app->in_menu || app->playing) apply_display(app, &app->screen);
         bool herc = app->viewer.herc && app->tex_herc;
         int w = herc ? HERC_W : SCREEN_W, h = herc ? HERC_H : SCREEN_H;
@@ -264,11 +283,9 @@ static bool load_from(App *app, const char *dir, bool remember)
         return false;
     }
     int n = campaigns_load(app->campaigns, dir);
-    GfxMode mode = app->viewer.mode;
-    bool herc = app->viewer.herc;
+    Video video = viewer_video(&app->viewer);
     viewer_init(&app->viewer, &app->ga, app->campaigns);
-    if (app->ga.set[mode].loaded) app->viewer.mode = mode;
-    app->viewer.herc = herc;
+    viewer_set_video(&app->viewer, video);
     if (remember) save_game_dir(dir);
     menu_destroy(app->menu);
     app->menu = NULL;
@@ -329,11 +346,10 @@ static int write_screenshots(App *app, const char *outdir)
     int written = 0;
     Viewer *v = &app->viewer;
     v->caption = false;
-    for (int m = 0; m <= MODE_COUNT; m++) {  /* the last pass: Hercules */
-        bool herc = m == MODE_COUNT;
-        if (!herc && !app->ga.set[m].loaded) continue;
-        v->mode = herc ? MODE_CGA : (GfxMode)m;
-        v->herc = herc;
+    for (int m = VIDEO_CGA; m <= VIDEO_HERC; m++) {
+        if (m == VIDEO_TANDY && !app->ga.set[MODE_16].loaded) continue;
+        viewer_set_video(v, (Video)m);
+        bool herc = m == VIDEO_HERC;
         int w = herc ? HERC_W : SCREEN_W, h = herc ? HERC_H : SCREEN_H;
         for (int i = 0; i < NUM_SCREENS; i++) {
             v->index = i;
@@ -625,6 +641,16 @@ int main(int argc, char **argv)
             else if (i + 1 < argc && SDL_strcmp(argv[i + 1], "normal") == 0) i++;
         }
         else if (SDL_strcasecmp(argv[i], "HERC") == 0 || SDL_strcasecmp(argv[i], "--herc") == 0) app.viewer.herc = true;
+        else if (SDL_strncasecmp(argv[i], "--video=", 8) == 0 || (SDL_strcasecmp(argv[i], "--video") == 0 && i + 1 < argc)) {
+            const char *v = argv[i][7] == '=' ? argv[i] + 8 : argv[++i];
+            app.viewer.herc = app.viewer.pcjr = false;
+            app.viewer.mode = MODE_CGA;
+            if (SDL_strcasecmp(v, "pcjr") == 0) app.viewer.pcjr = true;
+            else if (SDL_strcasecmp(v, "tandy") == 0) app.viewer.mode = MODE_16;   /* (CGA if WAST.DAT is missing) */
+            else if (SDL_strcasecmp(v, "herc") == 0 || SDL_strcasecmp(v, "hercules") == 0) app.viewer.herc = true;
+            else if (SDL_strcasecmp(v, "cga") != 0 && SDL_strcasecmp(v, "ega") != 0 && SDL_strcasecmp(v, "vga") != 0)
+                SDL_Log("--video=%s: not cga, pcjr, tandy or herc; starting in CGA", v);
+        }
         else if (argv[i][0] != '-') dir_arg = argv[i];
     }
     app.aspect_43 = true;

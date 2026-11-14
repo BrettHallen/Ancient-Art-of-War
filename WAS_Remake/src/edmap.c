@@ -208,7 +208,7 @@ int map_maker(Menu *m)
     keys_clear(m);
     WORK(m, 3000);                                      /* SO0 and SM read (ovl3_804d) */
     for (int r = 24; r >= 0; r--) clear_row(m, r);
-    palette(m, false);
+    colours(m, JR_EDITORS);                          /* rt_0c8f ovl3_7650 */
     mapmk_panel(m);
     m->rows = 1;
     text_rows_add(m, 0);

@@ -105,6 +105,10 @@ typedef struct {
     uint8_t  sitles[876], sditles[876];
     bool     have_menus;
     AssetSet set[MODE_COUNT];
+    /* WAST.DAT's own SO6 and SO7 (records 26, 27): the battle's panel pictures as
+       the Tandy version has them (a few bytes differ) */
+    uint8_t  so6t[0x355], so7t[0x70E];
+    bool     have_so67t;
 } GameAssets;
 
 extern const RGB CGA_PALETTE[4];       /* palette 1, high intensity: every picture but the scrolls */

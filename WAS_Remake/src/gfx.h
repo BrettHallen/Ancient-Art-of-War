@@ -45,6 +45,24 @@ void screen_to_xrgb(const Screen *s, uint32_t *out);
  * exactly as for CGA, so each CGA byte (4 pixels of 2 bits) shows as 8 mono
  * pixels: colour 0 as two dark pixels, 1 dark-lit, 2 lit-dark, 3 two lit.
  * The CGA screen s (palette indexes 0-3) becomes HERC_W x HERC_H XRGB8888. */
+/* The PCjr (WAS.EXE with [0814] set: the BIOS equipment word's bit 8, no DMA):
+ * in the CGA 4-colour mode its palette registers 0-3 choose any of the 16
+ * colours for the four pixel values. rt_0c8f (each screen's colours) sets
+ * them: with the Options Shoppe's display "rgb" ([684D] 2) always 0, 2, 12,
+ * 15; with "tv/composite" (1) the screen's first four, with "black/white" (0)
+ * its other four. WAS.EXE's set_cga_palette (BIOS INT 10h AH=0Bh) still
+ * runs for the scrolls and the battle's flashes; on a PCjr the BIOS then sets
+ * registers 1-3 to 2, 4, 6 (palette 0) or 3, 5, 15 (palette 1), as DOSBox-X
+ * shows (14 Nov). */
+typedef struct { uint8_t reg[4]; } JrPal;
+void jr_screen(JrPal *j, int display, const uint8_t set[8]);   /* rt_0c8f */
+void jr_bios(JrPal *j, int pal);                               /* INT 10h AH=0Bh BH=1 */
+void screen_apply_jr(Screen *s, const JrPal *j);               /* colours 0-3 as the registers say */
+
+/* WAS.EXE's screens' colour sets for rt_0c8f (composite, then black/white) */
+extern const uint8_t JR_STARTUP[8], JR_SCROLL[8], JR_CAMPAIGN_MENU[8], JR_EDITOR_MENU[8], JR_TITLE[8],
+                     JR_OPPONENT[8], JR_REPORT[8], JR_REPORT_2[8], JR_OPTIONS[8], JR_EDITORS[8], JR_PLAY[8];
+
 #define HERC_W 720
 #define HERC_H 348
 #define HERC_X 32

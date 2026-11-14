@@ -30,6 +30,7 @@
 #include "../src/assets.h"
 #include "../src/battle.h"
 #include "../src/campaign.h"
+#include "../src/gfx.h"
 #include "../src/play.h"
 
 static int fails = 0;
@@ -48,16 +49,33 @@ static void fail(int line, const char *fmt, ...)
 static Screen scr;
 static const char *outdir;
 
-static void save_battle(const Battle *b, const char *name)
+static void save_screen(const char *name)
 {
     static uint32_t rgb[SCREEN_W * SCREEN_H];
-    battle_draw(b, &scr, MODE_CGA);
     screen_to_xrgb(&scr, rgb);
     SDL_Surface *surf = SDL_CreateSurfaceFrom(SCREEN_W, SCREEN_H, SDL_PIXELFORMAT_XRGB8888, rgb, SCREEN_W * 4);
     char path[1200];
     SDL_snprintf(path, sizeof path, "%s/%s.bmp", outdir, name);
     CHECK(surf && SDL_SaveBMP(surf, path), "can't write %s", path);
     SDL_DestroySurface(surf);
+}
+
+/* each scene in CGA, and as the PCjr (WAS.EXE's registers) and the Tandy
+ * version (WAST.EXE) show it: name_pcjr, name_tandy */
+static void save_battle(const Battle *b, const char *name)
+{
+    char n2[200];
+    battle_draw(b, &scr, MODE_CGA);
+    save_screen(name);
+    battle_draw(b, &scr, MODE_CGA);
+    screen_apply_jr(&scr, &b->jr);
+    SDL_snprintf(n2, sizeof n2, "%s_pcjr", name);
+    save_screen(n2);
+    if (b->ga->set[MODE_16].loaded) {
+        battle_draw(b, &scr, MODE_16);
+        SDL_snprintf(n2, sizeof n2, "%s_tandy", name);
+        save_screen(n2);
+    }
 }
 
 static void settle(Play *p) { for (int n = 0; n < 1000 && play_busy(p); n++) play_frame(p, 0); }
@@ -156,6 +174,52 @@ int main(int argc, char **argv)
     SDL_Log("boarding over after %d s; owners %d %d %d %d %d %d", t, b.owner[0], b.owner[1], b.owner[2], b.owner[3], b.owner[4], b.owner[5]);
     run_ms(&b, 2000);
     save_battle(&b, "z8_after");
+
+    /* x1-x3: an explosion (step 9, 14 Nov). WAS.EXE's chance of a hit blowing
+     * a ship up is 1 in 128, so battle_test_blow_up makes the first broadside
+     * blow up the enemy's ship 3, as the patched WAST.EXE did in DOSBox-X.
+     * There, during the flashes (BIOS palette 0) colours 1-3 showed as 10, 12,
+     * 14 and otherwise, and after it, as the battle's own 9, 6, 15. */
+    if (ga.set[MODE_16].loaded) {
+        static Battle x;   /* (b still holds the Zoom battle's fiber) */
+        play_start(&p, &c0, &ga, zseed);
+        move_to(&p, 44, 145);
+        for (int f = 0; f < 400 && !(p.sq[16].partner && p.sq[16].ctrl > 0); f++) play_frame(&p, 0);
+        press(&p, PK_Z);
+        CHECK(battle_start(&x, &p, false), "the battle starts (explosion)");
+        run_ms(&x, 3000);
+        save_battle(&x, "x1_before");
+        static const uint8_t OWN[4] = { 0, 9, 6, 15 }, P0[4] = { 0, 10, 12, 14 };
+        CHECK(SDL_memcmp(x.tpal, OWN, 4) == 0, "the Tandy battle's colours 0, 9, 6, 15");
+        battle_test_blow_up = 3;
+        battle_key(&x, 'f', 0);
+        int flash = 0, t2 = 0;
+        for (; t2 < 20000 && x.state == BATTLE_RUNNING; t2 += 16) {
+            battle_run(&x, 16000);
+            if (x.palette == 0 && !flash) {
+                flash = t2;
+                save_battle(&x, "x2_flash");
+                CHECK(SDL_memcmp(x.tpal, P0, 4) == 0, "the flash: 0, 10, 12, 14 (%d %d %d)", x.tpal[1], x.tpal[2], x.tpal[3]);
+                battle_draw(&x, &scr, MODE_16);
+                int n[16] = { 0 };
+                for (int i = 0; i < SCREEN_W * SCREEN_H; i++) n[scr.px[i]]++;
+                CHECK(n[0] + n[10] + n[12] + n[14] == SCREEN_W * SCREEN_H, "the flash shows only 0, 10, 12, 14");
+                CHECK(n[10] > 20000 && n[9] == 0, "the sea light green in the flash");
+            }
+            if (flash && t2 > flash + 8000) break;
+        }
+        battle_test_blow_up = -1;
+        CHECK(flash > 0, "an explosion");
+        SDL_Log("explosion's first flash after %d ms", flash);
+        save_battle(&x, "x3_after");
+        CHECK(x.palette == 1 && SDL_memcmp(x.tpal, OWN, 4) == 0, "after it the battle's own colours (%d %d %d)",
+              x.tpal[1], x.tpal[2], x.tpal[3]);
+        key(&x, 'l', 500);
+        SDL_Log("after Leave: state %d", x.state);
+        for (int i = 0; i < 100 && x.state == BATTLE_RUNNING; i++) key(&x, 'y', 500);
+        CHECK(x.state != BATTLE_RUNNING, "Leave ends the battle (explosion)");
+        battle_finish(&x);
+    }
 
     if (fails) SDL_Log("%d FAILED", fails);
     else SDL_Log("all passed");

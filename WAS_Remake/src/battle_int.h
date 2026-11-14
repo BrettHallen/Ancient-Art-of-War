@@ -107,6 +107,9 @@ void g_vline(Battle *b, int line, int x, int n);     /* draw_vline */
 void g_icon(Battle *b, int src, int line, int x);    /* draw_icon */
 void g_invert_block(Battle *b, int addr, int w, int h);   /* invert_block */
 void g_palette(Battle *b, int n);         /* set_cga_palette_if */
+void g_colours(Battle *b);                /* the battle's colours at the start (rt_0c8f) */
+void g_tandy_colours(Battle *b);          /* the Tandy version's palette registers 0, 9, 6, 15 */
+int  mbt(const Battle *b, int a);         /* a DS byte as the Tandy version has it */
 void g_panel_copy(Battle *b, int off);    /* rt_6697 */
 void g_panel_sprite(Battle *b, int spr, int off, int half, int over);   /* rt_656f */
 void g_mask(Battle *b, int spr, int y, int colour, int x, int half);    /* rt_617a */

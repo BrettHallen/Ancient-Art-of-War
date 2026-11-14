@@ -136,13 +136,15 @@ bool key_up(int k)   { return k == PK_MINUS || k == PK_KP_MINUS || k == PK_TAB; 
 
 static uint8_t *line16(Menu *m, int line) { return &m->v16[line * SCREEN_W]; }
 
-/* a CGA byte written to the screen (4 pixels) */
+/* a CGA byte written to the screen (4 pixels). In 16 colours always in palette
+ * 1's: the Tandy version's text rows under a scroll are white, as everywhere
+ * (WAST in DOSBox-X, 14 Nov) */
 void scr_byte(Menu *m, int line, int xb, uint8_t b)
 {
     if (line < 0 || line >= SCREEN_H || xb < 0 || xb >= 80) return;
     m->vram[line * 80 + xb] = b;
     uint8_t *d = line16(m, line) + xb * 4;
-    for (int k = 0; k < 4; k++) d[k] = m->c16[m->pal0][(b >> (6 - 2 * k)) & 3];
+    for (int k = 0; k < 4; k++) d[k] = m->c16[0][(b >> (6 - 2 * k)) & 3];
 }
 
 /* XOR a byte of the screen: each pixel flips (0 <-> 3, 1 <-> 2; in 16 colours its complement) */
@@ -160,11 +162,11 @@ static void scr_and(Menu *m, int line, int xb, uint8_t b)
 {
     if (line < 0 || line >= SCREEN_H || xb < 0 || xb >= 80) return;
     m->vram[line * 80 + xb] &= b;
+    /* the Tandy version (WAST and_pointer ovl1:51B0) ANDs the 16-colour screen
+       with the byte expanded (rt_3495: 0, 3, 12, 15) */
+    static const uint8_t X4[4] = { 0, 3, 12, 15 };
     uint8_t *d = line16(m, line) + xb * 4;
-    for (int k = 0; k < 4; k++) {
-        int v = (b >> (6 - 2 * k)) & 3;
-        if (v != 3) d[k] = m->c16[m->pal0][v];
-    }
+    for (int k = 0; k < 4; k++) d[k] &= X4[(b >> (6 - 2 * k)) & 3];
 }
 
 /* a byte written into BUF at offset a (BUF-relative); the 16-colour copy gets
@@ -399,6 +401,14 @@ void text_rows_add(Menu *m, int n)
 /* set_cga_palette: palette 1 for the pictures, 0 for the scrolls */
 void palette(Menu *m, bool pal0) { m->pal0 = pal0; }
 
+/* rt_0c8f: a screen's colours: on a PCjr its palette registers (by the Options
+ * Shoppe's display), elsewhere CGA palette 1 */
+void colours(Menu *m, const uint8_t set[8])
+{
+    m->pal0 = false;
+    jr_screen(&m->jr, assets_scnf_word(m->ga, 0x684D), set);
+}
+
 void show_one_moment(Menu *m) { clear_row(m, 24); print_at(m, 10, 24, DS(m, 0x6A)); }   /* ovl1:8A2F */
 
 /* ovl1_bec5: [+] or [-] on row 24 */
@@ -586,7 +596,10 @@ static void roll_up(Menu *m)
 /* scroll_palette (ovl1:BC63): palette 0, the top of the scroll and its lower curl */
 static void scroll_palette(Menu *m)
 {
-    palette(m, true);
+    if (assets_scnf_word(m->ga, 0x684D) != 0) {         /* the display not black/white */
+        palette(m, true);
+        jr_bios(&m->jr, 0);
+    }
     copy_lines(m, 0, 0, 18);
     copy_lines(m, 0x39D0, 36, 14);
 }
@@ -1036,6 +1049,7 @@ static void scroll_pictures(Menu *m)        /* show_scroll ovl1:7F31: SPE and SP
         m->a6467 = true;
     }
     m->rows = 2;
+    colours(m, JR_SCROLL);                          /* ovl1:7FA5 */
 }
 
 /* titles_help (ovl1:AD76) for the titles (mode 1) */
@@ -1423,7 +1437,7 @@ static int choose_opponent(Menu *m)
     if (!load_picture(m, PIC_OPPONENTS, 0)) return R_FAIL;
     m->rows = 1;
     blit(m, 200);
-    palette(m, false);
+    colours(m, JR_OPPONENT);                        /* rt_0c8f ovl1:8C45 */
     clear_row(m, 0);
     int o = SDL_clamp(m->opponent, 0, 5), k = 0;
     if (mode == 9) {                                    /* a new campaign's third step */
@@ -1504,7 +1518,7 @@ static int title_ship(Menu *m)
         if (!load_picture(m, PIC_TITLE_SHIP, 0)) return R_FAIL;
         m->rows = 1;
         m->a6469 = 1;
-        palette(m, false);
+        colours(m, JR_TITLE);                       /* rt_0c8f ovl1:873D */
         text_rows_add(m, 0);
         blit_menu(m);
         help_change_select(m);
@@ -1627,7 +1641,7 @@ static int scenes_menu(Menu *m, const Scenes *t, int start)
     if (!load_picture(m, t->pic, 0)) return R_FAIL;
     m->rows = 1;
     blit(m, 200);
-    palette(m, false);
+    colours(m, t == &CAMPAIGN_MENU ? JR_CAMPAIGN_MENU : JR_EDITOR_MENU);   /* ovl1:8307, 8495 */
     int i = SDL_clamp(start, 0, 5), k = PK_EQUALS;      /* ovl1_a5f5 */
     plus_or_minus(m);
     print_at(m, 9, 24, SO3(m, 0xD86));                  /* to move marker, */
@@ -1733,7 +1747,7 @@ static void options_shoppe(Menu *m)
     m->a6467 = false;
     m->view = 0;
     if (!load_picture(m, PIC_OPTIONS_SHOPPE, 0)) return;
-    palette(m, false);
+    colours(m, JR_OPTIONS);                         /* rt_0c8f ovl1:9CAC */
     m->shoppe_disk = m->disk;
     for (int k = 0; k < 9; k++) shoppe_line(m, k);
     m->rows = 2;
@@ -1769,7 +1783,8 @@ static void options_shoppe(Menu *m)
             case 1: set_opt(m, 0x6865, opt(m, 0x6865) ? 0 : 1); break;
             case 2: set_opt(m, 0x6867, optb(m, 0x6867) == 10 ? 3 : optb(m, 0x6867) == 3 ? 0 : 10); break;
             case 3: set_opt(m, 0x6868, optb(m, 0x6868) ? 0 : 1); break;
-            case 4: set_opt(m, 0x684D, opt(m, 0x684D) >= 2 ? 0 : opt(m, 0x684D) + 1); break;
+            case 4: set_opt(m, 0x684D, opt(m, 0x684D) >= 2 ? 0 : opt(m, 0x684D) + 1);
+                    colours(m, JR_OPTIONS); break;               /* ovl1_a0e5 */
             case 5: m->shoppe_disk = (m->shoppe_disk + 1) % (m->ndisks + 1); break;   /* the next disk, or a new one */
             case 6: set_opt(m, 0x684F, opt(m, 0x684F) >= 2 ? 0 : opt(m, 0x684F) + 1); break;
             default: set_opt(m, 0x6855, opt(m, 0x6855) ? 0 : 1); break;   /* stored (the joystick is not read) */
@@ -1982,7 +1997,7 @@ static void startup(Menu *m)
     m->view = 0;
     if (!load_picture(m, PIC_TITLE, 0)) return;
     blit(m, 200);
-    palette(m, false);
+    colours(m, JR_STARTUP);                         /* rt_0c8f ovl1:7716 */
     keys_clear(m);
     /* the remake: a key skips it */
     bool skip = false;
@@ -2014,7 +2029,7 @@ static void battle_report(Menu *m)
     if (!load_picture(m, pic, 0)) return;
     m->rows = 1;
     text_rows_add(m, 0);
-    palette(m, false);
+    colours(m, code >= 10 && m->rep_opp == 2 ? JR_REPORT_2 : JR_REPORT);   /* ovl1:97C1-980B */
     clear_row(m, 24);
     blit_menu(m);
     xor_text(m, SO3(m, 0xB32), 5, 5);                   /* Sunk */
@@ -2249,6 +2264,8 @@ void menu_run(Menu *m, double us)
         if (m->action == MENU_NONE) m->action = MENU_QUIT;
     }
 }
+
+const JrPal *menu_jr(const Menu *m) { return &m->jr; }
 
 void menu_draw(const Menu *m, Screen *s, GfxMode mode)
 {

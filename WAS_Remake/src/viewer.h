@@ -32,6 +32,7 @@ typedef struct {
     const Campaign   *campaigns;      /* NUM_CAMPAIGNS */
     GfxMode           mode;
     bool              herc;           /* shown as on a Hercules card (drawn with the CGA set) */
+    bool              pcjr;           /* shown as WAS.EXE shows it on a PCjr (the CGA set, its colours) */
     int               index;          /* the screen shown */
     int               scroll[NUM_CAMPAIGNS];   /* pixels from the top of each map */
     bool              caption;
@@ -51,7 +52,17 @@ bool viewer_is_map(const Viewer *v);
 const char *viewer_title(const Viewer *v, int index);
 void viewer_draw(const Viewer *v, Screen *s);
 
-/* "CGA", "Tandy" or "Hercules" */
+/* "CGA", "PCjr", "Tandy" or "Hercules" */
 const char *viewer_mode_name(const Viewer *v);
+
+/* The video modes, in Tab's order: CGA, PCjr, Tandy (WAST.DAT's 16 colours, if
+ * it is there), Hercules. --video=cga|pcjr|tandy|herc (ega and vga: CGA, as
+ * WAS.EXE shows on those cards) */
+typedef enum { VIDEO_CGA, VIDEO_PCJR, VIDEO_TANDY, VIDEO_HERC } Video;
+Video viewer_video(const Viewer *v);
+void  viewer_set_video(Viewer *v, Video video);
+
+/* On a PCjr: the registers for the picture shown (each screen's rt_0c8f) */
+void viewer_jr(const Viewer *v, JrPal *j);
 
 #endif
