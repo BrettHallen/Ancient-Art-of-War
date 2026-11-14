@@ -27,7 +27,8 @@
  *
  * Playing: the original keys (arrows or keypad move the cursor, M Move,
  *        I Info, S Size/Surrender/Speed, T Time, C Clear/Cancel, V View,
- *        E End, Z Zoom, -/+ scroll, Alt+S save, Enter at the end), plus Tab the video card,
+ *        E End, Z Zoom, -/+ scroll, Option+S on a Mac or Alt+S save (SDL's Alt is the Option
+ *        key), Enter at the end), plus Tab the video card,
  *        F2 aspect, Alt/Cmd+Enter full screen, Esc leave the game.
  * Battle (Zoom): A Attack, R Retreat; then A Archers, B Barbarians, K Knights,
  *        S Squad and A Attack, F Forward, B Backoff, S Stop, Backspace back.

@@ -14,7 +14,7 @@ The game starts as the original does (overlay 1 of WAR.EXE):
 - **the campaign editor** (overlays 1, 3 and 4 of WAR.EXE): *Make a new campaign* takes the original's six steps: the map maker (four pages of 18 tiles, A–S put one down, P turns the page), the squads and flags (Squad, Flag, Total; over a squad Info, Size, Formation, Get and Remove), the enemy leader, the rules, the story and the title, each written on the scroll with the quill. *Change a campaign* chooses one from the data disk, then the rulebook, storybook, map maker, enemy or army, each asking *Save the last changes?* as the original does. *Remove a campaign* wipes its title off the scroll. The campaigns are written to the data disk as the original writes them (a `T` file and `TITLES`), so the original game can play them too
 - **the battle report**: victory or defeat, how it was won, and the men captured, the casualties and the flags taken on each side
 - **the demo**: left alone on the title page for 30 seconds (as the manual says), the box says *DEMO* and the computer plays one of the campaigns T3–TA against the first opponent, every squad in sight, at the fastest time, scrolling to what happens. As in the original, only the enemy's black squads move: the demo never gives your white squads orders, so they wait where the campaign puts them. It zooms into the first encounter, and the title page comes back when that battle ends. Any key stops it
-- **saved games**: **Alt+S** during play saves the game (*WARNING: Any previously saved game ... will be erased*, *Saving Game*, *<C>ontinue with game or <Q>uit?*). To carry on a saved game, choose *( data disk )* at the end of the titles and answer **S** for *Saved game*
+- **saved games**: **⌥S** (Option+S) on a Mac, **Alt+S** on Windows and Linux, during play saves the game (*WARNING: Any previously saved game ... will be erased*, *Saving Game*, *<C>ontinue with game or <Q>uit?*). To carry on a saved game, choose *( data disk )* at the end of the titles and answer **S** for *Saved game*
 
 The map, the rules and the enemy work as they do in the original program (overlay 6 of WAR.EXE):
 - the map cursor, scrolling, and the command lines: *View Time Surrender* and, over a squad, *Move Info Size Formation Detach Join*
@@ -173,7 +173,7 @@ The original keys:
 | Z | Zoom: fight the coming battle on the battle screen |
 | F | Formation of the squad: - / + choose, E ends |
 | D / J | Detach men into a new squad, or Join a squad nearby: K, B, A, S move a man, E ends |
-| Alt+S | Save the game |
+| ⌥S (Alt+S on Windows and Linux) | Save the game |
 | Enter | When the game is over, on to the battle report |
 | Esc | Leave the game (Y or N), back to the title page |
 
