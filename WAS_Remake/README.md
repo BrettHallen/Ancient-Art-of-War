@@ -5,6 +5,9 @@ The remake uses the original pictures, map tiles, sprites and font, shown as the
 
 **No original game files are included.** The remake loads everything from your own copy of the game, so you need the files from the original disk: `WAS.EXE`, `SM`, the `SP` files, `SO0`-`SO8`, `AD`, `B`, the `S` files, `SITLES` and `SDITLES`, plus `WAST.DAT` for the 16-colour graphics.
 
+## [Quick Reference Guide](WAS_Remake_Quick_Reference.pdf)
+A guide to build & run the remake.
+
 ## Status
 Steps 1 to 9 of the plan (`WAS_Remake_plan.md`) are done (9: the video modes).
 
